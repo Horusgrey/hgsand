@@ -408,7 +408,7 @@ function loadCesiumFallback(){
     <div id="rollSlate"><span class="rd">&#9679;</span> <b>ROLLING</b><span id="rollInfo"></span><div id="rollBar"><i id="rollFill"></i></div></div>
     <button id="shutter" title="Capture frame (C) &middot; Shift-click = HQ" aria-label="Capture frame"></button>
     <div class="thumbs" id="thumbs"></div>
-    <div class="kbd">G get · F fly · C capture · S save · R reset · L kml · ? help</div>
+    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · R reset · L kml · ? help</div>
   </main>
 </div>
 
@@ -708,7 +708,7 @@ function syncCamUI(){
   paintChips('lens',LENSES.map(l=>[l+'mm',l]),nearestLens(S.lensMm),v=>{S.lensMm=v;S.fov=lensToFov(v);applyFov();syncCamUI();});
 }
 const sensorW=()=>SENSORS[S.sensor].w;
-const lensToFov=(mm,sensor)=>Math.round(2*Math.atan((sensor||sensorW())/(2*mm))*180/Math.PI);
+const lensToFov=(mm,sensor)=>Math.round(2*Math.atan((sensor||sensorW())/(2*mm))*180/Math.PI*10)/10; // 0.1-deg precision so lens presets round-trip exactly
 const fovToLens=(fov,sensor)=>Math.round((sensor||sensorW())/(2*Math.tan(fov*Math.PI/360)));
 const nearestLens=mm=>LENSES.reduce((a,b)=>Math.abs(b-mm)<Math.abs(a-mm)?b:a);
 
@@ -1598,6 +1598,7 @@ function showHelp(){showModal('<span class="closex" onclick="document.getElement
  '<tr><td><span class="k">R</span></td><td>Reset view to the target</td></tr>'+
  '<tr><td><span class="k">L</span></td><td>Open the KML/KMZ loader</td></tr>'+
  '<tr><td><span class="k">?</span></td><td>This help</td></tr>'+
+ '<tr><td><span class="k">1–7</span></td><td>Snap to a lens preset (16 → 135mm)</td></tr>'+
  '<tr><td><span class="k">Alt+scroll</span></td><td>Raise/lower the selected marker</td></tr>'+
  '</table><div class="mini" style="margin-top:12px">Loop: Scout a place → Block the camera → Lock the sun → place Cast → Capture (shutter bottom-right; Shift-click = HQ) → Prompt studio. The captured frame + spec are the product.</div>');}
 
@@ -1606,6 +1607,7 @@ document.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(k==='g'){getCurrent();} else if(k==='f'){flyToParams();} else if(k==='c'){capture();}
   else if(k==='s'){saveShot();} else if(k==='r'){flyToParams();} else if(k==='l'){$('kmlFile').click();}
+  else if(/^[1-7]$/.test(k)){const mm=LENSES[+k-1];S.lensMm=mm;S.fov=lensToFov(mm);applyFov();syncCamUI();toast('Lens '+mm+'mm');}
   else if(e.key==='?'){showHelp();}
   else if((e.key==='Delete'||e.key==='Backspace')&&S.selMarker&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='SELECT'){
     pushUndo({type:'markerDel'});
