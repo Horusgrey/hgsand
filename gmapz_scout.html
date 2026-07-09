@@ -1164,17 +1164,20 @@ function sunPos(lat,lon,date){
   return {el:el, az:(az+360)%360};
 }
 function phaseOf(el){ if(el<-6)return 'night'; if(el<0)return 'blue'; if(el<8)return 'golden'; return 'day'; }
+function lonOffsetHrs(){return Math.round(S.target.lon/15);} // solar-time approximation from longitude
+function utcMinsToLocalStr(mins){const m=((mins+lonOffsetHrs()*60)%1440+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');}
 function localDateTime(){ const dv=$('lDate').value, tv=$('lTime').value; if(!dv||!tv) return new Date(); return new Date(dv+'T'+tv+':00Z'); }
 function setClockFrom(dt){ viewer.clock.currentTime=Cesium.JulianDate.fromDate(dt); }
-function syncTimeSlider(){const tv=$('lTime').value;if(!tv)return;const[h,m]=tv.split(':').map(Number);const mins=h*60+m;$('timeSlider').value=mins;$('timeLabel').textContent=tv+' UTC';}
+function syncTimeSlider(){const tv=$('lTime').value;if(!tv)return;const[h,m]=tv.split(':').map(Number);const mins=h*60+m;$('timeSlider').value=mins;$('timeLabel').textContent=tv+' UTC · ≈'+utcMinsToLocalStr(mins)+' local';}
 function updateSun(){
   const dt=localDateTime(); setClockFrom(dt);
   const s=sunPos(S.target.lat,S.target.lon,dt);
-  $('sunReadout').textContent='sun az '+s.az.toFixed(0)+'\u00b0  el '+s.el.toFixed(1)+'\u00b0\nphase  '+phaseOf(s.el);
+  const utcM=dt.getUTCHours()*60+dt.getUTCMinutes(), oh=lonOffsetHrs();
+  $('sunReadout').textContent='sun az '+s.az.toFixed(0)+'\u00b0  el '+s.el.toFixed(1)+'\u00b0\nphase  '+phaseOf(s.el)+'\nlocal  \u2248'+utcMinsToLocalStr(utcM)+' (UTC'+(oh>=0?'+':'')+oh+' by longitude)';
   S._sun=s; syncTimeSlider();
 }
 $('lDate').onchange=updateSun; $('lTime').onchange=updateSun;
-$('timeSlider').oninput=e=>{const mins=+e.target.value;const h=String(Math.floor(mins/60)).padStart(2,'0'),m=String(mins%60).padStart(2,'0');$('lTime').value=h+':'+m;$('timeLabel').textContent=h+':'+m+' UTC';updateSun();};
+$('timeSlider').oninput=e=>{const mins=+e.target.value;const h=String(Math.floor(mins/60)).padStart(2,'0'),m=String(mins%60).padStart(2,'0');$('lTime').value=h+':'+m;updateSun();};
 $('goldenBtn').onclick=()=>{
   const dv=$('lDate').value||new Date().toISOString().slice(0,10);
   const wins=[]; let cur=null;
@@ -1190,7 +1193,7 @@ $('goldenBtn').onclick=()=>{
   const hhmm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
   wins.forEach(w=>{
     const d=document.createElement('div');d.className='item';
-    d.innerHTML='<div class="t"><span>'+hhmm(w.start)+' – '+hhmm(w.end)+' UTC</span><span class="tag">golden/blue</span></div>';
+    d.innerHTML='<div class="t"><span>≈'+utcMinsToLocalStr(w.start)+' – '+utcMinsToLocalStr(w.end)+' local</span><span class="tag">'+hhmm(w.start)+'–'+hhmm(w.end)+' UTC</span></div>';
     d.onclick=()=>{const mid=Math.floor((w.start+w.end)/2);$('lTime').value=hhmm(mid);$('lDate').value=dv;updateSun();toast('Set to golden hour');};
     L.appendChild(d);
   });
@@ -1198,16 +1201,21 @@ $('goldenBtn').onclick=()=>{
 
 let dragging=null, ghost=null;
 const handler=new Cesium.ScreenSpaceEventHandler(viewer.canvas);
-function stickerImage(k){return AVATARS[k]||pinSvg(STICKERS[k]||'#facc15');}
+function stickerImage(k){return AVATARS[k]||(WORLD_PROPS[k]?propSvg(k):pinSvg(STICKERS[k]||'#facc15'));}
 function updateGhost(pos){ // translucent stand-in that rides the cursor in place mode
   const p=screenPick(pos); if(!Cesium.defined(p))return;
-  if(!ghost){ ghost=viewer.entities.add({position:p,billboard:{image:stickerImage(S.sticker),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,scale:.8,color:Cesium.Color.WHITE.withAlpha(.45),disableDepthTestDistance:Number.POSITIVE_INFINITY}}); }
+  if(!ghost){
+    const wp=worldProp(S.sticker);
+    const bb=wp?{image:stickerImage(S.sticker),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,sizeInMeters:true,width:wp.w,height:wp.h,color:Cesium.Color.WHITE.withAlpha(.5)}
+              :{image:stickerImage(S.sticker),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,scale:.8,color:Cesium.Color.WHITE.withAlpha(.45),disableDepthTestDistance:Number.POSITIVE_INFINITY};
+    ghost=viewer.entities.add({position:p,billboard:bb});
+  }
   else ghost.position=p;
 }
 function killGhost(){ if(ghost){viewer.entities.remove(ghost); ghost=null;} }
 function bounceIn(id){ // ease-out-back pop so a placed prop lands with weight
   const e=viewer.entities.getById(id), m=S.markers.find(x=>x.id===id); if(!e||!m)return;
-  const target=(m.scale||1)*(S.selMarker===id?0.95:0.8), t0=performance.now(), c1=1.70158, c3=c1+1;
+  const target=worldProp(m.type)?1:(m.scale||1)*(S.selMarker===id?0.95:0.8), t0=performance.now(), c1=1.70158, c3=c1+1;
   (function step(){
     const t=Math.min(1,(performance.now()-t0)/300);
     const f=1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);
@@ -1218,6 +1226,39 @@ function bounceIn(id){ // ease-out-back pop so a placed prop lands with weight
 function pinSvg(color){
   const svg='<svg xmlns="http://www.w3.org/2000/svg" width="36" height="48" viewBox="0 0 36 48"><path d="M18 47C18 47 33 28 33 16A15 15 0 1 0 3 16C3 28 18 47 18 47Z" fill="'+color+'" stroke="#0a0a0a" stroke-width="2"/><circle cx="18" cy="16" r="6" fill="#0a0a0a"/></svg>';
   return 'data:image/svg+xml;base64,'+btoa(svg);
+}
+// Life-size previs mannequins: rendered with sizeInMeters so a person is 1.8m
+// tall in the world, occluded by buildings, and holds scale in the frame.
+const WORLD_PROPS={person:{w:0.66,h:1.80},person2:{w:0.90,h:1.75},vehicle:{w:4.60,h:1.45},light:{w:1.10,h:2.00}};
+const worldProp=t=>(AVATARS[t]?null:WORLD_PROPS[t])||null;
+const _propCache={};
+function propSvg(kind){
+  if(_propCache[kind])return _propCache[kind];
+  const F='#52525b',O='#18181b',ln='stroke="'+O+'" stroke-width="1.2"';
+  let svg='';
+  if(kind==='person')svg='<svg xmlns="http://www.w3.org/2000/svg" width="88" height="240" viewBox="0 0 22 60">'+
+    '<circle cx="11" cy="5" r="4.4" fill="'+F+'" '+ln+'/>'+
+    '<rect x="6" y="10.2" width="10" height="19" rx="4.4" fill="'+F+'" '+ln+'/>'+
+    '<rect x="6.4" y="29" width="3.9" height="30" rx="1.9" fill="'+F+'" '+ln+'/>'+
+    '<rect x="11.7" y="29" width="3.9" height="30" rx="1.9" fill="'+F+'" '+ln+'/></svg>';
+  else if(kind==='person2')svg='<svg xmlns="http://www.w3.org/2000/svg" width="124" height="240" viewBox="0 0 31 60">'+
+    '<circle cx="15.5" cy="5" r="4.4" fill="'+F+'" '+ln+'/>'+
+    '<rect x="10.5" y="10.2" width="10" height="18" rx="4.4" fill="'+F+'" '+ln+'/>'+
+    '<path d="M14 28 L6 58" stroke="'+F+'" stroke-width="4" stroke-linecap="round"/>'+
+    '<path d="M17 28 L25 58" stroke="'+F+'" stroke-width="4" stroke-linecap="round"/>'+
+    '<path d="M12 13 L5 26" stroke="'+F+'" stroke-width="3.2" stroke-linecap="round"/>'+
+    '<path d="M19 13 L26 24" stroke="'+F+'" stroke-width="3.2" stroke-linecap="round"/></svg>';
+  else if(kind==='vehicle')svg='<svg xmlns="http://www.w3.org/2000/svg" width="368" height="116" viewBox="0 0 92 29">'+
+    '<path d="M8 22 L8 14 Q8 10 14 9 L26 8 L36 2.5 Q38 1.5 42 1.5 L62 1.5 Q66 1.5 68 3.5 L76 9 L86 11 Q90 12 90 15 L90 22 Z" fill="'+F+'" '+ln+'/>'+
+    '<path d="M38 3.5 L30 8.5 L46 8.5 L46 3.5 Z M50 3.5 L50 8.5 L66 8.5 L60 4 Q59 3.5 57 3.5 Z" fill="'+O+'"/>'+
+    '<circle cx="24" cy="22" r="6" fill="'+O+'"/><circle cx="24" cy="22" r="2.6" fill="'+F+'"/>'+
+    '<circle cx="72" cy="22" r="6" fill="'+O+'"/><circle cx="72" cy="22" r="2.6" fill="'+F+'"/></svg>';
+  else if(kind==='light')svg='<svg xmlns="http://www.w3.org/2000/svg" width="132" height="240" viewBox="0 0 33 60">'+
+    '<rect x="9" y="1" width="15" height="10" rx="1.5" fill="'+O+'" stroke="'+F+'" stroke-width="1.4"/>'+
+    '<rect x="11.5" y="3.5" width="10" height="5" fill="#facc15" opacity=".8"/>'+
+    '<path d="M16.5 11 L16.5 44" stroke="'+F+'" stroke-width="2.6"/>'+
+    '<path d="M16.5 44 L5 58 M16.5 44 L16.5 58 M16.5 44 L28 58" stroke="'+F+'" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  return _propCache[kind]='data:image/svg+xml;base64,'+btoa(svg);
 }
 function circleAvatar(dataUrl,cb){
   const img=new Image();
@@ -1235,7 +1276,7 @@ function circleAvatar(dataUrl,cb){
 }
 function renderStickerChips(){
   const items=[...Object.keys(STICKERS).map(k=>[k,k]),...Object.keys(AVATARS).map(k=>['\ud83d\udcf7 '+k,k])];
-  paintChips('stickers',items,S.sticker,v=>{S.sticker=v; if(ghost)ghost.billboard.image=stickerImage(v);});
+  paintChips('stickers',items,S.sticker,v=>{S.sticker=v; killGhost();});
 }
 $('avatarBtn').onclick=()=>$('avatarFile').click();
 $('avatarFile').onchange=e=>{
@@ -1250,9 +1291,12 @@ $('avatarFile').onchange=e=>{
 };
 function addMarker(lon,lat,height,type,shotType,scale,rot){
   const id='m'+Date.now()+Math.floor(Math.random()*99);
+  const wp=worldProp(type);
+  const bb=wp?{image:propSvg(type),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,sizeInMeters:true,width:wp.w*(scale||1),height:wp.h*(scale||1),rotation:Cesium.Math.toRadians(rot||0)}
+            :{image:AVATARS[type]||pinSvg(STICKERS[type]||'#facc15'),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,scale:(scale||1)*.8,rotation:Cesium.Math.toRadians(rot||0),disableDepthTestDistance:Number.POSITIVE_INFINITY};
   viewer.entities.add({
     id, position:Cesium.Cartesian3.fromDegrees(lon,lat,height||0),
-    billboard:{image:AVATARS[type]||pinSvg(STICKERS[type]||'#facc15'),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,scale:(scale||1)*.8,rotation:Cesium.Math.toRadians(rot||0),disableDepthTestDistance:Number.POSITIVE_INFINITY},
+    billboard:bb,
     label:{text:(shotType||'subject'),font:'11px monospace',fillColor:Cesium.Color.WHITE,showBackground:true,backgroundColor:Cesium.Color.fromCssColorString('#000000aa'),pixelOffset:new Cesium.Cartesian2(0,8),verticalOrigin:Cesium.VerticalOrigin.TOP,scale:.9,disableDepthTestDistance:Number.POSITIVE_INFINITY}
   });
   S.markers.push({id,lon,lat,height:height||0,type,shotType:shotType||'subject',scale:scale||1,rot:rot||0});
@@ -1262,8 +1306,15 @@ function addMarker(lon,lat,height,type,shotType,scale,rot){
 }
 function syncMarkerVisual(m){ // apply scale/rot/selection glow to the on-globe entity
   const e=viewer.entities.getById(m.id); if(!e)return;
-  const sel=S.selMarker===m.id;
-  e.billboard.scale=(m.scale||1)*(sel?0.95:0.8);
+  const sel=S.selMarker===m.id, wp=worldProp(m.type);
+  if(wp){ // life-size: scale changes world dimensions; selection lifts it above occluders
+    e.billboard.width=wp.w*(m.scale||1);
+    e.billboard.height=wp.h*(m.scale||1);
+    e.billboard.scale=1;
+    e.billboard.disableDepthTestDistance=sel?Number.POSITIVE_INFINITY:0;
+  } else {
+    e.billboard.scale=(m.scale||1)*(sel?0.95:0.8);
+  }
   e.billboard.rotation=Cesium.Math.toRadians(m.rot||0);
   e.label.fillColor=sel?Cesium.Color.fromCssColorString('#facc15'):Cesium.Color.WHITE;
   e.position=Cesium.Cartesian3.fromDegrees(m.lon,m.lat,m.height||0);
@@ -1283,7 +1334,7 @@ function renderMarkerList(){
       const ctl=document.createElement('div'); ctl.className='mctl';
       ctl.innerHTML=
         '<div class="mrow"><span>Height</span><input type="range" min="0" max="400" step="1" value="'+m.height+'" data-k="height"><b>'+m.height.toFixed(0)+'m</b></div>'+
-        '<div class="mrow"><span>Scale</span><button class="mb" data-k="scale" data-d="-0.1">\u2212</button><b>'+m.scale.toFixed(1)+'\u00d7</b><button class="mb" data-k="scale" data-d="0.1">+</button></div>'+
+        '<div class="mrow"><span>Scale</span><button class="mb" data-k="scale" data-d="-0.1">\u2212</button><b>'+(worldProp(m.type)?(worldProp(m.type).h*m.scale).toFixed(2)+'m':m.scale.toFixed(1)+'\u00d7')+'</b><button class="mb" data-k="scale" data-d="0.1">+</button></div>'+
         '<div class="mrow"><span>Rotate</span><button class="mb" data-k="rot" data-d="-15">\u21ba</button><b>'+m.rot+'\u00b0</b><button class="mb" data-k="rot" data-d="15">\u21bb</button></div>';
       ctl.querySelector('input[data-k="height"]').oninput=ev=>{m.height=+ev.target.value;syncMarkerVisual(m);ctl.querySelector('.mrow b').textContent=m.height.toFixed(0)+'m';d.querySelector('.tag').textContent=m.height.toFixed(0)+'m';};
       ctl.querySelectorAll('.mb').forEach(b=>b.onclick=ev=>{ev.stopPropagation();
@@ -1367,7 +1418,7 @@ handler.setInputAction(click=>{
 handler.setInputAction(down=>{
   if(S.placeMode)return;
   const picked=viewer.scene.pick(down.position);
-  if(picked&&picked.id&&picked.id.id){const m=S.markers.find(x=>x.id===picked.id.id);if(m){dragging=m;S.selMarker=m.id;viewer.scene.screenSpaceCameraController.enableInputs=false;renderMarkerList();const ent=viewer.entities.getById(m.id);if(ent)ent.billboard.scale=(m.scale||1)*0.95*1.18;}}
+  if(picked&&picked.id&&picked.id.id){const m=S.markers.find(x=>x.id===picked.id.id);if(m){dragging=m;S.selMarker=m.id;viewer.scene.screenSpaceCameraController.enableInputs=false;renderMarkerList();const ent=viewer.entities.getById(m.id);if(ent)ent.billboard.scale=worldProp(m.type)?1.15:(m.scale||1)*0.95*1.18;}}
 },Cesium.ScreenSpaceEventType.LEFT_DOWN);
 handler.setInputAction(move=>{
   if(S.placeMode&&!dragging)updateGhost(move.endPosition);
@@ -1420,9 +1471,19 @@ function applyCaptureFilter(ctx){
   const parts=[]; const g=GRADES[S.grade]; if(g)parts.push(g); const a=ATMOS[S.atmos].hue; if(a)parts.push(a);
   ctx.filter=parts.length?parts.join(' '):'none';
 }
+function sceneUiVisible(v){ // labels, path viz and the ghost are UI, not scene — hide them in captures
+  S.markers.forEach(m=>{const e=viewer.entities.getById(m.id); if(e&&e.label)e.label.show=v;});
+  ['start','end','line'].forEach(k=>{if(pathEntities[k])pathEntities[k].show=v;});
+  pathEntities.waypoints.forEach(w=>{w.show=v;});
+  if(ghost)ghost.show=v;
+  if(v)syncAllMarkerVisuals(); else S.markers.forEach(m=>{ // selection lift must not leak into the frame
+    if(worldProp(m.type)){const e=viewer.entities.getById(m.id); if(e)e.billboard.disableDepthTestDistance=0;}
+  });
+}
 function capture(hq){
   let prevScale;
   if(hq){ prevScale=viewer.resolutionScale; viewer.resolutionScale=Math.min(2, (window.devicePixelRatio||1)*2); }
+  sceneUiVisible(false);
   viewer.render();
   const src=viewer.scene.canvas;
   const r=ASPECTS[S.delivery], w=src.width, h=src.height, cur=w/h;
@@ -1431,7 +1492,8 @@ function capture(hq){
   const out=document.createElement('canvas'); out.width=Math.round(cw); out.height=Math.round(ch);
   const ctx=out.getContext('2d'); applyCaptureFilter(ctx);
   ctx.drawImage(src,sx,sy,cw,ch,0,0,cw,ch);
-  let url; try{ url=out.toDataURL('image/png'); }catch(err){ if(hq&&prevScale!==undefined)viewer.resolutionScale=prevScale; captureHelp(); return {id:null,url:null}; }
+  let url; try{ url=out.toDataURL('image/png'); }catch(err){ sceneUiVisible(true); if(hq&&prevScale!==undefined)viewer.resolutionScale=prevScale; captureHelp(); return {id:null,url:null}; }
+  sceneUiVisible(true);
   if(hq&&prevScale!==undefined){ viewer.resolutionScale=prevScale; viewer.render(); }
   const id='cap'+Date.now();
   S.captures.push({id,url,spec:buildSpec(id)});
@@ -1461,7 +1523,7 @@ function buildSpec(refId,move){
     light:{date:$('lDate').value,time:$('lTime').value,tz:'UTC',sun_azimuth_deg:+s.az.toFixed(1),sun_elevation_deg:+s.el.toFixed(1),phase:phaseOf(s.el)},
     look:{style:S.style,grade:S.grade,atmosphere:S.atmos,terrain_exaggeration:S.exag},
     delivery:{aspect:S.delivery,resolution:aspectRes(S.delivery)},
-    subjects:S.markers.map(m=>({type:m.type.indexOf('person')===0?'person':(m.type==='vehicle'?'prop':m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:1,height_m:m.height})),
+    subjects:S.markers.map(m=>({type:m.type.indexOf('person')===0?'person':(m.type==='vehicle'?'prop':m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:m.height})),
     scene_description:$('sceneDesc').value, reference_frame:(refId||'scout')+'.png'
   };
 }

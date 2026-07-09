@@ -109,6 +109,7 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
 | `subjects[].type` | string | `person` / `prop` / `light` / `vfx` (normalized from sticker). |
 | `subjects[].label` | string | The marker's assigned shot type. |
 | `subjects[].lng/lat` | number | Ground position. |
+| `subjects[].scale` | number | Stand-in scale multiplier (1 = life-size: person 1.8m, vehicle 4.6m). |
 | `subjects[].height_m` | number | Raised height (Alt+scroll / slider / snap). |
 | `scene_description` | string | Free text from the Style panel. |
 | `reference_frame` | string | `<id>.png` — the captured frame this record describes. |
