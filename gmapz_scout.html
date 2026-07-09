@@ -242,6 +242,8 @@ function loadCesiumFallback(){
     cursor:pointer;position:relative;transition:.12s;}
   #compass:hover{border-color:var(--yellow);}
   #compassNeedle{position:absolute;inset:0;transition:transform .08s linear;will-change:transform;}
+  .grip{cursor:grab;color:var(--faint);margin-right:7px;font-size:11px;user-select:none;}
+  .item.dragover{border-color:var(--yellow);box-shadow:0 0 0 2px rgba(250,204,21,.15);}
   /* ---- print: blocking report ---- */
   #printReport{display:none;}
   @media print{
@@ -1547,6 +1549,18 @@ $('i2vBtn').onclick=()=>{
 };
 $('specBtn').onclick=()=>{const sp=buildSpec();downloadText(JSON.stringify(sp,null,2),sp.id+'.json');};
 
+function suggestNext(){ // read the saved sequence and recommend what a cutting room would want next
+  if(!S.shots.length)return 'Suggested coverage: establishing wide, then a medium and a close on the same axis.';
+  const sizes=new Set(S.shots.map(s=>s.spec.camera.shot_size));
+  const heads=S.shots.map(s=>s.spec.camera.heading_deg);
+  const missing=[];
+  [['ewide','an establishing wide'],['wide','a wide'],['medium','a medium'],['close','a close-up']].forEach(([k,label])=>{if(!sizes.has(k))missing.push(label);});
+  const spread=Math.max.apply(null,heads)-Math.min.apply(null,heads);
+  if(spread<45)missing.push('a reverse angle (heading +180°)');
+  if(!sizes.has('detail'))missing.push('a detail insert');
+  return missing.length?('Shot so far: '+S.shots.length+' setup'+(S.shots.length===1?'':'s')+' ('+[...sizes].join(', ')+'). Missing: '+missing.slice(0,3).join(', ')+'.')
+    :'Coverage ladder complete across '+S.shots.length+' setups — consider a reverse or a moving master.';
+}
 function vcs15(){
   const sp=buildSpec(); const s=sp.light;
   const forge={project_id:'GMAPZ',clip_id:sp.id,duration_seconds:4,fps:24,resolution:sp.delivery.resolution,
@@ -1563,7 +1577,7 @@ function vcs15(){
    '## VCS-STYLE','Style '+sp.look.style+' · grade '+sp.look.grade+' · atmosphere '+sp.look.atmosphere+' · delivery '+sp.delivery.aspect,'',
    '## VCS-FORGE','```json',JSON.stringify(forge,null,2),'```','',
    '## VCS-MATCH','frame '+sp.reference_frame+' · sun az '+s.sun_azimuth_deg+'\u00b0 el '+s.sun_elevation_deg+'\u00b0 · lens '+sp.camera.lens_mm+'mm','',
-   '## VCS-NEXT','Suggested coverage: reverse, insert, '+(sp.camera.shot_size==='wide'?'push to medium':'pull to wide')+'.','',
+   '## VCS-NEXT',suggestNext(),'',
    '## CONTINUITY RISKS','Sun moves with time-of-day; lock the captured frame. Photoreal tile LOD varies by altitude.'
   ].join('\n');
 }
@@ -1627,11 +1641,26 @@ function saveShot(){
   const cap=capture();
   S.shots.push({name,spec:buildSpec(cap.id||undefined),thumb:cap.url}); $('shotName').value=''; renderShots(); toast('Saved: '+name);
 }
+function reorderShots(from,to){
+  if(from===to||from<0||to<0||from>=S.shots.length||to>=S.shots.length)return;
+  pushUndo({type:'shotReorder'});
+  const [moved]=S.shots.splice(from,1);
+  S.shots.splice(to,0,moved);
+  renderShots();
+  toast('“'+moved.name+'” → position '+(to+1));
+}
 function renderShots(){
   const L=$('shotList');L.innerHTML='';
   S.shots.forEach((sh,i)=>{const d=document.createElement('div');d.className='item';
-    d.innerHTML='<div class="t"><span>'+(i+1)+'. '+escapeHtml(sh.name)+' <span class="tag">'+sh.spec.camera.shot_size+'</span></span><span class="x" data-i="'+i+'">&times;</span></div>';
+    d.draggable=true;
+    d.innerHTML='<div class="t"><span><span class="grip" title="Drag to reorder">⠿</span>'+(i+1)+'. '+escapeHtml(sh.name)+' <span class="tag">'+sh.spec.camera.shot_size+'</span></span><span class="x" data-i="'+i+'">&times;</span></div>';
     d.querySelector('.x').onclick=()=>{S.shots.splice(i,1);renderShots();};
+    d.ondragstart=ev=>{ev.dataTransfer.setData('text/plain','shot:'+i);ev.dataTransfer.effectAllowed='move';};
+    d.ondragover=ev=>{ev.preventDefault();ev.dataTransfer.dropEffect='move';d.classList.add('dragover');};
+    d.ondragleave=()=>d.classList.remove('dragover');
+    d.ondrop=ev=>{ev.preventDefault();ev.stopPropagation();d.classList.remove('dragover');
+      const data=ev.dataTransfer.getData('text/plain');
+      if(data.indexOf('shot:')===0)reorderShots(+data.slice(5),i);};
     L.appendChild(d);});
   renderTimeline();
 }
@@ -1864,7 +1893,7 @@ function togglePanel(){ panelEl.classList.toggle('closed'); if(!panelEl.classLis
 if(tabEl)tabEl.onclick=togglePanel;
 buildRail();
 
-window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV};
+window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
 </script>
