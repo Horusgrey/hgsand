@@ -85,6 +85,7 @@ function loadCesiumFallback(){
     .kbd{display:none;}
     .thumbs{bottom:6px;right:14px;}
     #slate{display:none;}
+    #navCluster{display:none;}
   }
 
   .body{padding:4px 16px 16px;}
@@ -242,6 +243,9 @@ function loadCesiumFallback(){
     cursor:pointer;position:relative;transition:.12s;}
   #compass:hover{border-color:var(--yellow);}
   #compassNeedle{position:absolute;inset:0;transition:transform .08s linear;will-change:transform;}
+  #loadstat{transition:opacity .6s;}
+  #loadstat.settle{opacity:.3;}
+  #loadstat.settle:hover{opacity:1;}
   .grip{cursor:grab;color:var(--faint);margin-right:7px;font-size:11px;user-select:none;}
   .item.dragover{border-color:var(--yellow);box-shadow:0 0 0 2px rgba(250,204,21,.15);}
   /* ---- print: blocking report ---- */
@@ -1126,6 +1130,7 @@ function loadLook(L){
 }
 function renderLooks(){
   const C=$('lookList'); C.innerHTML='';
+  if(!S.looks.length){C.innerHTML='<div class="mini">Saved camera positions land here \u2014 frame something and hit Save look.</div>';return;}
   S.looks.forEach((L,i)=>{const d=document.createElement('div');d.className='item';
     d.innerHTML='<div class="t"><span>'+escapeHtml(L.name)+' <span class="tag">'+L.range+'m '+fovToLens(L.fov,SENSORS[L.sensor||'full'].w)+'mm</span></span><span class="x" data-i="'+i+'">&times;</span></div>';
     d.onclick=ev=>{if(ev.target.dataset.i)return;loadLook(L);};
@@ -1651,6 +1656,7 @@ function reorderShots(from,to){
 }
 function renderShots(){
   const L=$('shotList');L.innerHTML='';
+  if(!S.shots.length){L.innerHTML='<div class="mini">No shots yet \u2014 press S (or Save shot) to add your current framing to the sequence.</div>';renderTimeline();return;}
   S.shots.forEach((sh,i)=>{const d=document.createElement('div');d.className='item';
     d.draggable=true;
     d.innerHTML='<div class="t"><span><span class="grip" title="Drag to reorder">⠿</span>'+(i+1)+'. '+escapeHtml(sh.name)+' <span class="tag">'+sh.spec.camera.shot_size+'</span></span><span class="x" data-i="'+i+'">&times;</span></div>';
@@ -1740,7 +1746,10 @@ $('sessionFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=ne
   toast('Session loaded');
 }catch(err){toast('Bad session file');}};rd.readAsText(f);};
 
-function setStat(h,c){const l=$('loadstat');l.innerHTML=h;if(c)l.style.color=c;}
+function setStat(h,c){const l=$('loadstat');l.innerHTML=h;if(c)l.style.color=c;
+  clearTimeout(setStat._t); l.classList.remove('settle');
+  if(c==='#34d399'||c==='#fbbf24'){setStat._t=setTimeout(()=>l.classList.add('settle'),4000);} // errors stay loud
+}
 let toastT;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);const dur=Math.min(7000,Math.max(2200,m.length*55));toastT=setTimeout(()=>t.classList.remove('show'),dur);}
 function downloadText(txt,name){downloadURI('data:text/plain;charset=utf-8,'+encodeURIComponent(txt),name);}
 function downloadURI(uri,name){const a=document.createElement('a');a.href=uri;a.download=name;document.body.appendChild(a);a.click();a.remove();}
@@ -1809,6 +1818,22 @@ document.addEventListener('keydown',e=>{
     if(gk)$('googleKey').value=gk; if(ik)$('ionKey').value=ik;
     if(gk||ik)reloadEarth();
   }catch(_){}
+  $('goldenList').innerHTML='<div class="mini">Pick a date, then Find golden hour for the day\u2019s golden and blue windows.</div>';
+  renderShots(); renderLooks();
+  try{ // first-run welcome: once per device, in house style
+    if(!localStorage.getItem('gmapz_welcomed')){
+      localStorage.setItem('gmapz_welcomed','1');
+      showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span>'+
+        '<h3>GMAPz <span style="color:var(--yellow)">Scout</span></h3>'+
+        '<div class="mini" style="font-size:12.5px;line-height:1.7">Fly a real camera over the real Earth. Block the shot, lock the sun, capture the frame \u2014 and leave with engine-ready prompts and a machine-readable spec.</div>'+
+        '<table style="margin-top:10px">'+
+        '<tr><td><span class="k">1</span></td><td>Paste a Google Map Tiles key under Scout for photoreal Earth \u2014 it\u2019s remembered on this device. No key still works.</td></tr>'+
+        '<tr><td><span class="k">2</span></td><td>Right-click anywhere to aim. The wheel dives at your cursor; T toggles top-down.</td></tr>'+
+        '<tr><td><span class="k">3</span></td><td>C or the shutter captures the exact frame; the Prompt Studio turns it into prompts for six i2v engines.</td></tr>'+
+        '</table>'+
+        '<div class="row" style="margin-top:14px"><button class="btn y" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">Start scouting</button></div>');
+    }
+  }catch(_){}
 })();
 
 // ---- polish: undo, esc-modal, mobile drawer ----
@@ -1840,21 +1865,27 @@ _patchShotDelHandlers();
 
 document.addEventListener('keydown',e=>{
   if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;
-  if(e.key==='Escape'){$('modal').classList.remove('show');return;}
+  if(e.key==='Escape'){
+    const mo=$('modal');
+    if(mo.classList.contains('show')){mo.classList.remove('show');return;}
+    if(S.placeMode){$('placeMode').click();toast('Place mode off');return;}
+    if(S.pathMode||S.path){clearPath();toast('Path drawing cancelled');return;}
+    return;
+  }
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();doUndo();}
 });
 
 // ---- Left icon rail: reorder sections, build rail, single-section accordion ----
-const SECTION_META=[
-  {match:'style &',      icon:'\ud83c\udfa8', label:'Aesthetic'},
-  {match:'block the shot',icon:'\ud83c\udfa5', label:'Camera'},
-  {match:'cameras &',    icon:'\ud83d\udee4\ufe0f', label:'Path'},
-  {match:'cast &',       icon:'\ud83c\udfad', label:'Cast'},
-  {match:'light',        icon:'\u2600\ufe0f', label:'Light'},
+const SECTION_META=[ // rail follows the core loop: scout -> block -> light -> look -> cast -> move -> coverage -> shots -> deliver -> export
   {match:'scout',        icon:'\ud83c\udf0d', label:'Scout'},
-  {match:'delivery',     icon:'\ud83d\uddbc\ufe0f', label:'Delivery'},
+  {match:'block the shot',icon:'\ud83c\udfa5', label:'Camera'},
+  {match:'light',        icon:'\u2600\ufe0f', label:'Light'},
+  {match:'style &',      icon:'\ud83c\udfa8', label:'Aesthetic'},
+  {match:'cast &',       icon:'\ud83c\udfad', label:'Cast'},
+  {match:'cameras &',    icon:'\ud83d\udee4\ufe0f', label:'Path'},
   {match:'director',     icon:'\ud83c\udfac', label:'Coverage'},
   {match:'shot sequence',icon:'\ud83c\udf9e\ufe0f', label:'Shots'},
+  {match:'delivery',     icon:'\ud83d\uddbc\ufe0f', label:'Delivery'},
   {match:'capture &',    icon:'\ud83d\udce4', label:'Export'}
 ];
 const panelEl=$('panel'), bodyEl=$('panelbody'), railEl=$('railbar'), tabEl=$('panelTab');
@@ -1881,7 +1912,7 @@ function buildRail(){
     railEl.appendChild(b); o.btn=b;
   });
   RAIL=ordered;
-  activateSection(0); // Aesthetic open by default
+  activateSection(0); // Scout opens first: the loop starts with a place
 }
 function activateSection(i){
   panelEl.classList.remove('closed');
