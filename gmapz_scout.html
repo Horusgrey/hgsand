@@ -200,6 +200,11 @@ function loadCesiumFallback(){
   #shutter:active{transform:scale(.9);}
   .stage.placing{cursor:crosshair;}
   .thumb:hover{border-color:var(--yellow);}
+  .thumb .acts{position:absolute;top:3px;right:3px;display:none;gap:3px;}
+  .thumb:hover .acts{display:flex;}
+  .thumb .ta{width:20px;height:20px;border-radius:5px;background:rgba(9,9,11,.88);border:1px solid var(--line2);
+    color:var(--txt);font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+  .thumb .ta:hover{border-color:var(--yellow);color:var(--yellow);}
   /* ---- coverage shot plan ---- */
   .covplan{margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel2);}
   .covhead{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;font-size:9.5px;
@@ -407,7 +412,7 @@ function loadCesiumFallback(){
         <div class="row"><button class="btn" id="specBtn">Export gmapz.capture.v2 (.json)</button></div>
         <div class="row"><button class="btn vcs" id="vcsBtn">VCS-15 handoff (.md)</button><button class="btn vco" id="vcoBtn">VCO (.json)</button></div>
         <div class="row"><button class="btn" id="continuityBtn">Check continuity</button><button class="btn" id="contactSheetBtn">Contact sheet</button></div>
-        <div class="row"><button class="btn sm" id="sessionSave">Save session</button><button class="btn sm" id="sessionLoadBtn">Load session</button><input id="sessionFile" type="file" accept=".json" style="display:none"></div>
+        <div class="row"><button class="btn sm" id="sessionSave">Save session</button><button class="btn sm" id="sessionLoadBtn">Load session</button><button class="btn sm" id="sessionNew" title="Clear the autosaved session and start clean" style="flex:none;width:44px">New</button><input id="sessionFile" type="file" accept=".json" style="display:none"></div>
       </div>
     </details>
     </div>
@@ -738,6 +743,13 @@ async function reloadEarth(){
       try{googleTileset.maximumScreenSpaceError=12;}catch(_){}
       viewer.scene.primitives.add(googleTileset);
       viewer.scene.globe.show=false;
+      try{ // live tile streaming count, like Earth's loading dots
+        googleTileset.loadProgress.addEventListener((req,proc)=>{
+          const n=req+proc;
+          if(n>0)setStat('&#9676; streaming photoreal tiles\u2026 '+n);
+          else setStat('&#10003; photoreal Earth','#34d399');
+        });
+      }catch(_){}
       setStat('&#10003; photoreal Earth','#34d399'); toast('Photoreal 3D tiles loaded'); return;
     }catch(e){ console.warn('google tiles failed',e); toast('Google tiles failed — check key/billing'); }
   }
@@ -1129,6 +1141,7 @@ function loadLook(L){
   toast('Loaded look: '+L.name);
 }
 function renderLooks(){
+  autosaveSoon();
   const C=$('lookList'); C.innerHTML='';
   if(!S.looks.length){C.innerHTML='<div class="mini">Saved camera positions land here \u2014 frame something and hit Save look.</div>';return;}
   S.looks.forEach((L,i)=>{const d=document.createElement('div');d.className='item';
@@ -1328,6 +1341,7 @@ function syncMarkerVisual(m){ // apply scale/rot/selection glow to the on-globe 
 }
 function syncAllMarkerVisuals(){S.markers.forEach(syncMarkerVisual);}
 function renderMarkerList(){
+  autosaveSoon();
   const L=$('markerList'); L.innerHTML='';
   S.markers.forEach(m=>{
     if(m.scale==null)m.scale=1; if(m.rot==null)m.rot=0;
@@ -1511,7 +1525,11 @@ function capture(hq){
 }
 function addThumb(url,id){
   const t=document.createElement('div');t.className='thumb';
-  t.innerHTML='<img src="'+url+'"><div class="cap">'+S.delivery+'</div>';
+  t.innerHTML='<img src="'+url+'"><div class="cap">'+S.delivery+'</div>'+
+    '<div class="acts"><button class="ta" title="Prompt studio with this frame">\u26a1</button><button class="ta" title="Download PNG">\u2b07</button></div>';
+  const acts=t.querySelectorAll('.ta');
+  acts[0].onclick=e=>{e.stopPropagation();openPromptStudio({id,url},motionFromPath(),null);};
+  acts[1].onclick=e=>{e.stopPropagation();downloadURI(url,id+'.png');};
   t.onclick=()=>downloadURI(url,id+'.png');
   $('thumbs').appendChild(t);
 }
@@ -1655,6 +1673,7 @@ function reorderShots(from,to){
   toast('“'+moved.name+'” → position '+(to+1));
 }
 function renderShots(){
+  autosaveSoon();
   const L=$('shotList');L.innerHTML='';
   if(!S.shots.length){L.innerHTML='<div class="mini">No shots yet \u2014 press S (or Save shot) to add your current framing to the sequence.</div>';renderTimeline();return;}
   S.shots.forEach((sh,i)=>{const d=document.createElement('div');d.className='item';
@@ -1733,8 +1752,8 @@ $('sessionSave').onclick=()=>{
   downloadText(JSON.stringify(data,null,2),'gmapz_session_'+Date.now()+'.json');
 };
 $('sessionLoadBtn').onclick=()=>$('sessionFile').click();
-$('sessionFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{
-  const d=JSON.parse(rd.result),st=d.state||{};
+function applySessionData(d,label){
+  const st=d.state||{};
   Object.assign(S,{shotSize:st.shotSize||S.shotSize,angle:st.angle||S.angle,fov:st.fov||S.fov,sensor:st.sensor||S.sensor,target:st.target||S.target,head:st.head==null?S.head:st.head,tilt:st.tilt==null?S.tilt:st.tilt,range:st.range||S.range,style:st.style||S.style,grade:st.grade||S.grade,atmos:st.atmos||S.atmos,delivery:st.delivery||S.delivery,exag:st.exag||S.exag});
   $('sceneDesc').value=st.sceneDesc||'';$('lDate').value=st.date||'';$('lTime').value=st.time||'';
   $('exagSlider').value=S.exag;$('exagVal').textContent=(+S.exag).toFixed(1)+'\u00d7';try{viewer.scene.verticalExaggeration=S.exag;}catch(_){}
@@ -1743,8 +1762,26 @@ $('sessionFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=ne
   S.looks=(d.looks||[]); renderLooks();
   paintSensorChips();
   S.shots=(d.shots||[]); renderShots(); applyMask();applyAtmos();applyGrade();flyToParams();syncCamUI();updateSun();
-  toast('Session loaded');
+  toast(label||'Session loaded');
+}
+$('sessionFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{
+  applySessionData(JSON.parse(rd.result));
 }catch(err){toast('Bad session file');}};rd.readAsText(f);};
+// ---- autosave: never lose a scout (thumbs excluded so it fits localStorage) ----
+function autosaveSession(){
+  try{
+    localStorage.setItem('gmapz_autosave',JSON.stringify({v:2,auto:true,
+      state:{shotSize:S.shotSize,angle:S.angle,fov:S.fov,sensor:S.sensor,target:S.target,head:S.head,tilt:S.tilt,range:S.range,style:S.style,grade:S.grade,atmos:S.atmos,delivery:S.delivery,exag:S.exag,sceneDesc:$('sceneDesc').value,date:$('lDate').value,time:$('lTime').value},
+      markers:S.markers,looks:S.looks,shots:S.shots.map(s=>({name:s.name,spec:s.spec}))}));
+  }catch(_){}
+}
+let _autoT;function autosaveSoon(){clearTimeout(_autoT);_autoT=setTimeout(autosaveSession,800);}
+$('sessionNew').onclick=()=>{
+  if(confirm('Start a new session? Anything not exported with Save session is cleared.')){
+    try{localStorage.removeItem('gmapz_autosave');}catch(_){}
+    location.reload();
+  }
+};
 
 function setStat(h,c){const l=$('loadstat');l.innerHTML=h;if(c)l.style.color=c;
   clearTimeout(setStat._t); l.classList.remove('settle');
@@ -1817,6 +1854,13 @@ document.addEventListener('keydown',e=>{
     const gk=localStorage.getItem('gmapz_google')||'', ik=localStorage.getItem('gmapz_ion')||'';
     if(gk)$('googleKey').value=gk; if(ik)$('ionKey').value=ik;
     if(gk||ik)reloadEarth();
+  }catch(_){}
+  try{ // restore the autosaved session, if any
+    const raw=localStorage.getItem('gmapz_autosave');
+    if(raw){ const d=JSON.parse(raw);
+      if(d&&((d.shots&&d.shots.length)||(d.markers&&d.markers.length)||(d.looks&&d.looks.length)))
+        applySessionData(d,'Restored your last session \u2014 '+((d.shots||[]).length)+' shot(s), '+((d.markers||[]).length)+' prop(s)');
+    }
   }catch(_){}
   $('goldenList').innerHTML='<div class="mini">Pick a date, then Find golden hour for the day\u2019s golden and blue windows.</div>';
   renderShots(); renderLooks();
