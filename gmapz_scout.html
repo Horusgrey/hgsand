@@ -768,12 +768,18 @@ $('exagSlider').oninput=e=>{const v=+e.target.value;S.exag=v;$('exagVal').textCo
 
 function flyToParams(dur){
   const center=Cesium.Cartesian3.fromDegrees(S.target.lon,S.target.lat);
+  const d=Cesium.Cartesian3.distance(viewer.camera.positionWC,center);
   if(dur===undefined){ // swoop: flight time scales with distance, like Google Earth
-    const d=Cesium.Cartesian3.distance(viewer.camera.positionWC,center);
     dur=d>2e6?4.2:d>2e5?3.2:d>2e4?2.2:1.2;
   }
   const hpr=new Cesium.HeadingPitchRange(toRad(S.head),toRad(S.tilt),S.range);
-  viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(center,1),{offset:hpr,duration:dur});
+  // Ease in and out of every move so the camera feels weighted — an operator settling
+  // into a position, not a map cutting to it.
+  const opt={offset:hpr,duration:dur,easingFunction:Cesium.EasingFunction.QUADRATIC_IN_OUT};
+  // On a real relocation (not a small blocking nudge) arc up and let the camera pitch
+  // toward the destination before it settles — an establishing move, not a reposition.
+  if(dur>0&&d>1.5e4) opt.pitchAdjustHeight=Math.min(9000,Math.max(700,S.range*3));
+  viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(center,1),opt);
   applyFov();
 }
 function applyFov(){ const f=viewer.camera.frustum; if(f&&f.fov!==undefined) f.fov=toRad(S.fov); }
