@@ -248,6 +248,9 @@ function loadCesiumFallback(){
     cursor:pointer;position:relative;transition:.12s;}
   #compass:hover{border-color:var(--yellow);}
   #compassNeedle{position:absolute;inset:0;transition:transform .08s linear;will-change:transform;}
+  .navbtn.on{border-color:var(--yellow);color:var(--yellow);background:rgba(250,204,21,.14);}
+  .stage.orbiting{cursor:grab;}
+  .stage.orbiting.grabbing{cursor:grabbing;}
   #loadstat{transition:opacity .6s;}
   #loadstat.settle{opacity:.3;}
   #loadstat.settle:hover{opacity:1;}
@@ -435,9 +438,10 @@ function loadCesiumFallback(){
       <button class="navbtn" id="zoomInBtn" title="Zoom in (+)">+</button>
       <button class="navbtn" id="zoomOutBtn" title="Zoom out (&minus;)">&minus;</button>
       <button class="navbtn" id="tiltTog" title="Toggle top-down / oblique (T)">2D</button>
+      <button class="navbtn" id="orbitTog" title="Orbit the framed subject — drag to circle, scroll to dolly (O)">&#8635;</button>
     </div>
     <div class="thumbs" id="thumbs"></div>
-    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · R reset · L kml · ? help</div>
+    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · R reset · L kml · ? help</div>
   </main>
 </div>
 
@@ -708,6 +712,10 @@ function zoomStep(sign){
 viewer.canvas.addEventListener('wheel',e=>{
   if(e.altKey)return; // Alt+scroll adjusts the selected prop's height
   e.preventDefault();
+  if(S.orbit){ // orbit mode: the wheel dollies in and out around the framed subject
+    const n=(e.deltaY<0?1:-1)*Math.min(1,Math.abs(e.deltaY)/100);
+    S.range=Math.max(4,Math.min(6e6,S.range*(1-n*0.14))); flyToParams(0); return;
+  }
   const rect=viewer.canvas.getBoundingClientRect();
   const p=screenPick(new Cesium.Cartesian2(e.clientX-rect.left,e.clientY-rect.top));
   const notch=(e.deltaY<0?1:-1)*Math.min(1,Math.abs(e.deltaY)/100);
@@ -729,6 +737,42 @@ $('tiltTog').onclick=function(){
   flyToParams(0.8); syncCamUI();
   this.textContent=goingTop?'3D':'2D';
 };
+
+// ---- Subject orbit: circle whatever's framed, scroll to dolly. The DP's move. ----
+S.orbit=false;
+function setOrbit(on){
+  S.orbit=on;
+  const stage=document.querySelector('.stage'), b=$('orbitTog');
+  if(b)b.classList.toggle('on',on);
+  stage.classList.toggle('orbiting',on);
+  if(on){
+    if(S.placeMode)$('placeMode').click();
+    if(S.pathMode)clearPath();
+    getCurrentQuiet(); SSCC.enableInputs=false;
+    toast('Orbit — drag to circle the subject, scroll to dolly');
+  } else {
+    SSCC.enableInputs=true; stage.classList.remove('grabbing');
+    getCurrentQuiet(); syncCamUI();
+  }
+}
+$('orbitTog').onclick=()=>setOrbit(!S.orbit);
+let _orb=null;
+viewer.canvas.addEventListener('pointerdown',e=>{
+  if(!S.orbit||e.button!==0)return;
+  getCurrentQuiet(); _orb={x:e.clientX,y:e.clientY};
+  document.querySelector('.stage').classList.add('grabbing');
+  try{viewer.canvas.setPointerCapture(e.pointerId);}catch(_){}
+});
+viewer.canvas.addEventListener('pointermove',e=>{
+  if(!S.orbit||!_orb)return;
+  const dx=e.clientX-_orb.x, dy=e.clientY-_orb.y; _orb.x=e.clientX; _orb.y=e.clientY;
+  S.head=((S.head+dx*0.30)%360+360)%360;
+  S.tilt=Math.max(-89,Math.min(-2,S.tilt-dy*0.30));
+  flyToParams(0);
+});
+function _orbEnd(){ if(!_orb)return; _orb=null; document.querySelector('.stage').classList.remove('grabbing'); if(S.orbit){getCurrentQuiet();syncCamUI();} }
+viewer.canvas.addEventListener('pointerup',_orbEnd);
+viewer.canvas.addEventListener('pointercancel',_orbEnd);
 
 async function reloadEarth(){
   S.google=$('googleKey').value.trim(); S.ion=$('ionKey').value.trim();
@@ -1443,7 +1487,7 @@ handler.setInputAction(click=>{
   }
 },Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 handler.setInputAction(down=>{
-  if(S.placeMode)return;
+  if(S.placeMode||S.orbit)return;
   const picked=viewer.scene.pick(down.position);
   if(picked&&picked.id&&picked.id.id){const m=S.markers.find(x=>x.id===picked.id.id);if(m){dragging=m;S.selMarker=m.id;viewer.scene.screenSpaceCameraController.enableInputs=false;renderMarkerList();const ent=viewer.entities.getById(m.id);if(ent)ent.billboard.scale=worldProp(m.type)?1.15:(m.scale||1)*0.95*1.18;}}
 },Cesium.ScreenSpaceEventType.LEFT_DOWN);
@@ -1823,6 +1867,7 @@ function showHelp(){showModal('<span class="closex" onclick="document.getElement
  '<tr><td><span class="k">1–7</span></td><td>Snap to a lens preset (16 → 135mm)</td></tr>'+
  '<tr><td><span class="k">Arrows / + −</span></td><td>Pan and zoom the view (zoom dives at the cursor with the wheel)</td></tr>'+
  '<tr><td><span class="k">T</span></td><td>Toggle top-down / oblique</td></tr>'+
+ '<tr><td><span class="k">O</span></td><td>Orbit the framed subject — drag to circle, scroll to dolly</td></tr>'+
  '<tr><td><span class="k">Alt+scroll</span></td><td>Raise/lower the selected marker</td></tr>'+
  '</table><div class="mini" style="margin-top:12px">Loop: Scout a place → Block the camera → Lock the sun → place Cast → Capture (shutter bottom-right; Shift-click = HQ) → Prompt studio. The captured frame + spec are the product.</div>');}
 
@@ -1841,6 +1886,7 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='+'||e.key==='='){zoomStep(1);}
   else if(e.key==='-'){zoomStep(-1);}
   else if(k==='t'){$('tiltTog').click();}
+  else if(k==='o'){$('orbitTog').click();}
   else if(e.key==='?'){showHelp();}
   else if((e.key==='Delete'||e.key==='Backspace')&&S.selMarker&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='SELECT'){
     pushUndo({type:'markerDel'});
@@ -1918,6 +1964,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     const mo=$('modal');
     if(mo.classList.contains('show')){mo.classList.remove('show');return;}
+    if(S.orbit){setOrbit(false);toast('Orbit off');return;}
     if(S.placeMode){$('placeMode').click();toast('Place mode off');return;}
     if(S.pathMode||S.path){clearPath();toast('Path drawing cancelled');return;}
     return;
