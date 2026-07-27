@@ -1504,11 +1504,16 @@ handler.setInputAction(click=>{
     toast('Path complete \u2014 hit Build shot');
     return;
   }
-  // Double-click a prop = frame it (fly the camera to look at that prop with the current lens)
+  // Double-click a prop = frame it; double-click terrain = recenter and ease in toward it.
   const picked=viewer.scene.pick(click.position);
-  if(picked&&picked.id&&picked.id.id){
-    const m=S.markers.find(x=>x.id===picked.id.id);
-    if(m){S.target={lat:m.lat,lon:m.lon};S.selMarker=m.id;flyToParams(0.7);syncCamUI();renderMarkerList();toast('Framed: '+m.shotType);}
+  const m=picked&&picked.id&&picked.id.id?S.markers.find(x=>x.id===picked.id.id):null;
+  if(m){S.target={lat:m.lat,lon:m.lon};S.selMarker=m.id;flyToParams(0.7);syncCamUI();renderMarkerList();toast('Framed: '+m.shotType);}
+  else if(!S.placeMode&&!S.orbit){
+    const g=screenPick(click.position); if(!Cesium.defined(g))return;
+    const c=Cesium.Cartographic.fromCartesian(g);
+    S.target={lat:toDeg(c.latitude),lon:toDeg(c.longitude)};
+    S.range=Math.max(30,Math.round(S.range*0.72)); // pull in toward the clicked subject
+    flyToParams(0.8); syncCamUI(); toast('Focusing here — double-click to push in further');
   }
 },Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 handler.setInputAction(down=>{
@@ -1893,6 +1898,7 @@ function showHelp(){showModal('<span class="closex" onclick="document.getElement
  '<tr><td><span class="k">Arrows / + −</span></td><td>Pan and zoom the view (zoom dives at the cursor with the wheel)</td></tr>'+
  '<tr><td><span class="k">T</span></td><td>Toggle top-down / oblique</td></tr>'+
  '<tr><td><span class="k">O</span></td><td>Orbit the framed subject — drag to circle, scroll to dolly</td></tr>'+
+ '<tr><td><span class="k">Dbl-click</span></td><td>Recenter and ease in toward that point — right-click holds your framing</td></tr>'+
  '<tr><td><span class="k">Alt+scroll</span></td><td>Raise/lower the selected marker</td></tr>'+
  '</table><div class="mini" style="margin-top:12px">Loop: Scout a place → Block the camera → Lock the sun → place Cast → Capture (shutter bottom-right; Shift-click = HQ) → Prompt studio. The captured frame + spec are the product.</div>');}
 
