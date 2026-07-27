@@ -251,6 +251,17 @@ function loadCesiumFallback(){
   .navbtn.on{border-color:var(--yellow);color:var(--yellow);background:rgba(250,204,21,.14);}
   .stage.orbiting{cursor:grab;}
   .stage.orbiting.grabbing{cursor:grabbing;}
+  /* ---- viewfinder framing aids ---- */
+  #viewfinder{position:absolute;inset:0;z-index:4;pointer-events:none;display:none;}
+  #viewfinder.on{display:block;}
+  #vfFrame{position:absolute;}
+  #vfGrid{position:absolute;inset:0;width:100%;height:100%;}
+  #vfGrid line{stroke:rgba(255,255,255,.26);stroke-width:1;vector-effect:non-scaling-stroke;}
+  #vfGrid line.center{stroke:rgba(250,204,21,.55);}
+  #vfLevel{position:absolute;top:8px;left:50%;transform:translateX(-50%);font:600 10px/1 ui-monospace,monospace;letter-spacing:.09em;padding:3px 8px;border-radius:5px;background:rgba(9,9,11,.82);border:1px solid #34d399;color:#34d399;}
+  #vfLevel.dutch{color:#fbbf24;border-color:#fbbf24;}
+  #vfSunHint{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font:600 10px/1 ui-monospace,monospace;letter-spacing:.07em;padding:3px 8px;border-radius:5px;background:rgba(9,9,11,.82);border:1px solid var(--line2);color:var(--dim);white-space:nowrap;}
+  #vfSun{position:absolute;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;display:none;align-items:center;justify-content:center;font-size:15px;color:#fde68a;background:radial-gradient(circle,rgba(253,224,71,.45),transparent 70%);border:1px solid rgba(253,224,71,.75);box-shadow:0 0 12px rgba(253,224,71,.4);}
   #loadstat{transition:opacity .6s;}
   #loadstat.settle{opacity:.3;}
   #loadstat.settle:hover{opacity:1;}
@@ -428,6 +439,18 @@ function loadCesiumFallback(){
     <div id="maskL"></div><div id="maskR"></div>
     <div class="gradelayer" id="gradeLayer"></div>
     <div class="crosshair" id="crosshair"></div>
+    <div id="viewfinder">
+      <div id="vfFrame">
+        <svg id="vfGrid" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <line x1="33.333" y1="0" x2="33.333" y2="100"/><line x1="66.667" y1="0" x2="66.667" y2="100"/>
+          <line x1="0" y1="33.333" x2="100" y2="33.333"/><line x1="0" y1="66.667" x2="100" y2="66.667"/>
+          <line class="center" x1="50" y1="45.5" x2="50" y2="54.5"/><line class="center" x1="45.5" y1="50" x2="54.5" y2="50"/>
+        </svg>
+        <div id="vfLevel">LEVEL</div>
+        <div id="vfSunHint"></div>
+      </div>
+      <div id="vfSun">&#9728;</div>
+    </div>
     <div id="captureFlash"></div>
     <div id="loadstat">&#9676; booting engine…</div>
     <div class="hud"><button class="btn sm" id="resetBtn">Reset</button><button class="btn sm" id="helpBtn">? Keys</button></div>
@@ -440,9 +463,10 @@ function loadCesiumFallback(){
       <button class="navbtn" id="zoomOutBtn" title="Zoom out (&minus;)">&minus;</button>
       <button class="navbtn" id="tiltTog" title="Toggle top-down / oblique (T)">2D</button>
       <button class="navbtn" id="orbitTog" title="Orbit the framed subject — drag to circle, scroll to dolly (O)">&#8635;</button>
+      <button class="navbtn" id="guidesTog" title="Framing guides — thirds, horizon level, sun-in-frame (V)">&#8862;</button>
     </div>
     <div class="thumbs" id="thumbs"></div>
-    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · [ ] roll · R reset · L kml · ? help</div>
+    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · [ ] roll · V guides · R reset · L kml · ? help</div>
   </main>
 </div>
 
@@ -460,7 +484,7 @@ const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/M
 const S={
   google:'',ion:'',
   shotSize:'medium',angle:'eye',lensMm:35,fov:54,sensor:'full',
-  target:{lat:41.8885,lon:-87.6345},head:30,tilt:-22,range:1200,roll:0,
+  target:{lat:41.8885,lon:-87.6345},head:30,tilt:-22,range:1200,roll:0,guides:false,
   style:'cinematic',grade:'none',atmos:'clear',sceneDesc:'',
   delivery:'2.39:1',sticker:'person',placeMode:false,engine:'runway',exag:1,
   markers:[],shots:[],captures:[],looks:[],selMarker:null,_sun:null,
@@ -904,6 +928,7 @@ viewer.scene.postRender.addEventListener(()=>{
   if(line!==_slateTxt){_slateTxt=line;$('slate').textContent=line;}
   const hd=Math.round(toDeg(cam.heading)*10)/10;
   if(hd!==_lastHd){_lastHd=hd;$('compassNeedle').style.transform='rotate('+(-hd)+'deg)';}
+  if(S.guides)updateViewfinder();
 });
 
 function paintChips(containerId,items,active,onPick){
@@ -1248,8 +1273,45 @@ function applyMask(){
   if(cur>r){ const tw=h*r; ml=(w-tw)/2; } else { const th=w/r; mt=(h-th)/2; }
   $('maskTop').style.height=mt+'px';$('maskBot').style.height=mt+'px';
   $('maskL').style.width=ml+'px';$('maskR').style.width=ml+'px';
+  positionGuides(ml,mt,w,h);
 }
 window.addEventListener('resize',applyMask);
+// ---- Viewfinder framing aids: thirds, horizon level, sun-in-frame ----
+function frameRect(){ const r=ASPECTS[S.delivery], w=viewer.canvas.clientWidth, h=viewer.canvas.clientHeight, cur=w/h; let ml=0,mt=0; if(cur>r)ml=(w-h*r)/2; else mt=(h-w/r)/2; return {x:ml,y:mt,w:w-2*ml,h:h-2*mt}; }
+function positionGuides(ml,mt,w,h){
+  const f=$('vfFrame'); if(!f)return;
+  if(ml===undefined){ const fr=frameRect(); ml=fr.x;mt=fr.y;w=fr.w+2*ml;h=fr.h+2*mt; }
+  f.style.left=ml+'px'; f.style.top=mt+'px'; f.style.width=(w-2*ml)+'px'; f.style.height=(h-2*mt)+'px';
+}
+function setGuides(on){ S.guides=on; $('viewfinder').classList.toggle('on',on); $('guidesTog').classList.toggle('on',on); if(on){positionGuides();updateViewfinder();toast('Framing guides on — thirds, horizon level, sun');} }
+function updateViewfinder(){
+  if(!S.guides)return;
+  const roll=Math.round(S.roll||0), lv=$('vfLevel');
+  if(roll===0){lv.textContent='LEVEL';lv.classList.remove('dutch');}
+  else {lv.textContent='DUTCH '+(roll>0?'+':'')+roll+'°';lv.classList.add('dutch');}
+  const sun=$('vfSun'), hint=$('vfSunHint');
+  const s=sunPos(S.target.lat,S.target.lon,localDateTime());
+  if(s.el<0){ sun.style.display='none'; hint.textContent='SUN BELOW HORIZON'; return; }
+  const el=s.el*Math.PI/180, az=s.az*Math.PI/180;
+  const enu=Cesium.Transforms.eastNorthUpToFixedFrame(Cesium.Cartesian3.fromDegrees(S.target.lon,S.target.lat));
+  const dir=Cesium.Matrix4.multiplyByPointAsVector(enu,new Cesium.Cartesian3(Math.cos(el)*Math.sin(az),Math.cos(el)*Math.cos(az),Math.sin(el)),new Cesium.Cartesian3());
+  Cesium.Cartesian3.normalize(dir,dir);
+  const inFront=Cesium.Cartesian3.dot(viewer.camera.directionWC,dir)>0;
+  const far=Cesium.Cartesian3.add(viewer.camera.positionWC,Cesium.Cartesian3.multiplyByScalar(dir,1e9,new Cesium.Cartesian3()),new Cesium.Cartesian3());
+  const win=inFront?Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene,far):undefined;
+  const fr=frameRect();
+  if(inFront&&win&&win.x>=fr.x&&win.x<=fr.x+fr.w&&win.y>=fr.y&&win.y<=fr.y+fr.h){
+    sun.style.display='flex'; sun.style.left=win.x+'px'; sun.style.top=win.y+'px';
+    hint.textContent='SUN IN FRAME — WATCH FOR FLARE';
+  } else {
+    sun.style.display='none';
+    if(!inFront) hint.textContent='SUN BEHIND CAMERA — SUBJECT FRONT-LIT';
+    else if(win){ const dx=win.x-(fr.x+fr.w/2), dy=win.y-(fr.y+fr.h/2);
+      hint.textContent='SUN OFF-FRAME '+(Math.abs(dx)>Math.abs(dy)?(dx>0?'→':'←'):(dy>0?'↓':'↑')); }
+    else hint.textContent='';
+  }
+}
+$('guidesTog').onclick=()=>setGuides(!S.guides);
 
 function sunPos(lat,lon,date){
   const rad=Math.PI/180;
@@ -1910,6 +1972,7 @@ function showHelp(){showModal('<span class="closex" onclick="document.getElement
  '<tr><td><span class="k">O</span></td><td>Orbit the framed subject — drag to circle, scroll to dolly</td></tr>'+
  '<tr><td><span class="k">Dbl-click</span></td><td>Recenter and ease in toward that point — right-click holds your framing</td></tr>'+
  '<tr><td><span class="k">[ &nbsp;] &nbsp;\\</span></td><td>Dutch roll left / right · level the horizon</td></tr>'+
+ '<tr><td><span class="k">V</span></td><td>Framing guides — rule of thirds, horizon level, sun-in-frame</td></tr>'+
  '<tr><td><span class="k">Alt+scroll</span></td><td>Raise/lower the selected marker</td></tr>'+
  '</table><div class="mini" style="margin-top:12px">Loop: Scout a place → Block the camera → Lock the sun → place Cast → Capture (shutter bottom-right; Shift-click = HQ) → Prompt studio. The captured frame + spec are the product.</div>');}
 
@@ -1932,6 +1995,7 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='['){S.roll=Math.max(-30,(S.roll||0)-2);$('pRoll').value=S.roll;$('pRollVal').textContent=S.roll+'°';applyRoll();}
   else if(e.key===']'){S.roll=Math.min(30,(S.roll||0)+2);$('pRoll').value=S.roll;$('pRollVal').textContent=S.roll+'°';applyRoll();}
   else if(e.key==='\\'){$('levelRoll').click();}
+  else if(k==='v'){$('guidesTog').click();}
   else if(e.key==='?'){showHelp();}
   else if((e.key==='Delete'||e.key==='Backspace')&&S.selMarker&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='SELECT'){
     pushUndo({type:'markerDel'});
