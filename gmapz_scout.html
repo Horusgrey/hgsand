@@ -738,8 +738,10 @@ $('tiltTog').onclick=function(){
   this.textContent=goingTop?'3D':'2D';
 };
 
-// ---- Subject orbit: circle whatever's framed, scroll to dolly. The DP's move. ----
+// ---- Subject orbit: circle whatever's framed, scroll to dolly, flick to keep gliding. ----
 S.orbit=false;
+let _orb=null, _orbFling=null;
+function stopFling(){ if(_orbFling){cancelAnimationFrame(_orbFling);_orbFling=null;} }
 function setOrbit(on){
   S.orbit=on;
   const stage=document.querySelector('.stage'), b=$('orbitTog');
@@ -751,26 +753,49 @@ function setOrbit(on){
     getCurrentQuiet(); SSCC.enableInputs=false;
     toast('Orbit — drag to circle the subject, scroll to dolly');
   } else {
-    SSCC.enableInputs=true; stage.classList.remove('grabbing');
+    stopFling(); SSCC.enableInputs=true; stage.classList.remove('grabbing');
     getCurrentQuiet(); syncCamUI();
   }
 }
 $('orbitTog').onclick=()=>setOrbit(!S.orbit);
-let _orb=null;
+function orbitBy(dx,dy){
+  S.head=((S.head+dx*0.30)%360+360)%360;
+  S.tilt=Math.max(-89,Math.min(-2,S.tilt-dy*0.30));
+  flyToParams(0);
+}
 viewer.canvas.addEventListener('pointerdown',e=>{
   if(!S.orbit||e.button!==0)return;
-  getCurrentQuiet(); _orb={x:e.clientX,y:e.clientY};
+  stopFling(); getCurrentQuiet();
+  _orb={x:e.clientX,y:e.clientY,vx:0,vy:0,t:performance.now()};
   document.querySelector('.stage').classList.add('grabbing');
   try{viewer.canvas.setPointerCapture(e.pointerId);}catch(_){}
 });
 viewer.canvas.addEventListener('pointermove',e=>{
   if(!S.orbit||!_orb)return;
-  const dx=e.clientX-_orb.x, dy=e.clientY-_orb.y; _orb.x=e.clientX; _orb.y=e.clientY;
-  S.head=((S.head+dx*0.30)%360+360)%360;
-  S.tilt=Math.max(-89,Math.min(-2,S.tilt-dy*0.30));
-  flyToParams(0);
+  const dx=e.clientX-_orb.x, dy=e.clientY-_orb.y;
+  _orb.x=e.clientX; _orb.y=e.clientY; _orb.t=performance.now();
+  _orb.vx=_orb.vx*0.6+dx*0.4; _orb.vy=_orb.vy*0.6+dy*0.4; // smoothed release velocity
+  orbitBy(dx,dy);
 });
-function _orbEnd(){ if(!_orb)return; _orb=null; document.querySelector('.stage').classList.remove('grabbing'); if(S.orbit){getCurrentQuiet();syncCamUI();} }
+function _orbEnd(){
+  if(!_orb)return;
+  const o=_orb; _orb=null;
+  document.querySelector('.stage').classList.remove('grabbing');
+  if(!S.orbit)return;
+  // Fling on a live flick, not a drag that stopped and held: fade the release
+  // velocity by how stale it is, so a held release (no recent motion) won't glide.
+  const decay=Math.max(0,1-(performance.now()-o.t)/160);
+  let vx=o.vx*decay*0.45, vy=o.vy*decay*0.45; // launch a touch under drag speed
+  if(Math.abs(vx)+Math.abs(vy)>2.2){
+    const step=()=>{
+      if(!S.orbit){_orbFling=null;return;}
+      orbitBy(vx,vy); vx*=0.88; vy*=0.88; // bleed off to a graceful stop
+      if(Math.abs(vx)+Math.abs(vy)<0.15){ _orbFling=null; getCurrentQuiet(); syncCamUI(); return; }
+      _orbFling=requestAnimationFrame(step);
+    };
+    _orbFling=requestAnimationFrame(step);
+  } else { getCurrentQuiet(); syncCamUI(); }
+}
 viewer.canvas.addEventListener('pointerup',_orbEnd);
 viewer.canvas.addEventListener('pointercancel',_orbEnd);
 
