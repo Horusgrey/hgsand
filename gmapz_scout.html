@@ -320,6 +320,7 @@ function loadCesiumFallback(){
         <label class="fld">Exact parameters (Google-Earth edit panel)</label>
         <div class="row"><div style="flex:1"><span class="tag">Lat</span><input id="pLat" class="num" type="number" step="0.0001"></div><div style="flex:1"><span class="tag">Lon</span><input id="pLon" class="num" type="number" step="0.0001"></div></div>
         <div class="row"><div style="flex:1"><span class="tag">Heading&deg;</span><input id="pHead" class="num" type="number" step="1"></div><div style="flex:1"><span class="tag">Tilt&deg;</span><input id="pTilt" class="num" type="number" step="1"></div><div style="flex:1"><span class="tag">Range m</span><input id="pRange" class="num" type="number" step="10"></div></div>
+        <div class="row" style="align-items:center"><span class="tag" style="flex:none">Dutch roll&deg;</span><input id="pRoll" type="range" min="-30" max="30" step="1" value="0" style="flex:1"><b id="pRollVal" style="min-width:34px;text-align:right;font-size:11px;color:var(--faint)">0&deg;</b><button class="btn sm" id="levelRoll" style="flex:none;width:52px" title="Level the horizon (\)">Level</button></div>
         <div class="row"><button class="btn" id="getCurrent">Get current (G)</button><button class="btn y" id="flyParams">Fly to params (F)</button></div>
         <div class="readout" id="readout">aim the globe…</div>
         <label class="fld">Camera looks (save / recall positions)</label>
@@ -441,7 +442,7 @@ function loadCesiumFallback(){
       <button class="navbtn" id="orbitTog" title="Orbit the framed subject — drag to circle, scroll to dolly (O)">&#8635;</button>
     </div>
     <div class="thumbs" id="thumbs"></div>
-    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · R reset · L kml · ? help</div>
+    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · [ ] roll · R reset · L kml · ? help</div>
   </main>
 </div>
 
@@ -459,7 +460,7 @@ const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/M
 const S={
   google:'',ion:'',
   shotSize:'medium',angle:'eye',lensMm:35,fov:54,sensor:'full',
-  target:{lat:41.8885,lon:-87.6345},head:30,tilt:-22,range:1200,
+  target:{lat:41.8885,lon:-87.6345},head:30,tilt:-22,range:1200,roll:0,
   style:'cinematic',grade:'none',atmos:'clear',sceneDesc:'',
   delivery:'2.39:1',sticker:'person',placeMode:false,engine:'runway',exag:1,
   markers:[],shots:[],captures:[],looks:[],selMarker:null,_sun:null,
@@ -848,8 +849,14 @@ function flyToParams(dur){
   // On a real relocation (not a small blocking nudge) arc up and let the camera pitch
   // toward the destination before it settles — an establishing move, not a reposition.
   if(dur>0&&d>1.5e4) opt.pitchAdjustHeight=Math.min(9000,Math.max(700,S.range*3));
+  if(S.roll&&dur>0) opt.complete=applyRoll; // re-cant the horizon once the move settles
   viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(center,1),opt);
   applyFov();
+  if(S.roll&&dur===0) applyRoll();
+}
+function applyRoll(){ // Dutch angle: rotate around the view axis, keeping the framed point centered
+  const cam=viewer.camera;
+  cam.setView({orientation:{heading:cam.heading,pitch:cam.pitch,roll:toRad(S.roll||0)}});
 }
 function applyFov(){ const f=viewer.camera.frustum; if(f&&f.fov!==undefined) f.fov=toRad(S.fov); }
 function screenCenterGround(){
@@ -873,6 +880,7 @@ function getCurrent(){
 function syncCamUI(){
   $('pLat').value=S.target.lat;$('pLon').value=S.target.lon;
   $('pHead').value=S.head;$('pTilt').value=S.tilt;$('pRange').value=S.range;
+  if($('pRoll')){$('pRoll').value=S.roll||0;$('pRollVal').textContent=(S.roll||0)+'\u00b0';}
   $('fovSlider').value=S.fov;$('fovVal').textContent=S.fov+'\u00b0';
   S.lensMm=fovToLens(S.fov);
   paintChips('lens',LENSES.map(l=>[l+'mm',l]),nearestLens(S.lensMm),v=>{S.lensMm=v;S.fov=lensToFov(v);applyFov();syncCamUI();});
@@ -1198,6 +1206,8 @@ async function rollCoverage(){
 }
 
 $('fovSlider').oninput=e=>{S.fov=+e.target.value;$('fovVal').textContent=S.fov+'\u00b0';applyFov();S.lensMm=fovToLens(S.fov);};
+$('pRoll').oninput=e=>{S.roll=+e.target.value;$('pRollVal').textContent=S.roll+'\u00b0';applyRoll();};
+$('levelRoll').onclick=()=>{S.roll=0;$('pRoll').value=0;$('pRollVal').textContent='0\u00b0';applyRoll();toast('Horizon leveled');};
 ['pLat','pLon','pHead','pTilt','pRange'].forEach(id=>$(id).onchange=()=>{
   S.target.lat=+$('pLat').value;S.target.lon=+$('pLon').value;S.head=+$('pHead').value;S.tilt=+$('pTilt').value;S.range=+$('pRange').value;
 });
@@ -1623,7 +1633,7 @@ function buildSpec(refId,move){
   return {
     spec:'gmapz.capture.v2', id:refId||('scout_'+Date.now()), captured_at:new Date().toISOString(),
     location:{name:$('search').value||'',lng:S.target.lon,lat:S.target.lat,ground_elevation_m:0},
-    camera:{lng:S.target.lon,lat:S.target.lat,altitude_m:S.range,heading_deg:S.head,pitch_deg:S.tilt,roll_deg:0,
+    camera:{lng:S.target.lon,lat:S.target.lat,altitude_m:S.range,heading_deg:S.head,pitch_deg:S.tilt,roll_deg:Math.round(S.roll||0),
       lens_mm:fovToLens(S.fov),fov_deg:S.fov,sensor:SENSORS[S.sensor].name,sensor_width_mm:SENSORS[S.sensor].w,shot_size:S.shotSize,angle:S.angle,move:move||'static'},
     light:{date:$('lDate').value,time:$('lTime').value,tz:'UTC',sun_azimuth_deg:+s.az.toFixed(1),sun_elevation_deg:+s.el.toFixed(1),phase:phaseOf(s.el)},
     look:{style:S.style,grade:S.grade,atmosphere:S.atmos,terrain_exaggeration:S.exag},
@@ -1778,7 +1788,7 @@ function renderTimeline(){
     card.title='Recall '+sh.name;
     const img=sh.thumb?'<img src="'+sh.thumb+'" style="width:100%;display:block;height:54px;object-fit:cover">':'<div style="height:54px;display:flex;align-items:center;justify-content:center;color:#52525b;font-size:10px">no frame</div>';
     card.innerHTML=img+'<div style="font-size:9px;color:var(--dim);padding:3px 5px;line-height:1.3">'+(i+1)+'. '+escapeHtml(sh.name.slice(0,14))+'<br><span style="color:var(--faint)">'+c.shot_size+' · '+lt.phase+'</span></div>';
-    card.onclick=()=>{ Object.assign(S,{target:{lat:c.lat,lon:c.lng},head:c.heading_deg,tilt:c.pitch_deg,range:c.altitude_m,fov:c.fov_deg}); flyToParams(); syncCamUI(); toast('Recalled: '+sh.name); };
+    card.onclick=()=>{ Object.assign(S,{target:{lat:c.lat,lon:c.lng},head:c.heading_deg,tilt:c.pitch_deg,range:c.altitude_m,fov:c.fov_deg,roll:c.roll_deg||0}); flyToParams(); syncCamUI(); toast('Recalled: '+sh.name); };
     T.appendChild(card);
   });
 }
@@ -1828,13 +1838,13 @@ function buildReport(){
 $('pdfReport').onclick=buildReport;
 
 $('sessionSave').onclick=()=>{
-  const data={v:2,state:{shotSize:S.shotSize,angle:S.angle,fov:S.fov,sensor:S.sensor,target:S.target,head:S.head,tilt:S.tilt,range:S.range,style:S.style,grade:S.grade,atmos:S.atmos,delivery:S.delivery,exag:S.exag,sceneDesc:$('sceneDesc').value,date:$('lDate').value,time:$('lTime').value},markers:S.markers,looks:S.looks,shots:S.shots.map(s=>({name:s.name,spec:s.spec,thumb:s.thumb}))};
+  const data={v:2,state:{shotSize:S.shotSize,angle:S.angle,fov:S.fov,sensor:S.sensor,target:S.target,head:S.head,tilt:S.tilt,range:S.range,roll:S.roll,style:S.style,grade:S.grade,atmos:S.atmos,delivery:S.delivery,exag:S.exag,sceneDesc:$('sceneDesc').value,date:$('lDate').value,time:$('lTime').value},markers:S.markers,looks:S.looks,shots:S.shots.map(s=>({name:s.name,spec:s.spec,thumb:s.thumb}))};
   downloadText(JSON.stringify(data,null,2),'gmapz_session_'+Date.now()+'.json');
 };
 $('sessionLoadBtn').onclick=()=>$('sessionFile').click();
 function applySessionData(d,label){
   const st=d.state||{};
-  Object.assign(S,{shotSize:st.shotSize||S.shotSize,angle:st.angle||S.angle,fov:st.fov||S.fov,sensor:st.sensor||S.sensor,target:st.target||S.target,head:st.head==null?S.head:st.head,tilt:st.tilt==null?S.tilt:st.tilt,range:st.range||S.range,style:st.style||S.style,grade:st.grade||S.grade,atmos:st.atmos||S.atmos,delivery:st.delivery||S.delivery,exag:st.exag||S.exag});
+  Object.assign(S,{shotSize:st.shotSize||S.shotSize,angle:st.angle||S.angle,fov:st.fov||S.fov,sensor:st.sensor||S.sensor,target:st.target||S.target,head:st.head==null?S.head:st.head,tilt:st.tilt==null?S.tilt:st.tilt,range:st.range||S.range,roll:st.roll==null?S.roll:st.roll,style:st.style||S.style,grade:st.grade||S.grade,atmos:st.atmos||S.atmos,delivery:st.delivery||S.delivery,exag:st.exag||S.exag});
   $('sceneDesc').value=st.sceneDesc||'';$('lDate').value=st.date||'';$('lTime').value=st.time||'';
   $('exagSlider').value=S.exag;$('exagVal').textContent=(+S.exag).toFixed(1)+'\u00d7';try{viewer.scene.verticalExaggeration=S.exag;}catch(_){}
   S.markers.forEach(m=>viewer.entities.removeById(m.id));S.markers=[];
@@ -1851,7 +1861,7 @@ $('sessionFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=ne
 function autosaveSession(){
   try{
     localStorage.setItem('gmapz_autosave',JSON.stringify({v:2,auto:true,
-      state:{shotSize:S.shotSize,angle:S.angle,fov:S.fov,sensor:S.sensor,target:S.target,head:S.head,tilt:S.tilt,range:S.range,style:S.style,grade:S.grade,atmos:S.atmos,delivery:S.delivery,exag:S.exag,sceneDesc:$('sceneDesc').value,date:$('lDate').value,time:$('lTime').value},
+      state:{shotSize:S.shotSize,angle:S.angle,fov:S.fov,sensor:S.sensor,target:S.target,head:S.head,tilt:S.tilt,range:S.range,roll:S.roll,style:S.style,grade:S.grade,atmos:S.atmos,delivery:S.delivery,exag:S.exag,sceneDesc:$('sceneDesc').value,date:$('lDate').value,time:$('lTime').value},
       markers:S.markers,looks:S.looks,shots:S.shots.map(s=>({name:s.name,spec:s.spec}))}));
   }catch(_){}
 }
@@ -1899,6 +1909,7 @@ function showHelp(){showModal('<span class="closex" onclick="document.getElement
  '<tr><td><span class="k">T</span></td><td>Toggle top-down / oblique</td></tr>'+
  '<tr><td><span class="k">O</span></td><td>Orbit the framed subject — drag to circle, scroll to dolly</td></tr>'+
  '<tr><td><span class="k">Dbl-click</span></td><td>Recenter and ease in toward that point — right-click holds your framing</td></tr>'+
+ '<tr><td><span class="k">[ &nbsp;] &nbsp;\\</span></td><td>Dutch roll left / right · level the horizon</td></tr>'+
  '<tr><td><span class="k">Alt+scroll</span></td><td>Raise/lower the selected marker</td></tr>'+
  '</table><div class="mini" style="margin-top:12px">Loop: Scout a place → Block the camera → Lock the sun → place Cast → Capture (shutter bottom-right; Shift-click = HQ) → Prompt studio. The captured frame + spec are the product.</div>');}
 
@@ -1918,6 +1929,9 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='-'){zoomStep(-1);}
   else if(k==='t'){$('tiltTog').click();}
   else if(k==='o'){$('orbitTog').click();}
+  else if(e.key==='['){S.roll=Math.max(-30,(S.roll||0)-2);$('pRoll').value=S.roll;$('pRollVal').textContent=S.roll+'°';applyRoll();}
+  else if(e.key===']'){S.roll=Math.min(30,(S.roll||0)+2);$('pRoll').value=S.roll;$('pRollVal').textContent=S.roll+'°';applyRoll();}
+  else if(e.key==='\\'){$('levelRoll').click();}
   else if(e.key==='?'){showHelp();}
   else if((e.key==='Delete'||e.key==='Backspace')&&S.selMarker&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='SELECT'){
     pushUndo({type:'markerDel'});

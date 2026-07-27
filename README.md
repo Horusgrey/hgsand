@@ -89,6 +89,7 @@ this tool is [`prompts.md`](prompts.md).
 
 `G` get camera · `F` fly to params · `C` capture · `S` save shot · `1–7` lens presets ·
 `O` orbit the framed subject (drag to circle, scroll to dolly) · `T` top-down / oblique ·
+`[` `]` Dutch roll · `\` level horizon · double-click to recenter and ease in ·
 `Arrows` pan · `+ −` zoom (wheel dives at the cursor) · `R` reset · `L` load KML · `?` help ·
 `Alt+scroll` raise/lower selected prop · on-stage shutter (Shift-click = HQ) ·
 `Cmd/Ctrl+Z` undo · `Esc` exits any mode
