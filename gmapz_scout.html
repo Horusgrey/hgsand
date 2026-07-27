@@ -265,6 +265,14 @@ function loadCesiumFallback(){
   #vfLevel.dutch{color:#fbbf24;border-color:#fbbf24;}
   #vfSunHint{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font:600 10px/1 ui-monospace,monospace;letter-spacing:.07em;padding:3px 8px;border-radius:5px;background:rgba(9,9,11,.82);border:1px solid var(--line2);color:var(--dim);white-space:nowrap;}
   #vfSun{position:absolute;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;display:none;align-items:center;justify-content:center;font-size:15px;color:#fde68a;background:radial-gradient(circle,rgba(253,224,71,.45),transparent 70%);border:1px solid rgba(253,224,71,.75);box-shadow:0 0 12px rgba(253,224,71,.4);}
+  /* ---- discovery coach ---- */
+  #coach{position:absolute;left:50%;bottom:120px;transform:translateX(-50%) translateY(8px);z-index:8;max-width:400px;display:none;align-items:center;gap:11px;padding:11px 13px;border-radius:9px;background:rgba(9,9,11,.95);border:1px solid var(--line2);box-shadow:0 8px 28px rgba(0,0,0,.55);opacity:0;transition:opacity .3s,transform .3s;}
+  #coach.show{display:flex;opacity:1;transform:translateX(-50%) translateY(0);}
+  #coach .cm{font-size:12px;color:var(--txt);line-height:1.45;}
+  #coach .ca{flex:none;background:var(--yellow);color:#0a0a0a;border:none;border-radius:6px;padding:6px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
+  #coach .ca:hover{filter:brightness(1.08);}
+  #coach .cx{flex:none;background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer;padding:0 2px;line-height:1;}
+  #coach .cx:hover{color:var(--txt);}
   #loadstat{transition:opacity .6s;}
   #loadstat.settle{opacity:.3;}
   #loadstat.settle:hover{opacity:1;}
@@ -459,6 +467,7 @@ function loadCesiumFallback(){
     <div id="loadstat">&#9676; booting engine…</div>
     <div class="hud"><button class="btn sm" id="resetBtn">Reset</button><button class="btn sm" id="helpBtn">? Keys</button></div>
     <div id="slate"></div>
+    <div id="coach"><span class="cm"></span><button class="ca"></button><button class="cx" title="Dismiss">&times;</button></div>
     <div id="rollSlate"><span class="rd">&#9679;</span> <b>ROLLING</b><span id="rollInfo"></span><div id="rollBar"><i id="rollFill"></i></div></div>
     <button id="shutter" title="Capture frame (C) &middot; Shift-click = HQ" aria-label="Capture frame"></button>
     <div id="navCluster">
@@ -1678,6 +1687,7 @@ function capture(hq){
   addThumb(url,id);
   const fl=$('captureFlash');fl.style.transition='none';fl.style.opacity=.85;requestAnimationFrame(()=>{fl.style.transition='opacity .5s';fl.style.opacity=0;});
   if(!S._quiet) toast((hq?'HQ frame ':'Frame ')+'captured ('+out.width+'\u00d7'+out.height+')');
+  if(!S._quiet&&!S._savingShot) coach('tip_prompt','Turn this frame into engine-ready i2v prompts \u2014 the start frame plus every engine.','Prompt Studio',()=>$('i2vBtn').click());
   return {id,url};
 }
 function addThumb(url,id){
@@ -1818,8 +1828,9 @@ $('contactSheetBtn').onclick=contactSheet;
 $('saveShot').onclick=saveShot;
 function saveShot(){
   const name=$('shotName').value.trim()||('Shot '+(S.shots.length+1));
-  const cap=capture();
+  S._savingShot=true; const cap=capture(); S._savingShot=false;
   S.shots.push({name,spec:buildSpec(cap.id||undefined),thumb:cap.url}); $('shotName').value=''; renderShots(); toast('Saved: '+name);
+  coach('tip_coverage','Block a whole scene at once — the Coverage director plans pro coverage around this framing.','Coverage',()=>openSectionByLabel('Coverage'));
 }
 function reorderShots(from,to){
   if(from===to||from<0||to<0||from>=S.shots.length||to>=S.shots.length)return;
@@ -1945,6 +1956,18 @@ function setStat(h,c){const l=$('loadstat');l.innerHTML=h;if(c)l.style.color=c;
   if(c==='#34d399'||c==='#fbbf24'){setStat._t=setTimeout(()=>l.classList.add('settle'),4000);} // errors stay loud
 }
 let toastT;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);const dur=Math.min(7000,Math.max(2200,m.length*55));toastT=setTimeout(()=>t.classList.remove('show'),dur);}
+// One-time discovery nudge: reveal a buried power feature the moment it becomes useful.
+function coach(key,msg,actionLabel,fn){
+  const K='gmapz_'+key;
+  try{ if(localStorage.getItem(K))return; localStorage.setItem(K,'1'); }catch(_){}
+  const c=$('coach'); if(!c)return;
+  c.querySelector('.cm').textContent=msg;
+  const a=c.querySelector('.ca'); a.textContent=actionLabel;
+  a.onclick=()=>{ c.classList.remove('show'); try{fn();}catch(_){} };
+  c.querySelector('.cx').onclick=()=>c.classList.remove('show');
+  c.classList.add('show');
+  clearTimeout(coach._t); coach._t=setTimeout(()=>c.classList.remove('show'),13000);
+}
 function downloadText(txt,name){downloadURI('data:text/plain;charset=utf-8,'+encodeURIComponent(txt),name);}
 function downloadURI(uri,name){const a=document.createElement('a');a.href=uri;a.download=name;document.body.appendChild(a);a.click();a.remove();}
 function escapeHtml(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
