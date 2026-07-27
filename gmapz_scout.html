@@ -254,8 +254,11 @@ function loadCesiumFallback(){
   /* ---- viewfinder framing aids ---- */
   #viewfinder{position:absolute;inset:0;z-index:4;pointer-events:none;display:none;}
   #viewfinder.on{display:block;}
-  #vfFrame{position:absolute;}
+  #vfFrame{position:absolute;overflow:hidden;}
   #vfGrid{position:absolute;inset:0;width:100%;height:100%;}
+  #vfHorizon{position:absolute;left:0;right:0;top:50%;height:1px;transform-origin:50% 50%;pointer-events:none;transition:opacity .2s;
+    background:linear-gradient(90deg,rgba(255,255,255,.42) 0 43%,transparent 43% 57%,rgba(255,255,255,.42) 57% 100%);}
+  #vfHorizon.dutch{background:linear-gradient(90deg,#fbbf24 0 43%,transparent 43% 57%,#fbbf24 57% 100%);box-shadow:0 0 7px rgba(251,191,36,.45);}
   #vfGrid line{stroke:rgba(255,255,255,.26);stroke-width:1;vector-effect:non-scaling-stroke;}
   #vfGrid line.center{stroke:rgba(250,204,21,.55);}
   #vfLevel{position:absolute;top:8px;left:50%;transform:translateX(-50%);font:600 10px/1 ui-monospace,monospace;letter-spacing:.09em;padding:3px 8px;border-radius:5px;background:rgba(9,9,11,.82);border:1px solid #34d399;color:#34d399;}
@@ -446,6 +449,7 @@ function loadCesiumFallback(){
           <line x1="0" y1="33.333" x2="100" y2="33.333"/><line x1="0" y1="66.667" x2="100" y2="66.667"/>
           <line class="center" x1="50" y1="45.5" x2="50" y2="54.5"/><line class="center" x1="45.5" y1="50" x2="54.5" y2="50"/>
         </svg>
+        <div id="vfHorizon"></div>
         <div id="vfLevel">LEVEL</div>
         <div id="vfSunHint"></div>
       </div>
@@ -1289,6 +1293,7 @@ function updateViewfinder(){
   const roll=Math.round(S.roll||0), lv=$('vfLevel');
   if(roll===0){lv.textContent='LEVEL';lv.classList.remove('dutch');}
   else {lv.textContent='DUTCH '+(roll>0?'+':'')+roll+'°';lv.classList.add('dutch');}
+  const hz=$('vfHorizon'); if(hz){ hz.style.transform='rotate('+(-roll)+'deg)'; hz.classList.toggle('dutch',roll!==0); }
   const sun=$('vfSun'), hint=$('vfSunHint');
   const s=sunPos(S.target.lat,S.target.lon,localDateTime());
   if(s.el<0){ sun.style.display='none'; hint.textContent='SUN BELOW HORIZON'; return; }
