@@ -1356,6 +1356,7 @@ function updateSun(){
   const utcM=dt.getUTCHours()*60+dt.getUTCMinutes(), oh=lonOffsetHrs();
   $('sunReadout').textContent='sun az '+s.az.toFixed(0)+'\u00b0  el '+s.el.toFixed(1)+'\u00b0\nphase  '+phaseOf(s.el)+'\nlocal  \u2248'+utcMinsToLocalStr(utcM)+' (UTC'+(oh>=0?'+':'')+oh+' by longitude)';
   S._sun=s; syncTimeSlider();
+  if(S.markers.length)syncAllMarkerVisuals(); // re-cast shadows for the new sun angle
 }
 $('lDate').onchange=updateSun; $('lTime').onchange=updateSun;
 $('timeSlider').oninput=e=>{const mins=+e.target.value;const h=String(Math.floor(mins/60)).padStart(2,'0'),m=String(mins%60).padStart(2,'0');$('lTime').value=h+':'+m;updateSun();};
@@ -1499,8 +1500,28 @@ function syncMarkerVisual(m){ // apply scale/rot/selection glow to the on-globe 
   e.billboard.rotation=Cesium.Math.toRadians(m.rot||0);
   e.label.fillColor=sel?Cesium.Color.fromCssColorString('#facc15'):Cesium.Color.WHITE;
   e.position=Cesium.Cartesian3.fromDegrees(m.lon,m.lat,m.height||0);
+  syncShadow(m);
 }
-function syncAllMarkerVisuals(){S.markers.forEach(syncMarkerVisual);}
+function syncShadow(m){ // ground the stand-in with a sun-aware contact shadow so it sits in the frame
+  const sid='sh_'+m.id, wp=worldProp(m.type), scale=m.scale||1;
+  const fw=(wp?wp.w:0.6)*scale, fh=(wp?wp.h:1.75)*scale;
+  const s=sunPos(m.lat,m.lon,localDateTime());
+  let e=viewer.entities.getById(sid);
+  if(s.el<=1){ if(e)e.show=false; return; } // sun down — nothing casts a shadow
+  const reach=Math.min(40,Math.max(fw*0.7, fh/Math.tan(s.el*Math.PI/180))); // long at low sun
+  const minor=Math.max(fw*0.5,0.35), major=minor+reach*0.10;
+  const br=(s.az+180)*Math.PI/180, off=reach*0.28;                          // pool away from the sun
+  const pos=Cesium.Cartesian3.fromDegrees(
+    m.lon+(off*Math.sin(br))/(111320*Math.cos(m.lat*Math.PI/180)),
+    m.lat+(off*Math.cos(br))/111320, 0);
+  if(!e){
+    viewer.entities.add({id:sid,position:pos,ellipse:{semiMajorAxis:major,semiMinorAxis:minor,
+      material:Cesium.Color.BLACK.withAlpha(0.3),classificationType:Cesium.ClassificationType.BOTH}});
+  } else { e.show=true; e.position=pos; e.ellipse.semiMajorAxis=major; e.ellipse.semiMinorAxis=minor; }
+}
+function pruneShadows(){ const alive=new Set(S.markers.map(m=>'sh_'+m.id));
+  viewer.entities.values.filter(e=>typeof e.id==='string'&&e.id.indexOf('sh_')===0&&!alive.has(e.id)).forEach(e=>viewer.entities.remove(e)); }
+function syncAllMarkerVisuals(){S.markers.forEach(syncMarkerVisual); pruneShadows();}
 function renderMarkerList(){
   autosaveSoon();
   const L=$('markerList'); L.innerHTML='';
