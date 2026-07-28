@@ -564,21 +564,30 @@ function promptCtx(){
   const st=STYLES[S.style], s=S._sun||sunPos(S.target.lat,S.target.lon,localDateTime());
   const mm=fovToLens(S.fov);
   const compass=['north','northeast','east','southeast','south','southwest','west','northwest'][Math.round(((s.az%360)+360)%360/45)%8];
-  const subj=S.markers.map(m=>({role:m.shotType,kind:m.type.indexOf('person')===0?'person':m.type,h:m.height}));
+  const subj=S.markers.map(m=>({role:m.shotType,kind:subjectNoun(m.type),h:m.height}));
   const near=subj.filter(x=>x.role==='foreground'||x.role==='subject');
   const far=subj.filter(x=>x.role==='background');
   return {desc:($('sceneDesc').value||'').trim().replace(/\.+$/,''), size:SHOT_SIZES[S.shotSize].label, angle:S.angle,
-    mm, feel:lensFeel(mm), phase:phaseOf(s.el), sunEl:s.el, sunFrom:compass,
+    mm, feel:lensFeel(mm), phase:phaseOf(s.el), lightWord:({day:'daylight',golden:'golden-hour light',blue:'blue-hour light',night:'night'})[phaseOf(s.el)]||'daylight', sunEl:s.el, sunFrom:compass,
     style:st.name, styleDesc:st.desc, atmos:S.atmos, aspect:S.delivery,
     subj, near, far,
     subjLine: subj.length? subj.map(x=>x.role+' ('+x.kind+')').join(', ') : ''};
 }
 const aan=w=>(/^[aeiou]/i.test(w)?'an ':'a ')+w;
+// A stand-in's raw type (person2, avatar1, vehicle…) is never shown — it maps to a human noun.
+const isPersonType=t=>/^(person|avatar)/.test(t);
+const SUBJECT_NOUN={person:'person',person2:'person',vehicle:'car',light:'light',marker:'figure'};
+const subjectNoun=t=>isPersonType(t)?'person':(SUBJECT_NOUN[t]||t);
+const NUMWORD=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve'];
+const PLURAL={person:'people',car:'cars',light:'lights',figure:'figures'};
+// Collapse identical stand-ins: three avatars → "three people", one car → "a car".
+const groupSubjects=list=>{const c={};list.forEach(x=>c[x.kind]=(c[x.kind]||0)+1);
+  return Object.entries(c).map(([k,n])=>n===1?aan(k):((NUMWORD[n]||n)+' '+(PLURAL[k]||k+'s'))).join(' and ');};
 function subjectPhrase(c){
   if(!c.subj.length)return '';
   const bits=[];
-  if(c.near.length)bits.push(c.near.map(x=>'a '+x.kind+' as '+x.role).join(' and '));
-  if(c.far.length)bits.push(c.far.map(x=>'a '+x.kind+' in the background').join(', '));
+  if(c.near.length)bits.push(groupSubjects(c.near));
+  if(c.far.length)bits.push(groupSubjects(c.far)+' in the background');
   return bits.join('; ');
 }
 function atmosPhrase(a){return {clear:'crisp clear air',haze:'soft atmospheric haze',golden:'warm golden atmosphere',blue:'cool blue-hour atmosphere',storm:'heavy storm light, dense air',night:'deep night atmosphere'}[a]||'';}
@@ -593,7 +602,7 @@ const ENGINE_BUILDERS={
     if(motion)bits.push(motion); else bits.push('static camera, subtle natural parallax');
     if(c.desc)bits.push(c.desc);
     const sp=subjectPhrase(c); if(sp)bits.push(sp);
-    bits.push(c.phase+' light from the '+c.sunFrom);
+    bits.push(c.lightWord+' from the '+c.sunFrom);
     bits.push(atmosPhrase(c.atmos));
     bits.push(c.style.toLowerCase()+' look');
     bits.push('photorealistic, cinematic, coherent motion');
@@ -602,15 +611,15 @@ const ENGINE_BUILDERS={
   kling(c,motion){ // Kling: full sentences, subject→action→scene→camera order, explicit camera sentence
     const s1=c.desc?c.desc+'. ':'';
     const s2=subjectPhrase(c)?('In frame: '+subjectPhrase(c)+'. '):'';
-    const s3='The scene holds '+c.phase+' light, sun from the '+c.sunFrom+', '+atmosPhrase(c.atmos)+'. ';
+    const s3='The scene holds '+c.lightWord+', sun from the '+c.sunFrom+', '+atmosPhrase(c.atmos)+'. ';
     const s4='Camera: '+(motion||('locked '+c.size.toLowerCase()+' shot on a '+c.mm+'mm lens ('+c.feel+'), '+c.angle+' angle, minimal drift'))+'. ';
-    const s5='Style: '+c.style+' \u2014 '+c.styleDesc+'. High detail, stable geometry, 5 seconds.';
+    const s5='Style: '+c.style+' \u2014 '+c.styleDesc+'. High detail, stable geometry.';
     return s1+s2+s3+s4+s5;
   },
   veo(c,motion){ // Veo 3: rich prose + it generates AUDIO — feed it an audio line
     const p1=(c.desc?c.desc+'. ':'')+'A '+c.size.toLowerCase()+' shot from '+aan(c.angle)+' angle on a '+c.mm+'mm lens \u2014 '+c.feel+'. ';
     const p2=subjectPhrase(c)?(subjectPhrase(c).charAt(0).toUpperCase()+subjectPhrase(c).slice(1)+'. '):'';
-    const p3=c.phase.charAt(0).toUpperCase()+c.phase.slice(1)+' light rakes in from the '+c.sunFrom+' ('+c.sunEl.toFixed(0)+'\u00b0 elevation), '+atmosPhrase(c.atmos)+'. ';
+    const p3=c.lightWord.charAt(0).toUpperCase()+c.lightWord.slice(1)+' rakes in from the '+c.sunFrom+' ('+c.sunEl.toFixed(0)+'\u00b0 elevation), '+atmosPhrase(c.atmos)+'. ';
     const p4='Camera: '+(motion||'near-static with gentle organic drift')+'. Natural physics, true light transport, '+c.style+' aesthetic: '+c.styleDesc+'. ';
     const p5='Audio: '+audioPhrase(c)+'.';
     return p1+p2+p3+p4+p5;
@@ -627,7 +636,7 @@ const ENGINE_BUILDERS={
     const bits=[];
     if(c.desc)bits.push(c.desc);
     const sp=subjectPhrase(c); if(sp)bits.push(sp);
-    bits.push(c.phase+' light, '+atmosPhrase(c.atmos));
+    bits.push(c.lightWord+', '+atmosPhrase(c.atmos));
     bits.push(c.style+' mood: '+c.styleDesc.split(',').slice(0,3).join(','));
     bits.push('camera: '+(motion||'smooth, nearly locked, cinematic'));
     bits.push('smooth coherent motion, high fidelity');
@@ -638,7 +647,7 @@ const ENGINE_BUILDERS={
     if(c.desc)bits.push(c.desc);
     bits.push(c.size+' shot, '+c.angle+' angle, '+c.mm+'mm lens \u2014 '+c.feel);
     const sp=subjectPhrase(c); if(sp)bits.push(sp);
-    bits.push(c.phase+' light from the '+c.sunFrom+', '+atmosPhrase(c.atmos));
+    bits.push(c.lightWord+' from the '+c.sunFrom+', '+atmosPhrase(c.atmos));
     bits.push(c.style+' style: '+c.styleDesc);
     bits.push('Camera motion: '+(motion||'static with subtle life'));
     bits.push('photorealistic, temporally stable');
@@ -1736,14 +1745,14 @@ function buildSpec(refId,move){
     light:{date:$('lDate').value,time:$('lTime').value,tz:'UTC',sun_azimuth_deg:+s.az.toFixed(1),sun_elevation_deg:+s.el.toFixed(1),phase:phaseOf(s.el)},
     look:{style:S.style,grade:S.grade,atmosphere:S.atmos,terrain_exaggeration:S.exag},
     delivery:{aspect:S.delivery,resolution:aspectRes(S.delivery)},
-    subjects:S.markers.map(m=>({type:m.type.indexOf('person')===0?'person':(m.type==='vehicle'?'prop':m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:m.height})),
+    subjects:S.markers.map(m=>({type:isPersonType(m.type)?'person':(m.type==='vehicle'?'prop':m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:Math.max(0,Math.round((m.height||0)*100)/100)})),
     scene_description:$('sceneDesc').value, reference_frame:(refId||'scout')+'.png'
   };
 }
 function lensFeel(mm){return mm<=24?'wide':mm<=35?'natural-wide':mm<=50?'normal':mm<=85?'telephoto':'long telephoto (heavily compressed)';}
 function basePrompt(){
   const st=STYLES[S.style], s=S._sun||sunPos(S.target.lat,S.target.lon,localDateTime());
-  const subj=S.markers.length?S.markers.map(m=>m.shotType+' ('+m.type+')').join(', '):'no figures placed';
+  const subj=S.markers.length?groupSubjects(S.markers.map(m=>({kind:subjectNoun(m.type)}))):'no figures placed';
   const mm=fovToLens(S.fov);
   const sd=($('sceneDesc').value||'').trim().replace(/\.+$/,'');
   return (sd?sd+'. ':'')+
@@ -1776,8 +1785,8 @@ function vcs15(){
   const sp=buildSpec(); const s=sp.light;
   const forge={project_id:'GMAPZ',clip_id:sp.id,duration_seconds:4,fps:24,resolution:sp.delivery.resolution,
     world_lock:{location:sp.location,heading_deg:sp.camera.heading_deg,sun_azimuth_deg:s.sun_azimuth_deg,sun_elevation_deg:s.sun_elevation_deg},
-    characters:S.markers.filter(m=>m.type.indexOf('person')===0).map(m=>({label:m.shotType,planned:true})),
-    props:S.markers.filter(m=>m.type.indexOf('person')!==0).map(m=>({label:m.shotType,type:m.type})),
+    characters:S.markers.filter(m=>isPersonType(m.type)).map(m=>({label:m.shotType,planned:true})),
+    props:S.markers.filter(m=>!isPersonType(m.type)).map(m=>({label:m.shotType,type:subjectNoun(m.type)})),
     shot_timeline:[{t:0,event:sp.camera.shot_size+' / '+sp.camera.angle}],
     speaker_attribution:'UNKNOWN',camera_continuity:sp.camera,style_lock:sp.look,continuity_handoff:'authoritative_previs'};
   return [
@@ -1796,12 +1805,12 @@ $('vcsBtn').onclick=()=>{const sp=buildSpec();downloadText(vcs15(),sp.id+'_vcs15
 
 function vco(){
   const sp=buildSpec();
-  const tags={}; S.markers.forEach((m,i)=>{const isP=m.type.indexOf('person')===0;tags['@'+(isP?'image':m.type)+(i+1)]={type:isP?'image':m.type,displayName:m.shotType,description:m.type+' at '+m.lat.toFixed(4)+','+m.lon.toFixed(4),vcsLocked:true,veoRef:null};});
+  const tags={}; S.markers.forEach((m,i)=>{const isP=isPersonType(m.type);tags['@'+(isP?'image':m.type)+(i+1)]={type:isP?'image':m.type,displayName:m.shotType,description:subjectNoun(m.type)+' at '+m.lat.toFixed(4)+','+m.lon.toFixed(4),vcsLocked:true,veoRef:null};});
   tags['@location_scout']={type:'location',displayName:sp.location.name||'scout',description:'Real geo '+sp.location.lat+','+sp.location.lng,vcsLocked:true,veoRef:sp.reference_frame};
   return {project:{
     brief:sp.scene_description||('Scouted '+sp.camera.shot_size+' at '+sp.location.lat.toFixed(3)+','+sp.location.lng.toFixed(3)),
     bible:{visual_language:{palette:STYLES[S.style].name,forbidden_drift:'no neon cyberpunk, no glossy futurism',lighting_rules:sp.light.phase+' light, sun el '+sp.light.sun_elevation_deg+'\u00b0'}},
-    characters:S.markers.filter(m=>m.type.indexOf('person')===0).map(m=>({name:m.shotType,stub:true})),
+    characters:S.markers.filter(m=>isPersonType(m.type)).map(m=>({name:m.shotType,stub:true})),
     shots:[{id:sp.id,scene:1,shot_type:sp.camera.shot_size,duration:4,description:basePrompt(),camera:sp.camera,lighting:sp.light}],
     script:null,storyboard:null,score:null,tags
   }};
