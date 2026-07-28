@@ -87,7 +87,7 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
 | `camera.altitude_m` | number | `range` — eye-to-target distance, not AGL height. |
 | `camera.heading_deg` | number | 0 = north, clockwise. |
 | `camera.pitch_deg` | number | Negative = looking down (Cesium tilt). |
-| `camera.roll_deg` | number | `0` (not exposed in UI). |
+| `camera.roll_deg` | number | Dutch-angle cant, ±30° (Camera panel slider · `[` `]` · `\` to level). `0` = level. Rendered into the frame and round-tripped through saved shots. |
 | `camera.lens_mm` | number | Derived from `fov_deg` + `sensor_width_mm`. |
 | `camera.fov_deg` | number | Horizontal FOV, source of truth in the engine. |
 | `camera.sensor` | string | Film-back label (`Full 36`, `S35 24.9`, `APS-C 23.5`, `M4/3 17.3`). |
@@ -247,6 +247,13 @@ FORGE block:
 }
 ```
 
+> **Alignment target (planned).** The standalone VCS-15 app's FORGE schema uses
+> `character_lock`, `prop_lock`, `timeline`, `continuity_anchors`, `generation_risks`,
+> `next_sequence_handoff`, and `clip_type`. Scout currently emits the near-equivalent
+> `characters` / `props` / `shot_timeline` / `continuity_handoff`. Renaming Scout's fields to
+> match makes the Scout→VCS-15 handoff byte-clean (a `status: planned|observed` flag then
+> distinguishes the two) — the first step of the shared studio bible (see `ROADMAP.md`).
+
 ---
 
 ## 5. Derived view — VCO project (`.json`)
@@ -293,7 +300,7 @@ Round-trips the full working state. Versioned `v: 2` (adds `sensor` + `looks`).
   "state": {
     "shotSize": "medium", "angle": "eye", "fov": 54, "sensor": "full",
     "target": { "lat": 41.8885, "lon": -87.6345 },
-    "head": 30, "tilt": -12, "range": 650,
+    "head": 30, "tilt": -12, "range": 650, "roll": 0,
     "style": "cinematic", "grade": "none", "atmos": "clear",
     "delivery": "2.39:1", "sceneDesc": "", "date": "2026-06-26", "time": "23:30"
   },
@@ -337,3 +344,10 @@ Consumers keying on `spec` should accept `v1` and treat missing `sensor_width_mm
 **2026-07 polish build:** adds `grok` to the engine enum, real values in `camera.move`
 (coverage moves + `path`), the Prompt Studio bundle format (§3), and the `gmapz.shot.v1` /
 `gmapz.path.v1` path bundle (§3.1). No breaking changes to `gmapz.capture.v2`.
+
+**2026-07 operator build:** `camera.roll_deg` is now live (Dutch angle, rendered + round-tripped)
+and `session.state.roll` persists it. Adds operator feel (eased motion + establishing arc,
+subject-orbit with momentum, double-click refocus), a viewfinder overlay (thirds, artificial
+horizon, sun-in-frame), sun-aware contact shadows under the cast, and a discovery coach. These
+are behavioral/visual — the only spec-surface changes are `roll_deg` (now meaningful) and
+`session.state.roll`.
