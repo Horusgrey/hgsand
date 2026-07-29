@@ -342,6 +342,21 @@ function loadCesiumFallback(){
   #coach .ca:hover{filter:brightness(1.08);}
   #coach .cx{flex:none;background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer;padding:0 2px;line-height:1;}
   #coach .cx:hover{color:var(--txt);}
+  /* ---- path stations: a shot list along the move ---- */
+  .pstn{padding:8px 10px;}
+  .pstn.act{border-color:rgba(250,204,21,.7);box-shadow:0 0 0 3px rgba(250,204,21,.10);}
+  .pstn.done{border-color:rgba(52,211,153,.45);}
+  .pnum{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex:none;
+    border-radius:5px;background:#26262c;color:var(--dim);font-size:10px;font-weight:700;margin-right:7px;
+    font-family:ui-monospace,monospace;}
+  .pstn.act .pnum{background:var(--yellow);color:#1a1500;}
+  .pstn.done .pnum{background:var(--emerald);color:#04231a;}
+  .pstn .pst{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);}
+  .pstn.done .pst{color:var(--emerald);}
+  .prow{display:flex;gap:5px;margin-top:7px;align-items:center;}
+  .prow .btn{padding:5px 7px;font-size:10px;}
+  .pthumb{width:46px;height:26px;flex:none;border-radius:4px;object-fit:cover;background:#000;
+    border:1px solid var(--line2);}
   /* ---- fly-to type-ahead ---- */
   .searchwrap{position:relative;flex:1;}
   #sugg{position:absolute;left:0;right:0;top:calc(100% + 5px);z-index:30;display:none;
@@ -497,6 +512,7 @@ function loadCesiumFallback(){
         <label class="fld">Duration <span id="durVal" style="color:var(--dim);float:right">4.0s</span></label>
         <input id="durSlider" type="range" min="2" max="10" step="0.5" value="4">
         <div class="list" id="pathList"></div>
+        <div class="row"><button class="btn" id="rollStationsBtn">&#9654; Roll every station</button></div>
         <div class="row"><button class="btn g" id="buildShotBtn">Build shot (start + end + spec)</button></div>
       </div>
     </details>
@@ -1183,19 +1199,107 @@ function redrawPathLine(){
   const positions=S.path.points.map(p=>Cesium.Cartesian3.fromDegrees(p.lon,p.lat,p.alt));
   pathEntities.line=viewer.entities.add({polyline:{positions,width:4,material:pathColorRed(),clampToGround:false,arcType:Cesium.ArcType.GEODESIC}});
 }
-function clearPath(){clearPathEntities(); S.path=null; S.pathMode=false; $('pathMode').textContent='Draw path: OFF'; $('pathMode').classList.remove('on'); renderPathList();}
+function clearPath(){
+  clearPathEntities(); S.path=null; S.pathMode=false; STN.active=-1;
+  if(S.shots.some(s=>s.stationIdx!==undefined)){ S.shots=S.shots.filter(s=>s.stationIdx===undefined); renderShots(); }
+  $('pathMode').textContent='Draw path: OFF'; $('pathMode').classList.remove('on'); renderPathList();
+}
 $('clearPath').onclick=clearPath;
 $('pathMode').onclick=()=>{
   if(S.pathMode){clearPath();}
   else {S.pathMode=true; $('pathMode').textContent='Draw path: ON \u2014 click globe for start'; $('pathMode').classList.add('on'); toast('Tap the globe to set camera start');}
 };
+// Each plotted point is a station: fly there already blocked for this camera type,
+// place cast, then lock the shot. Locked stations live in the normal shot sequence,
+// so the Take player, video export and every handoff pick them up for free.
+const STN={active:-1};
+const stationTilt=t=>({drone:-35,fpv:-25,crane:-20,handheld:-8,dolly:-8,steady:-8,locked:-8})[t]||-12;
+function stationLabel(i){ const n=S.path?S.path.points.length:0;
+  return i===0?'Start':(i===n-1?'End':'Waypoint '+i); }
+function stationHeading(i){
+  const p=S.path.points, cur=p[i];
+  if(p.length<2)return S.head;
+  return Math.round(i<p.length-1?bearingDeg(cur,p[i+1]):bearingDeg(p[i-1],cur));
+}
+function flyToStation(i,quiet){
+  if(!S.path||!S.path.points[i])return;
+  const p=S.path.points[i], ct=CAMERA_TYPES[S.path.cameraType];
+  STN.active=i;
+  S.target={lat:p.lat,lon:p.lon};
+  S.head=stationHeading(i);
+  S.tilt=stationTilt(S.path.cameraType);
+  S.range=Math.max(60,Math.round(ct.defaultAlt*4));
+  flyToParams(quiet?0:1.1); syncCamUI(); renderPathList();
+  if(!quiet)toast('Station '+(i+1)+' — '+stationLabel(i)+' · '+ct.label.replace(/^\W+\s/,'')+' · place cast, then Lock shot');
+}
+function lockStation(i){
+  if(!S.path||!S.path.points[i])return;
+  const p=S.path.points[i], ct=CAMERA_TYPES[S.path.cameraType];
+  const wasQuiet=S._quiet; S._quiet=true;
+  const cap=capture(false);
+  S._quiet=wasQuiet;
+  if(!cap.url)return;
+  const spec=buildSpec(cap.id,'path');
+  const name='Pt '+(i+1)+' — '+stationLabel(i)+' · '+ct.label.replace(/^\W+\s/,'');
+  const entry={name,spec,thumb:cap.url,move:'path',stationIdx:i};
+  const at=S.shots.findIndex(s=>s.stationIdx===i);
+  pushUndo({type:'shot'});
+  let pos;
+  if(at>=0){ S.shots[at]=entry; pos=at; }
+  else { // the path is the timeline — keep station shots in path order however you lock them
+    const nextIdx=S.shots.findIndex(s=>s.stationIdx!==undefined&&s.stationIdx>i);
+    pos=nextIdx>=0?nextIdx:S.shots.length;
+    S.shots.splice(pos,0,entry);
+  }
+  p.locked=true;
+  renderShots(); renderPathList();
+  toast((at>=0?'Re-locked':'Locked')+' station '+(i+1)+' — sequence position '+(pos+1));
+}
+function unlockStation(i){
+  const at=S.shots.findIndex(s=>s.stationIdx===i);
+  if(at>=0)S.shots.splice(at,1);
+  if(S.path&&S.path.points[i])S.path.points[i].locked=false;
+  renderShots(); renderPathList(); toast('Station '+(i+1)+' cleared');
+}
+async function rollStations(){
+  if(!S.path||S.path.points.length<2){toast('Plot a camera path first');return;}
+  const total=S.path.points.length;
+  S._quiet=true;
+  for(let i=0;i<total;i++){
+    toast('Rolling station '+(i+1)+' of '+total+'…');
+    flyToStation(i,true); await waitForTiles(2200);
+    lockStation(i);
+  }
+  S._quiet=false;
+  openSectionByLabel('Shots');
+  toast('\u2713 All '+total+' stations locked — press Play Take to watch the move');
+}
+$('rollStationsBtn').onclick=rollStations;
 function renderPathList(){
   const L=$('pathList'); if(!L)return; L.innerHTML='';
   if(!S.path){return;}
-  const d=document.createElement('div'); d.className='item';
-  const ct=CAMERA_TYPES[S.path.cameraType];
-  d.innerHTML='<div class="t"><span>'+ct.label+' <span class="tag">'+S.path.points.length+' point'+(S.path.points.length===1?'':'s')+'</span></span><span class="tag">'+S.pathDuration.toFixed(1)+'s</span></div>';
-  L.appendChild(d);
+  const ct=CAMERA_TYPES[S.path.cameraType], pts=S.path.points;
+  const head=document.createElement('div'); head.className='item';
+  const done=pts.filter(p=>p.locked).length;
+  head.innerHTML='<div class="t"><span>'+ct.label+' <span class="tag">'+pts.length+' point'+(pts.length===1?'':'s')+'</span></span>'+
+    '<span class="tag">'+(done?done+'/'+pts.length+' locked':S.pathDuration.toFixed(1)+'s')+'</span></div>';
+  L.appendChild(head);
+  pts.forEach((p,i)=>{
+    const d=document.createElement('div');
+    d.className='item pstn'+(STN.active===i?' act':'')+(p.locked?' done':'');
+    const shot=S.shots.find(s=>s.stationIdx===i);
+    d.innerHTML='<div class="t"><span style="display:flex;align-items:center"><b class="pnum">'+(i+1)+'</b>'+
+      stationLabel(i)+'</span><span class="pst">'+(p.locked?'\u2713 locked':'open')+'</span></div>'+
+      '<div class="prow">'+(shot&&shot.thumb?'<img class="pthumb" src="'+shot.thumb+'">':'')+
+      '<button class="btn sm pfly">Fly here</button>'+
+      '<button class="btn sm '+(p.locked?'':'y')+' plock">'+(p.locked?'Re-lock':'Lock shot')+'</button>'+
+      (p.locked?'<button class="btn sm punlock" style="flex:none;width:26px" title="Clear this station">&times;</button>':'')+'</div>';
+    d.querySelector('.pfly').onclick=e=>{e.stopPropagation();flyToStation(i);};
+    d.querySelector('.plock').onclick=e=>{e.stopPropagation();lockStation(i);};
+    const un=d.querySelector('.punlock'); if(un)un.onclick=e=>{e.stopPropagation();unlockStation(i);};
+    d.onclick=()=>flyToStation(i);
+    L.appendChild(d);
+  });
 }
 renderPathList();
 function paintSensorChips(){paintChips('sensor',Object.entries(SENSORS).map(([k,v])=>[v.name,k]),S.sensor,v=>{S.sensor=v;S.fov=lensToFov(S.lensMm);applyFov();syncCamUI();toast('Film back: '+SENSORS[v].name);});}
@@ -2427,7 +2531,8 @@ function togglePanel(){ panelEl.classList.toggle('closed'); if(!panelEl.classLis
 if(tabEl)tabEl.onclick=togglePanel;
 buildRail();
 
-window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake};
+window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
+  flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
 </script>
