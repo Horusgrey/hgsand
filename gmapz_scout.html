@@ -482,6 +482,7 @@ function loadCesiumFallback(){
         <button class="tbtn" id="takePlay" title="Play / pause">&#9654;</button>
         <button class="tbtn" id="takeNext" title="Next shot">&#9654;&#9654;</button>
         <button class="tbtn" id="takeSpeed" title="Playback speed — click to change">0.9s / shot</button>
+        <button class="tbtn" id="takeSave" title="Download this take as a video">&#11015;</button>
       </div>
     </div>
     <div id="viewfinder">
@@ -1967,6 +1968,45 @@ $('takeNext').onclick=()=>takeStep(1);
 $('takePrev').onclick=()=>takeStep(-1);
 $('takeSpeed').onclick=()=>{ TAKE.hs=(TAKE.hs+1)%TAKE.holds.length; $('takeSpeed').textContent=(TAKE.holds[TAKE.hs]/1000).toFixed(1)+'s / shot'; if(TAKE.playing)takePlay(); };
 $('clearSeq').onclick=()=>{ if(!S.shots.length){toast('Sequence is already empty');return;} if(confirm('Clear all '+S.shots.length+' shots from the sequence? (Captures and looks are kept.)')){ S.shots=[]; renderShots(); toast('Sequence cleared'); } };
+// ---- Export the take as a shareable clip: native MediaRecorder + canvas.captureStream (MP4 where supported, else WebM) ----
+const loadImg=src=>new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('img'));im.src=src;});
+function takeMime(){ if(!window.MediaRecorder)return null;
+  for(const [type,ext] of [['video/mp4;codecs=avc1','mp4'],['video/webm;codecs=vp9','webm'],['video/webm;codecs=vp8','webm'],['video/webm','webm']]){
+    try{ if(MediaRecorder.isTypeSupported(type))return {type,ext}; }catch(_){} } return null; }
+function drawContain(ctx,im,W,H){ const r=Math.min(W/im.width,H/im.height),w=im.width*r,h=im.height*r; ctx.drawImage(im,(W-w)/2,(H-h)/2,w,h); }
+function downloadBlob(blob,name){ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500); }
+async function exportTake(){
+  const list=takeShots(); if(!list.length){toast('Save shots with captured frames first');return;}
+  const mime=takeMime(); if(!mime){toast('Video export isn’t supported in this browser');return;}
+  takePause();
+  const cap=$('takeCap'), oldCap=cap.innerHTML, btn=$('takeSave'); btn.disabled=true;
+  let imgs; try{ imgs=await Promise.all(list.map(s=>loadImg(s.thumb))); }catch(_){ cap.innerHTML=oldCap; btn.disabled=false; toast('Couldn’t read the frames'); return; }
+  const W=1280,H=720, cv=document.createElement('canvas'); cv.width=W; cv.height=H; const ctx=cv.getContext('2d');
+  const stream=cv.captureStream(30);
+  let rec; try{ rec=new MediaRecorder(stream,{mimeType:mime.type,videoBitsPerSecond:6e6}); }catch(_){ rec=new MediaRecorder(stream); }
+  const chunks=[]; rec.ondataavailable=e=>{ if(e.data&&e.data.size)chunks.push(e.data); };
+  const stopped=new Promise(r=>{rec.onstop=r;});
+  const hold=TAKE.holds[TAKE.hs], fade=Math.min(220,hold*0.28), total=list.length*hold;
+  rec.start(120);
+  await new Promise(res=>{ const t0=performance.now();
+    const frame=()=>{ const e=performance.now()-t0;
+      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+      const idx=Math.min(imgs.length-1,Math.floor(e/hold)), into=e-idx*hold;
+      drawContain(ctx,imgs[idx],W,H);
+      if(idx>0&&into<fade){ ctx.save(); ctx.globalAlpha=Math.max(0,1-into/fade); drawContain(ctx,imgs[idx-1],W,H); ctx.restore(); }
+      cap.innerHTML='<b>Rendering take…</b> '+Math.min(100,Math.round(e/total*100))+'%';
+      if(e<total) requestAnimationFrame(frame); else res(); };
+    requestAnimationFrame(frame);
+  });
+  try{ rec.requestData(); }catch(_){}
+  rec.stop(); await stopped;
+  cap.innerHTML=oldCap; btn.disabled=false;
+  const blob=new Blob(chunks,{type:mime.type});
+  if(!blob.size){ toast('Export produced no data — try again'); return; }
+  downloadBlob(blob,'directors_take_'+Date.now()+'.'+mime.ext);
+  toast('Take exported — '+((blob.size/1024)|0)+' KB '+mime.ext.toUpperCase());
+}
+$('takeSave').onclick=exportTake;
 $('scenePrompt').onclick=()=>{
   if(!S.shots.length){toast('Save a shot first');return;}
   const lines=S.shots.map((sh,i)=>'SHOT '+(i+1)+' — '+sh.name+'\n'+sh.spec.camera.shot_size+' / '+sh.spec.camera.angle+' / '+sh.spec.camera.lens_mm+'mm / '+(sh.spec.camera.move||'static')+' / '+sh.spec.light.phase+'\n'+(sh.spec.scene_description||'')+'\n');
@@ -2256,7 +2296,7 @@ function togglePanel(){ panelEl.classList.toggle('closed'); if(!panelEl.classLis
 if(tabEl)tabEl.onclick=togglePanel;
 buildRail();
 
-window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake};
+window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
 </script>
