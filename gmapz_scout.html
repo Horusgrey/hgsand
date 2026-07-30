@@ -362,6 +362,13 @@ function loadCesiumFallback(){
   .pstn .pst{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);}
   .pstn.done .pst{color:var(--emerald);}
   .tag.tvon{color:var(--emerald);background:rgba(52,211,153,.12);}
+  .uprow{display:flex;gap:14px;align-items:flex-start;margin-bottom:12px;}
+  .upthumb{width:112px;flex:none;border-radius:8px;border:1px solid var(--line2);background:#000;
+    background-image:linear-gradient(45deg,#1a1a1e 25%,transparent 25%,transparent 75%,#1a1a1e 75%),
+      linear-gradient(45deg,#1a1a1e 25%,transparent 25%,transparent 75%,#1a1a1e 75%);
+    background-size:12px 12px;background-position:0 0,6px 6px;}
+  .chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim);cursor:pointer;margin-top:4px;}
+  .chk input{width:auto;accent-color:var(--yellow);}
   .tvb{flex:1;background:linear-gradient(180deg,#15151a,#101013);border:1px solid var(--line);border-radius:6px;
     color:var(--dim);font-family:inherit;font-size:10px;font-weight:600;padding:4px 8px;cursor:pointer;transition:.13s;}
   .tvb:hover{border-color:#3a3a42;color:var(--txt);}
@@ -1769,7 +1776,7 @@ function pinSvg(color){
 // Life-size previs mannequins: rendered with sizeInMeters so a person is 1.8m
 // tall in the world, occluded by buildings, and holds scale in the frame.
 const WORLD_PROPS={person:{w:0.66,h:1.80},person2:{w:0.90,h:1.75},vehicle:{w:4.60,h:1.45},light:{w:1.10,h:2.00}};
-const worldProp=t=>(AVATARS[t]?null:WORLD_PROPS[t])||null;
+const worldProp=t=>WORLD_PROPS[t]||null; // uploads register real dimensions, so they size in metres too
 const _propCache={};
 function propSvg(kind){
   if(_propCache[kind])return _propCache[kind];
@@ -1799,39 +1806,100 @@ function propSvg(kind){
     '<path d="M16.5 44 L5 58 M16.5 44 L16.5 58 M16.5 44 L28 58" stroke="'+F+'" stroke-width="2.2" stroke-linecap="round"/></svg>';
   return _propCache[kind]='data:image/svg+xml;base64,'+btoa(svg);
 }
-function circleAvatar(dataUrl,cb){
+// What an upload is standing in for — drives its real-world size.
+const UPLOAD_KINDS={
+  person:  {label:'Person',  h:1.80, note:'stands 1.8m tall'},
+  vehicle: {label:'Vehicle', h:1.50, note:'1.5m tall, length from the picture'},
+  prop:    {label:'Prop',    h:2.00, note:'2m tall — resize after placing'}
+};
+function imgToCanvas(img,maxW){
+  const s=Math.min(1,(maxW||512)/img.width);
+  const cv=document.createElement('canvas');
+  cv.width=Math.max(1,Math.round(img.width*s)); cv.height=Math.max(1,Math.round(img.height*s));
+  cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+  return cv;
+}
+// A photo with no transparency reads as a flat card in 3D — worth telling the user.
+function imageIsOpaque(img){
+  const cv=imgToCanvas(img,64), d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;
+  for(let i=3;i<d.length;i+=4) if(d[i]<240) return false;
+  return true;
+}
+// Knock out a flat background by flood-tolerance from the corners.
+function knockoutBg(cv,tol){
+  const ctx=cv.getContext('2d'), im=ctx.getImageData(0,0,cv.width,cv.height), d=im.data, W=cv.width,H=cv.height;
+  const corners=[[0,0],[W-1,0],[0,H-1],[W-1,H-1]].map(([x,y])=>{const o=(y*W+x)*4;return [d[o],d[o+1],d[o+2]];});
+  const bg=[0,1,2].map(c=>Math.round(corners.reduce((a,k)=>a+k[c],0)/corners.length));
+  const t=(tol||46)*(tol||46)*3;
+  for(let i=0;i<d.length;i+=4){
+    const dr=d[i]-bg[0], dg=d[i+1]-bg[1], db=d[i+2]-bg[2];
+    if(dr*dr+dg*dg+db*db<=t) d[i+3]=0;
+  }
+  ctx.putImageData(im,0,0);
+  return cv;
+}
+const FLIPPED={};
+function flippedImage(key){
+  if(FLIPPED[key])return FLIPPED[key];
+  const src=AVATARS[key]; if(!src)return null;
+  const im=new Image(); im.src=src;                      // already decoded — it came from a canvas
+  const cv=document.createElement('canvas');
+  cv.width=im.naturalWidth||im.width||2; cv.height=im.naturalHeight||im.height||2;
+  const cx=cv.getContext('2d'); cx.translate(cv.width,0); cx.scale(-1,1); cx.drawImage(im,0,0);
+  return FLIPPED[key]=cv.toDataURL('image/png');
+}
+// Register an upload as a placeable, life-size stand-in.
+function registerUpload(img,kind,knock){
+  let cv=imgToCanvas(img,512);
+  if(knock)cv=knockoutBg(cv);
+  const url=cv.toDataURL('image/png');
+  const key=kind+'_up'+(Object.keys(AVATARS).length+1);
+  const spec=UPLOAD_KINDS[kind]||UPLOAD_KINDS.prop;
+  const h=spec.h, w=Math.max(0.15,+(h*(cv.width/cv.height)).toFixed(2));
+  AVATARS[key]=url;
+  WORLD_PROPS[key]={w,h};            // this is what makes it stand in the world
+  S.sticker=key; renderStickerChips();
+  toast('Added — '+h.toFixed(2)+'m \u00d7 '+w.toFixed(2)+'m. Place mode, then click the ground.');
+}
+function askUploadKind(dataUrl){
   const img=new Image();
   img.onload=()=>{
-    const cv=document.createElement('canvas');cv.width=44;cv.height=58;const ctx=cv.getContext('2d');
-    ctx.save();ctx.beginPath();ctx.arc(22,20,17,0,2*Math.PI);ctx.closePath();ctx.clip();
-    const side=Math.min(img.width,img.height);
-    ctx.drawImage(img,(img.width-side)/2,(img.height-side)/2,side,side,5,3,34,34);
-    ctx.restore();
-    ctx.strokeStyle='#facc15';ctx.lineWidth=2;ctx.beginPath();ctx.arc(22,20,17,0,2*Math.PI);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(22,37);ctx.lineTo(14,52);ctx.lineTo(30,52);ctx.closePath();ctx.fillStyle='#0a0a0a';ctx.fill();
-    cb(cv.toDataURL('image/png'));
+    const opaque=imageIsOpaque(img);
+    const thumb=imgToCanvas(img,150).toDataURL('image/png');
+    showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span>'+
+      '<h3>What is this a stand-in for?</h3>'+
+      '<div class="uprow"><img class="upthumb" src="'+thumb+'">'+
+      '<div class="mini">Scout places it life-size in the scene, so it needs a real height. '+
+      (opaque?'<b style="color:var(--yellow)">This picture has no transparency</b> — it will read as a flat card unless the background is removed.'
+             :'This picture has transparency, so it will sit in the scene cleanly.')+'</div></div>'+
+      (opaque?'<label class="chk"><input type="checkbox" id="upKnock" checked> Try to remove the background</label>':'')+
+      '<div class="row" style="margin-top:12px">'+
+        Object.entries(UPLOAD_KINDS).map(([k,v])=>'<button class="btn" data-kind="'+k+'">'+v.label+'<span class="mini" style="margin:0 0 0 6px">'+v.note+'</span></button>').join('')+
+      '</div>');
+    [...document.querySelectorAll('#modal [data-kind]')].forEach(b=>b.onclick=()=>{
+      const kn=$('upKnock')&&$('upKnock').checked;
+      $('modal').classList.remove('show');
+      registerUpload(img,b.dataset.kind,kn);
+    });
   };
   img.src=dataUrl;
 }
 function renderStickerChips(){
-  const items=[...Object.keys(STICKERS).map(k=>[k,k]),...Object.keys(AVATARS).map(k=>['\ud83d\udcf7 '+k,k])];
+  const items=[...Object.keys(STICKERS).map(k=>[k,k]),
+    ...Object.keys(AVATARS).map(k=>[(UPLOAD_KINDS[k.split('_')[0]]||{label:'Upload'}).label+' '+(k.match(/\d+$/)||[''])[0],k])];
   paintChips('stickers',items,S.sticker,v=>{S.sticker=v; killGhost();});
 }
 $('avatarBtn').onclick=()=>$('avatarFile').click();
 $('avatarFile').onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
   const rd=new FileReader();
-  rd.onload=()=>{ circleAvatar(rd.result,cropped=>{
-    const key='avatar'+(Object.keys(AVATARS).length+1);
-    AVATARS[key]=cropped; S.sticker=key; renderStickerChips();
-    toast('Avatar added — pick it above, then Place mode + click the ground');
-  });};
+  rd.onload=()=>askUploadKind(rd.result);
   rd.readAsDataURL(f); e.target.value='';
 };
 function addMarker(lon,lat,height,type,shotType,scale,rot){
   const id='m'+Date.now()+Math.floor(Math.random()*99);
   const wp=worldProp(type);
-  const bb=wp?{image:propSvg(type),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,sizeInMeters:true,width:wp.w*(scale||1),height:wp.h*(scale||1),rotation:Cesium.Math.toRadians(rot||0)}
+  const bb=wp?{image:stickerImage(type),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,sizeInMeters:true,width:wp.w*(scale||1),height:wp.h*(scale||1),rotation:Cesium.Math.toRadians(rot||0)}
             :{image:AVATARS[type]||pinSvg(STICKERS[type]||'#facc15'),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,scale:(scale||1)*.8,rotation:Cesium.Math.toRadians(rot||0),disableDepthTestDistance:Number.POSITIVE_INFINITY};
   viewer.entities.add({
     id, position:Cesium.Cartesian3.fromDegrees(lon,lat,height||0),
@@ -1855,6 +1923,7 @@ function syncMarkerVisual(m){ // apply scale/rot/selection glow to the on-globe 
     e.billboard.scale=(m.scale||1)*(sel?0.95:0.8);
   }
   e.billboard.rotation=Cesium.Math.toRadians(m.rot||0);
+  if(AVATARS[m.type]){ const im=m.flip?flippedImage(m.type):AVATARS[m.type]; if(im)e.billboard.image=im; }
   e.label.fillColor=sel?Cesium.Color.fromCssColorString('#facc15'):Cesium.Color.WHITE;
   e.position=Cesium.Cartesian3.fromDegrees(m.lon,m.lat,m.height||0);
   syncShadow(m);
@@ -1898,7 +1967,10 @@ function renderMarkerList(){
         '<div class="mrow"><span>Height</span><input type="range" min="0" max="400" step="1" value="'+m.height+'" data-k="height"><b>'+m.height.toFixed(0)+'m</b></div>'+
         '<div class="mrow"><span>Scale</span><button class="mb" data-k="scale" data-d="-0.1">\u2212</button><b>'+(worldProp(m.type)?(worldProp(m.type).h*m.scale).toFixed(2)+'m':m.scale.toFixed(1)+'\u00d7')+'</b><button class="mb" data-k="scale" data-d="0.1">+</button></div>'+
         '<div class="mrow"><span>Rotate</span><button class="mb" data-k="rot" data-d="-15">\u21ba</button><b>'+m.rot+'\u00b0</b><button class="mb" data-k="rot" data-d="15">\u21bb</button></div>'+
-        '<div class="mrow"><span>Travel</span><button class="tvb'+(m.travels?' on':'')+'">'+(m.travels?'\u2192 rides the path':'stays put')+'</button></div>';
+        '<div class="mrow"><span>Travel</span><button class="tvb'+(m.travels?' on':'')+'">'+(m.travels?'\u2192 rides the path':'stays put')+'</button></div>'+
+        (AVATARS[m.type]?'<div class="mrow"><span>Facing</span><button class="tvb flipb'+(m.flip?' on':'')+'">'+(m.flip?'\u25c0 flipped':'\u25b6 as uploaded')+'</button></div>':'');
+      const fb=ctl.querySelector('.flipb');
+      if(fb)fb.onclick=ev=>{ev.stopPropagation();m.flip=!m.flip;syncMarkerVisual(m);renderMarkerList();};
       ctl.querySelector('.tvb').onclick=ev=>{ev.stopPropagation();toggleTravel(m.id);};
       ctl.querySelector('input[data-k="height"]').oninput=ev=>{m.height=+ev.target.value;syncMarkerVisual(m);ctl.querySelector('.mrow b').textContent=m.height.toFixed(0)+'m';d.querySelector('.tag').textContent=m.height.toFixed(0)+'m';};
       ctl.querySelectorAll('.mb').forEach(b=>b.onclick=ev=>{ev.stopPropagation();
@@ -2802,7 +2874,7 @@ buildRail();
 
 window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN,
-  travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,
+  travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
