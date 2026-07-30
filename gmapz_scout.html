@@ -225,8 +225,17 @@ function loadCesiumFallback(){
     transition:transform .16s cubic-bezier(.2,.7,.3,1),border-color .16s,box-shadow .16s;}
   .thumb:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 10px 26px rgba(0,0,0,.65);}
   .thumb img{width:100%;display:block;}
-  .thumb .cap{font-size:9px;color:#d4d4d8;padding:3px 6px;letter-spacing:.05em;
-    background:linear-gradient(180deg,transparent,rgba(0,0,0,.82));position:absolute;bottom:0;left:0;right:0;}
+  .thumb .cap{font-size:9px;color:#d4d4d8;padding:3px 6px;letter-spacing:.04em;
+    background:linear-gradient(180deg,transparent,rgba(0,0,0,.82));position:absolute;bottom:0;left:0;right:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .thumb:not(.incut){opacity:.62;}
+  .thumb:not(.incut):hover{opacity:1;}
+  .thumb.incut{border-color:rgba(255,255,255,.3);}
+  .thumb.live{border-color:var(--yellow);box-shadow:0 0 0 2px rgba(250,204,21,.3),0 8px 22px rgba(0,0,0,.6);}
+  .tseq{position:absolute;top:3px;left:3px;z-index:2;min-width:16px;height:16px;padding:0 4px;border-radius:5px;
+    background:rgba(9,9,11,.92);border:1px solid rgba(255,255,255,.25);color:#e4e4e7;
+    font:700 9px/16px ui-monospace,monospace;text-align:center;}
+  .thumb.live .tseq{background:var(--yellow);color:#1a1500;border-color:var(--yellow);}
   .toast{position:absolute;bottom:18px;left:50%;transform:translateX(-50%) translateY(20px);z-index:20;
     background:rgba(20,20,24,.92);border:1px solid rgba(255,255,255,.11);border-radius:10px;padding:10px 17px;font-size:12.5px;
     opacity:0;transition:opacity .25s,transform .25s cubic-bezier(.2,.7,.3,1);pointer-events:none;max-width:70%;
@@ -376,6 +385,9 @@ function loadCesiumFallback(){
   .popt{display:flex;gap:4px;margin-top:7px;}
   .popt select{flex:1;min-width:0;padding:4px 18px 4px 7px;font-size:10px;border-radius:6px;
     background-position:0 0,right 5px center;background-size:100% 100%,8px 6px;}
+  #pathSummary{display:none;align-items:center;gap:8px;margin:8px 0 4px;padding:8px 10px;border-radius:9px;
+    background:linear-gradient(180deg,#131317,#0f0f12);border:1px solid var(--line);}
+  #pathSummaryTxt{flex:1;min-width:0;font-size:11.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .pcam{margin-top:5px;font-family:ui-monospace,monospace;font-size:10px;color:var(--faint);letter-spacing:.02em;}
   .pstn.done .pcam{color:#7fd8b4;}
   .psave{flex:none !important;width:26px;}
@@ -547,12 +559,15 @@ function loadCesiumFallback(){
 
     <details class="sec" open><summary>Cameras &amp; path <span class="ico">&#9656;</span></summary>
       <div class="body">
-        <label class="fld">Camera type — drag onto the globe (or tap a chip + tap the globe on mobile)</label>
-        <div class="chips" id="cameraTypes"></div>
-        <div class="row"><button class="btn" id="pathMode">Draw path: OFF</button><button class="btn sm" id="clearPath" style="flex:none;width:54px">Clear</button></div>
-        <div class="mini">After dropping a camera: click ground to set start, click again to add waypoints, double-click to finish. The red line is the move.</div>
-        <label class="fld">Duration <span id="durVal" style="color:var(--dim);float:right">4.0s</span></label>
-        <input id="durSlider" type="range" min="2" max="10" step="0.5" value="4">
+        <div id="pathSetup">
+          <label class="fld">Camera type — drag onto the globe (or tap a chip + tap the globe on mobile)</label>
+          <div class="chips" id="cameraTypes"></div>
+          <div class="row"><button class="btn" id="pathMode">Draw path: OFF</button><button class="btn sm" id="clearPath" style="flex:none;width:54px">Clear</button></div>
+          <div class="mini">After dropping a camera: click ground to set start, click again to add waypoints, double-click to finish. The red line is the move.</div>
+          <label class="fld">Duration <span id="durVal" style="color:var(--dim);float:right">4.0s</span></label>
+          <input id="durSlider" type="range" min="2" max="10" step="0.5" value="4">
+        </div>
+        <div id="pathSummary"><span id="pathSummaryTxt"></span><button class="btn sm" id="pathEdit" style="flex:none;width:44px">Edit</button></div>
         <div class="list" id="pathList"></div>
         <div class="row"><button class="btn on" id="autoFrameBtn" title="Give a station a sensible setup when it has none of its own. Turn off to keep your framing everywhere.">Auto-frame: ON</button></div>
         <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every station</button></div>
@@ -648,7 +663,7 @@ function loadCesiumFallback(){
       <button class="navbtn" id="guidesTog" title="Framing guides — thirds, horizon level, sun-in-frame (V)">&#8862;</button>
     </div>
     <div class="thumbs" id="thumbs"></div>
-    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · [ ] roll · V guides · R reset · L kml · ? help</div>
+    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · [ ] roll · V guides · Enter lock · N next · ? help</div>
   </main>
 </div>
 
@@ -1186,12 +1201,12 @@ stageEl.addEventListener('drop',e=>{
 $('durSlider').oninput=e=>{S.pathDuration=+e.target.value;$('durVal').textContent=S.pathDuration.toFixed(1)+'s';};
 
 // ---- Path drawing on the globe ----
-let pathEntities={start:null,end:null,line:null,waypoints:[]};
+let pathEntities={start:null,end:null,line:null,waypoints:[],pts:[]};
 function pathColorRed(){return Cesium.Color.fromCssColorString('#ef4444');}
 function clearPathEntities(){
   ['start','end','line'].forEach(k=>{if(pathEntities[k]){viewer.entities.remove(pathEntities[k]);pathEntities[k]=null;}});
   pathEntities.waypoints.forEach(w=>viewer.entities.remove(w));
-  pathEntities.waypoints=[];
+  pathEntities.waypoints=[]; pathEntities.pts=[];
 }
 function startPath(lon,lat){
   if(S.path)clearPath();
@@ -1202,6 +1217,7 @@ function startPath(lon,lat){
     point:{pixelSize:14,color:Cesium.Color.fromCssColorString('#facc15'),outlineColor:Cesium.Color.BLACK,outlineWidth:2,disableDepthTestDistance:Number.POSITIVE_INFINITY},
     label:{text:ct.glyph+' START',font:'600 11px monospace',fillColor:Cesium.Color.WHITE,showBackground:true,backgroundColor:Cesium.Color.fromCssColorString('#000000aa'),pixelOffset:new Cesium.Cartesian2(0,-20),disableDepthTestDistance:Number.POSITIVE_INFINITY}
   });
+  pathEntities.pts=[pathEntities.start];
   S.pathMode=true;
   $('pathMode').textContent='Draw path: click for end or waypoints';
   $('pathMode').classList.add('on');
@@ -1218,17 +1234,42 @@ function addPathPoint(lon,lat,isEnd){
       point:{pixelSize:12,color:Cesium.Color.fromCssColorString('#ef4444'),outlineColor:Cesium.Color.BLACK,outlineWidth:2,disableDepthTestDistance:Number.POSITIVE_INFINITY},
       label:{text:'END',font:'600 11px monospace',fillColor:Cesium.Color.WHITE,showBackground:true,backgroundColor:Cesium.Color.fromCssColorString('#000000aa'),pixelOffset:new Cesium.Cartesian2(0,-20),disableDepthTestDistance:Number.POSITIVE_INFINITY}
     });
+    pathEntities.pts.push(pathEntities.end);
     S.pathMode=false;
     $('pathMode').textContent='Draw path: OFF';
     $('pathMode').classList.remove('on');
   } else {
-    pathEntities.waypoints.push(viewer.entities.add({
+    const w=viewer.entities.add({
       position:Cesium.Cartesian3.fromDegrees(lon,lat,ct.defaultAlt),
-      point:{pixelSize:8,color:Cesium.Color.fromCssColorString('#fb923c'),outlineColor:Cesium.Color.BLACK,outlineWidth:1,disableDepthTestDistance:Number.POSITIVE_INFINITY}
-    }));
+      point:{pixelSize:8,color:Cesium.Color.fromCssColorString('#fb923c'),outlineColor:Cesium.Color.BLACK,outlineWidth:1,disableDepthTestDistance:Number.POSITIVE_INFINITY},
+      label:{text:'',font:'600 10px ui-monospace,monospace',fillColor:Cesium.Color.WHITE,showBackground:true,
+        backgroundColor:Cesium.Color.fromCssColorString('#000000bb'),pixelOffset:new Cesium.Cartesian2(0,-18),
+        verticalOrigin:Cesium.VerticalOrigin.BOTTOM,scale:.9,disableDepthTestDistance:Number.POSITIVE_INFINITY}
+    });
+    pathEntities.waypoints.push(w); pathEntities.pts.push(w);
   }
   redrawPathLine();
   renderPathList();
+}
+// The map should read as the shot list: number, what it's set to, and its state.
+function refreshPathVisuals(){
+  if(!S.path||!pathEntities.pts.length)return;
+  const C=Cesium.Color;
+  const emerald=C.fromCssColorString('#34d399'), yellow=C.fromCssColorString('#facc15'),
+        open=C.fromCssColorString('#fb923c');
+  S.path.points.forEach((p,i)=>{
+    const e=pathEntities.pts[i]; if(!e)return;
+    const active=STN.active===i;
+    if(e.point){
+      e.point.color=p.locked?emerald:(active?yellow:open);
+      e.point.pixelSize=active?15:(p.locked?12:9);
+    }
+    if(e.label){
+      const tag=p.cam?framingSummary(p.cam).split(' · ').slice(0,2).join(' · '):stationLabel(i);
+      e.label.text=(i+1)+' \u00b7 '+tag+(p.locked?'  \u2713':'');
+      e.label.fillColor=p.locked?emerald:(active?yellow:C.WHITE);
+    }
+  });
 }
 function redrawPathLine(){
   if(pathEntities.line)viewer.entities.remove(pathEntities.line);
@@ -1370,6 +1411,14 @@ function unlockStation(i){
   if(S.path&&S.path.points[i]){S.path.points[i].locked=false;delete S.path.points[i].cam;}
   renderShots(); renderPathList(); toast('Station '+(i+1)+' cleared');
 }
+// Walk the path: jump to the next station that still needs a shot.
+function nextStation(){
+  if(!S.path||!S.path.points.length)return;
+  const pts=S.path.points, from=STN.active<0?-1:STN.active;
+  for(let k=1;k<=pts.length;k++){ const i=(from+k)%pts.length;
+    if(!pts[i].locked){ flyToStation(i); return; } }
+  toast('Every station is locked — press Play Take to watch it');
+}
 async function rollStations(){
   if(!S.path||S.path.points.length<2){toast('Plot a camera path first');return;}
   const total=S.path.points.length;
@@ -1383,6 +1432,7 @@ async function rollStations(){
   openSectionByLabel('Shots');
   toast('\u2713 All '+total+' stations locked — press Play Take to watch the move');
 }
+$('pathEdit').onclick=()=>{pathSetupOpen=!pathSetupOpen;syncPathPanelMode();};
 $('rollStationsBtn').onclick=rollStations;
 $('autoFrameBtn').onclick=function(){
   S.autoFrame=!S.autoFrame;
@@ -1391,7 +1441,20 @@ $('autoFrameBtn').onclick=function(){
   toast(S.autoFrame?'Stations with no framing of their own get set up for the camera type'
                    :'Stations keep whatever framing you have — nothing is changed for you');
 };
+// Setup controls are set-and-forget once a path exists — give the stations the room.
+let pathSetupOpen=false;
+function syncPathPanelMode(){
+  const setup=$('pathSetup'), sum=$('pathSummary'); if(!setup||!sum)return;
+  const has=!!S.path;
+  const show=!has||pathSetupOpen;
+  setup.style.display=show?'':'none';
+  sum.style.display=has?'flex':'none';
+  if(has){ const ct=CAMERA_TYPES[S.path.cameraType];
+    $('pathSummaryTxt').textContent=ct.label+' \u00b7 '+S.pathDuration.toFixed(1)+'s \u00b7 '+S.path.points.length+' points';
+    $('pathEdit').textContent=pathSetupOpen?'Done':'Edit'; }
+}
 function renderPathList(){
+  refreshPathVisuals(); syncPathPanelMode();
   const L=$('pathList'); if(!L)return; L.innerHTML='';
   if(!S.path){return;}
   const ct=CAMERA_TYPES[S.path.cameraType], pts=S.path.points;
@@ -1421,7 +1484,7 @@ function renderPathList(){
       '</div>'+
       '<div class="prow">'+(shot&&shot.thumb?'<img class="pthumb" src="'+shot.thumb+'">':'')+
       '<button class="btn sm pfly">Fly here</button>'+
-      '<button class="btn sm plock">'+(p.locked?'Re-lock':'Lock shot')+'</button>'+
+      '<button class="btn sm'+(STN.active===i&&!p.locked?' y':'')+' plock">'+(p.locked?'Re-lock':'Lock shot')+'</button>'+
       '<button class="btn sm psave" title="Remember the framing I have right now">\u2691</button>'+
       (p.locked?'<button class="btn sm punlock" style="flex:none;width:26px" title="Clear this station">&times;</button>':'')+'</div>';
     d.querySelector('.pfly').onclick=e=>{e.stopPropagation();flyToStation(i);};
@@ -2188,21 +2251,42 @@ function capture(hq){
   if(hq&&prevScale!==undefined){ viewer.resolutionScale=prevScale; viewer.render(); }
   const id='cap'+Date.now();
   S.captures.push({id,url,spec:buildSpec(id)});
-  addThumb(url,id);
+  renderThumbs();
   const fl=$('captureFlash');fl.style.transition='none';fl.style.opacity=.85;requestAnimationFrame(()=>{fl.style.transition='opacity .5s';fl.style.opacity=0;});
   if(!S._quiet) toast((hq?'HQ frame ':'Frame ')+'captured ('+out.width+'\u00d7'+out.height+')');
   if(!S._quiet&&!S._savingShot) coach('tip_prompt','Turn this frame into engine-ready i2v prompts \u2014 the start frame plus every engine.','Prompt Studio',()=>$('i2vBtn').click());
   return {id,url};
 }
-function addThumb(url,id){
-  const t=document.createElement('div');t.className='thumb';
-  t.innerHTML='<img src="'+url+'"><div class="cap">'+S.delivery+'</div>'+
-    '<div class="acts"><button class="ta" title="Prompt studio with this frame">\u26a1</button><button class="ta" title="Download PNG">\u2b07</button></div>';
-  const acts=t.querySelectorAll('.ta');
-  acts[0].onclick=e=>{e.stopPropagation();openPromptStudio({id,url},motionFromPath(),null);};
-  acts[1].onclick=e=>{e.stopPropagation();downloadURI(url,id+'.png');};
-  t.onclick=()=>downloadURI(url,id+'.png');
-  $('thumbs').appendChild(t);
+// The stage strip is the director's monitor: every frame you've taken, with the
+// ones that are in the cut numbered in sequence order and the current one lit.
+function renderThumbs(){
+  const wrap=$('thumbs'); if(!wrap)return;
+  wrap.innerHTML='';
+  const shotOf={}; S.shots.forEach((sh,i)=>{ if(sh.spec&&sh.spec.id)shotOf[sh.spec.id]={i,sh}; });
+  const activeId=(()=>{ const sh=S.shots.find(s=>s.stationIdx!==undefined&&s.stationIdx===STN.active);
+    return sh&&sh.spec?sh.spec.id:null; })();
+  S.captures.forEach(c=>{
+    const inCut=shotOf[c.id];
+    const t=document.createElement('div');
+    t.className='thumb'+(inCut?' incut':'')+(activeId&&c.id===activeId?' live':'');
+    t.title=inCut?('Shot '+(inCut.i+1)+' — '+inCut.sh.name):'Scratch frame';
+    t.innerHTML=(inCut?'<span class="tseq">'+(inCut.i+1)+'</span>':'')+
+      '<img src="'+c.url+'"><div class="cap">'+(inCut?escapeHtml(inCut.sh.name.slice(0,16)):S.delivery)+'</div>'+
+      '<div class="acts"><button class="ta" title="Prompt studio with this frame">\u26a1</button>'+
+      '<button class="ta" title="Download PNG">\u2b07</button></div>';
+    const acts=t.querySelectorAll('.ta');
+    acts[0].onclick=e=>{e.stopPropagation();openPromptStudio({id:c.id,url:c.url},motionFromPath(),null);};
+    acts[1].onclick=e=>{e.stopPropagation();downloadURI(c.url,c.id+'.png');};
+    t.onclick=()=>{
+      if(inCut){ const cam=inCut.sh.spec.camera;
+        Object.assign(S,{target:{lat:cam.lat,lon:cam.lng},head:cam.heading_deg,tilt:cam.pitch_deg,
+          range:cam.altitude_m,fov:cam.fov_deg,roll:cam.roll_deg||0});
+        flyToParams(); syncCamUI(); toast('Recalled shot '+(inCut.i+1)+' — '+inCut.sh.name);
+      } else downloadURI(c.url,c.id+'.png');
+    };
+    wrap.appendChild(t);
+  });
+  wrap.scrollLeft=wrap.scrollWidth;
 }
 $('captureBtn').onclick=()=>capture(false);
 $('captureHQ').onclick=()=>capture(true);
@@ -2345,7 +2429,7 @@ function reorderShots(from,to){
   toast('“'+moved.name+'” → position '+(to+1));
 }
 function renderShots(){
-  autosaveSoon();
+  autosaveSoon(); renderThumbs();
   const L=$('shotList');L.innerHTML='';
   if(!S.shots.length){L.innerHTML='<div class="mini">No shots yet \u2014 press S (or Save shot) to add your current framing to the sequence.</div>';renderTimeline();return;}
   S.shots.forEach((sh,i)=>{const d=document.createElement('div');d.className='item';
@@ -2700,6 +2784,7 @@ function showHelp(){showModal('<span class="closex" onclick="document.getElement
  '<tr><td><span class="k">Dbl-click</span></td><td>Recenter and ease in toward that point — right-click holds your framing</td></tr>'+
  '<tr><td><span class="k">[ &nbsp;] &nbsp;\\</span></td><td>Dutch roll left / right · level the horizon</td></tr>'+
  '<tr><td><span class="k">V</span></td><td>Framing guides — rule of thirds, horizon level, sun-in-frame</td></tr>'+
+ '<tr><td><span class="k">Enter &nbsp;N</span></td><td>Lock the station you\u2019re on · walk to the next open one</td></tr>'+
  '<tr><td><span class="k">Alt+scroll</span></td><td>Raise/lower the selected marker</td></tr>'+
  '</table><div class="mini" style="margin-top:12px">Loop: Scout a place → Block the camera → Lock the sun → place Cast → Capture (shutter bottom-right; Shift-click = HQ) → Prompt studio. The captured frame + spec are the product.</div>');}
 
@@ -2723,6 +2808,8 @@ document.addEventListener('keydown',e=>{
   else if(e.key===']'){S.roll=Math.min(30,(S.roll||0)+2);$('pRoll').value=S.roll;$('pRollVal').textContent=S.roll+'°';applyRoll();}
   else if(e.key==='\\'){$('levelRoll').click();}
   else if(k==='v'){$('guidesTog').click();}
+  else if(e.key==='Enter'&&S.path&&STN.active>=0){ e.preventDefault(); lockStation(STN.active); }
+  else if(k==='n'&&S.path){ e.preventDefault(); nextStation(); }
   else if(e.key==='?'){showHelp();}
   else if((e.key==='Delete'||e.key==='Backspace')&&S.selMarker&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='SELECT'){
     pushUndo({type:'markerDel'});
@@ -2874,7 +2961,8 @@ buildRail();
 
 window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN,
-  travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
+  travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
+  renderThumbs,nextStation,refreshPathVisuals,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
