@@ -181,7 +181,9 @@ function loadCesiumFallback(){
     padding:9px 11px;font-size:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
     transition:border-color .13s,background .13s,transform .13s cubic-bezier(.2,.7,.3,1);}
   .item:hover{border-color:#34343c;background:linear-gradient(180deg,#17171c,#121216);}
-  .item .t{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .item .t{display:flex;justify-content:space-between;align-items:center;gap:8px;min-width:0;}
+  .item .t>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .item .t .x{flex:none;}
   .item .x{color:var(--faint);cursor:pointer;font-size:15px;line-height:1;transition:color .12s,transform .12s;}
   .item .x:hover{color:#f87171;transform:scale(1.15);}
   .item.sel{border-color:rgba(250,204,21,.75);box-shadow:0 0 0 3px rgba(250,204,21,.11),inset 0 1px 0 rgba(255,255,255,.04);
@@ -362,6 +364,15 @@ function loadCesiumFallback(){
   .prow .btn{padding:5px 7px;font-size:10px;}
   .pthumb{width:46px;height:26px;flex:none;border-radius:4px;object-fit:cover;background:#000;
     border:1px solid var(--line2);}
+  /* the sequence filmstrip: numbered, scroll-aware, current shot marked */
+  .tlwrap{position:relative;}
+  .tlwrap::after{content:"";position:absolute;top:0;right:0;bottom:8px;width:26px;pointer-events:none;
+    background:linear-gradient(90deg,transparent,#0a0a0c);}
+  #timeline > div .tnum{position:absolute;top:3px;left:3px;z-index:2;min-width:15px;height:15px;padding:0 3px;
+    border-radius:4px;background:rgba(9,9,11,.9);border:1px solid var(--line2);color:var(--dim);
+    font:700 9px/15px ui-monospace,monospace;text-align:center;}
+  #timeline > div.cur{border-color:var(--yellow) !important;box-shadow:0 0 0 2px rgba(250,204,21,.25);}
+  #timeline > div.cur .tnum{background:var(--yellow);color:#1a1500;border-color:var(--yellow);}
   /* ---- fly-to type-ahead ---- */
   .searchwrap{position:relative;flex:1;}
   #sugg{position:absolute;left:0;right:0;top:calc(100% + 5px);z-index:30;display:none;
@@ -375,12 +386,15 @@ function loadCesiumFallback(){
   .sgi.sel .sn{color:var(--yellow);}
   .sgi .sr{font-size:10px;color:var(--faint);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   /* ---- Director's Take: play the sequence like a video ---- */
-  #take{position:absolute;inset:0;z-index:20;background:rgba(6,6,8,.975);display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;}
+  #take{position:fixed;inset:0;z-index:60;background:radial-gradient(120% 90% at 50% 45%,rgba(14,14,18,.985),rgba(4,4,6,.995));
+    display:none;flex-direction:column;align-items:center;justify-content:center;padding:26px;
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);}
   #take.show{display:flex;}
   #takeTitle{position:absolute;top:18px;left:22px;font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);}
   #takeClose{position:absolute;top:14px;right:18px;background:none;border:none;color:var(--faint);font-size:26px;cursor:pointer;line-height:1;}
   #takeClose:hover{color:var(--txt);}
-  #takeImg{max-width:86vw;max-height:62vh;object-fit:contain;background:#000;border:1px solid var(--line2);box-shadow:0 24px 70px rgba(0,0,0,.7);transition:opacity .18s;border-radius:3px;}
+  #takeImg{max-width:88vw;max-height:70vh;object-fit:contain;background:#000;border:1px solid rgba(255,255,255,.1);
+    box-shadow:0 40px 110px -18px rgba(0,0,0,.9);transition:opacity .18s;border-radius:4px;}
   #takeCap{margin-top:15px;font-family:ui-monospace,monospace;font-size:12px;color:var(--dim);letter-spacing:.02em;text-align:center;}
   #takeCap b{color:var(--yellow);}
   #takeDots{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap;justify-content:center;max-width:70vw;}
@@ -436,6 +450,7 @@ function loadCesiumFallback(){
         <label class="fld">Search a place</label>
         <div class="row"><span class="searchwrap"><input id="search" type="text" autocomplete="off" placeholder="Place name — or coords: 41.8885, -87.6345"><div id="sugg"></div></span><button class="btn sm" id="searchBtn" style="flex:none;width:64px">Go</button></div>
         <label class="fld">Load KML / KMZ</label>
+        <style>#kmlFile{min-width:0;}</style>
         <div class="row"><input id="kmlFile" type="file" accept=".kml,.kmz" style="font-size:11px;padding:5px"></div>
         <label class="fld">Photoreal &amp; terrain keys (optional)</label>
         <div class="row"><input id="googleKey" type="text" placeholder="Google Map Tiles API key"></div>
@@ -500,7 +515,7 @@ function loadCesiumFallback(){
       <div class="body">
         <label class="fld">Sticker (click Place, then click the ground)</label>
         <div class="chips" id="stickers"></div>
-        <div class="row"><input id="avatarFile" type="file" accept="image/*" style="font-size:11px;padding:5px"><button class="btn sm" id="avatarBtn" style="flex:none;width:80px">Upload pic</button></div>
+        <div class="row"><input id="avatarFile" type="file" accept="image/*" style="font-size:11px;padding:5px;min-width:0;flex:1"><button class="btn sm" id="avatarBtn" style="flex:none;width:80px">Upload pic</button></div>
         <div class="mini">Uploaded photos appear as extra stickers below — pick one, then place it like any other marker.</div>
         <div class="row"><button class="btn" id="placeMode">Place mode: OFF</button><button class="btn sm" id="snapGround" style="flex:none;width:78px">Snap grd</button><button class="btn sm" id="clearMarkers" style="flex:none;width:56px">Clear</button></div>
         <div class="mini">Drag a marker to move it. Select one, then Alt+scroll to raise/lower its height.</div>
@@ -517,7 +532,7 @@ function loadCesiumFallback(){
         <label class="fld">Duration <span id="durVal" style="color:var(--dim);float:right">4.0s</span></label>
         <input id="durSlider" type="range" min="2" max="10" step="0.5" value="4">
         <div class="list" id="pathList"></div>
-        <div class="row"><button class="btn" id="rollStationsBtn">&#9654; Roll every station</button></div>
+        <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every station</button></div>
         <div class="row"><button class="btn g" id="buildShotBtn">Build shot (start + end + spec)</button></div>
       </div>
     </details>
@@ -545,8 +560,8 @@ function loadCesiumFallback(){
         <div class="row"><input id="shotName" type="text" placeholder="e.g. 01 — Tower establish"></div>
         <div class="row"><button class="btn y" id="saveShot">Save shot (S)</button></div>
         <div class="list" id="shotList"></div>
-        <div id="timeline" style="display:flex;gap:6px;overflow-x:auto;padding:6px 0;margin-top:4px"></div>
-        <div class="row"><button class="btn y" id="playTake">&#9654; Play Take</button><button class="btn sm" id="clearSeq" style="flex:none;width:60px" title="Clear the shot sequence">Clear</button></div>
+        <div class="tlwrap"><div id="timeline" style="display:flex;gap:6px;overflow-x:auto;padding:6px 0;margin-top:4px"></div></div>
+        <div class="row"><button class="btn g" id="playTake">&#9654; Play Take</button><button class="btn sm" id="clearSeq" style="flex:none;width:60px" title="Clear the shot sequence">Clear</button></div>
         <div class="row"><button class="btn" id="scenePrompt">Generate full scene prompt</button></div>
         <div class="row"><button class="btn" id="pdfReport">PDF blocking report</button></div>
       </div>
@@ -1323,7 +1338,7 @@ function renderPathList(){
       stationLabel(i)+'</span><span class="pst">'+(p.locked?'\u2713 locked':'open')+'</span></div>'+
       '<div class="prow">'+(shot&&shot.thumb?'<img class="pthumb" src="'+shot.thumb+'">':'')+
       '<button class="btn sm pfly">Fly here</button>'+
-      '<button class="btn sm '+(p.locked?'':'y')+' plock">'+(p.locked?'Re-lock':'Lock shot')+'</button>'+
+      '<button class="btn sm plock">'+(p.locked?'Re-lock':'Lock shot')+'</button>'+
       (p.locked?'<button class="btn sm punlock" style="flex:none;width:26px" title="Clear this station">&times;</button>':'')+'</div>';
     d.querySelector('.pfly').onclick=e=>{e.stopPropagation();flyToStation(i);};
     d.querySelector('.plock').onclick=e=>{e.stopPropagation();lockStation(i);};
@@ -2200,7 +2215,11 @@ function renderTimeline(){
     card.style.cssText='flex:none;width:96px;border:1px solid var(--line2);border-radius:6px;overflow:hidden;background:#000;cursor:pointer;position:relative';
     card.title='Recall '+sh.name;
     const img=sh.thumb?'<img src="'+sh.thumb+'" style="width:100%;display:block;height:54px;object-fit:cover">':'<div style="height:54px;display:flex;align-items:center;justify-content:center;color:#52525b;font-size:10px">no frame</div>';
-    card.innerHTML=img+'<div style="font-size:9px;color:var(--dim);padding:3px 5px;line-height:1.3">'+(i+1)+'. '+escapeHtml(sh.name.slice(0,14))+'<br><span style="color:var(--faint)">'+c.shot_size+' · '+lt.phase+'</span></div><span class="tcardx" title="Remove from sequence">&times;</span>';
+    if(sh.stationIdx!==undefined&&sh.stationIdx===STN.active)card.classList.add('cur');
+    card.innerHTML='<span class="tnum">'+(i+1)+'</span>'+img+
+      '<div style="font-size:9px;color:var(--dim);padding:3px 5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
+      escapeHtml(sh.name.replace(/^Pt \d+ — /,''))+'<br><span style="color:var(--faint)">'+c.shot_size+' · '+lt.phase+'</span></div>'+
+      '<span class="tcardx" title="Remove from sequence">&times;</span>';
     card.onclick=()=>{ Object.assign(S,{target:{lat:c.lat,lon:c.lng},head:c.heading_deg,tilt:c.pitch_deg,range:c.altitude_m,fov:c.fov_deg,roll:c.roll_deg||0}); flyToParams(); syncCamUI(); toast('Recalled: '+sh.name); };
     card.querySelector('.tcardx').onclick=e=>{e.stopPropagation();S.shots.splice(i,1);renderShots();toast('Removed shot '+(i+1));};
     T.appendChild(card);
