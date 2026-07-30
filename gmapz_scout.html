@@ -353,6 +353,11 @@ function loadCesiumFallback(){
   .pstn.done .pnum{background:var(--emerald);color:#04231a;}
   .pstn .pst{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);}
   .pstn.done .pst{color:var(--emerald);}
+  .tag.tvon{color:var(--emerald);background:rgba(52,211,153,.12);}
+  .tvb{flex:1;background:linear-gradient(180deg,#15151a,#101013);border:1px solid var(--line);border-radius:6px;
+    color:var(--dim);font-family:inherit;font-size:10px;font-weight:600;padding:4px 8px;cursor:pointer;transition:.13s;}
+  .tvb:hover{border-color:#3a3a42;color:var(--txt);}
+  .tvb.on{background:linear-gradient(180deg,#123528,#0d2a1f);border-color:rgba(52,211,153,.55);color:var(--emerald);}
   .prow{display:flex;gap:5px;margin-top:7px;align-items:center;}
   .prow .btn{padding:5px 7px;font-size:10px;}
   .pthumb{width:46px;height:26px;flex:none;border-radius:4px;object-fit:cover;background:#000;
@@ -1201,6 +1206,7 @@ function redrawPathLine(){
 }
 function clearPath(){
   clearPathEntities(); S.path=null; S.pathMode=false; STN.active=-1;
+  S.markers.forEach(m=>{m.travels=false;}); renderMarkerList();
   if(S.shots.some(s=>s.stationIdx!==undefined)){ S.shots=S.shots.filter(s=>s.stationIdx===undefined); renderShots(); }
   $('pathMode').textContent='Draw path: OFF'; $('pathMode').classList.remove('on'); renderPathList();
 }
@@ -1221,10 +1227,32 @@ function stationHeading(i){
   if(p.length<2)return S.head;
   return Math.round(i<p.length-1?bearingDeg(cur,p[i+1]):bearingDeg(p[i-1],cur));
 }
+// Cast marked as travelling ride the path: at station i they stand at point i,
+// so the camera that frames the station also frames them.
+function travelCast(i){
+  if(!S.path||!S.path.points[i])return 0;
+  const p=S.path.points[i];
+  let moved=0;
+  S.markers.forEach(m=>{ if(!m.travels)return;
+    m.lon=p.lon; m.lat=p.lat; syncMarkerVisual(m); moved++; });
+  if(moved)renderMarkerList();
+  return moved;
+}
+function travellerCount(){ return S.markers.filter(m=>m.travels).length; }
+function toggleTravel(id){
+  const m=S.markers.find(x=>x.id===id); if(!m)return;
+  if(!S.path&&!m.travels){toast('Plot a camera path first — then cast can ride it');return;}
+  m.travels=!m.travels;
+  if(m.travels){ travelCast(STN.active>=0?STN.active:0);
+    toast('“'+m.shotType+'” now travels the path — it moves with the camera between stations'); }
+  else toast('“'+m.shotType+'” stays put');
+  renderMarkerList(); renderPathList();
+}
 function flyToStation(i,quiet){
   if(!S.path||!S.path.points[i])return;
   const p=S.path.points[i], ct=CAMERA_TYPES[S.path.cameraType];
   STN.active=i;
+  travelCast(i);
   S.target={lat:p.lat,lon:p.lon};
   S.head=stationHeading(i);
   S.tilt=stationTilt(S.path.cameraType);
@@ -1235,6 +1263,7 @@ function flyToStation(i,quiet){
 function lockStation(i){
   if(!S.path||!S.path.points[i])return;
   const p=S.path.points[i], ct=CAMERA_TYPES[S.path.cameraType];
+  travelCast(i); // the frame must match the station, even if Lock was clicked directly
   const wasQuiet=S._quiet; S._quiet=true;
   const cap=capture(false);
   S._quiet=wasQuiet;
@@ -1281,7 +1310,9 @@ function renderPathList(){
   const ct=CAMERA_TYPES[S.path.cameraType], pts=S.path.points;
   const head=document.createElement('div'); head.className='item';
   const done=pts.filter(p=>p.locked).length;
-  head.innerHTML='<div class="t"><span>'+ct.label+' <span class="tag">'+pts.length+' point'+(pts.length===1?'':'s')+'</span></span>'+
+  const tv=travellerCount();
+  head.innerHTML='<div class="t"><span>'+ct.label+' <span class="tag">'+pts.length+' point'+(pts.length===1?'':'s')+'</span>'+
+    (tv?' <span class="tag tvon">\u2192 '+tv+' cast riding</span>':'')+'</span>'+
     '<span class="tag">'+(done?done+'/'+pts.length+' locked':S.pathDuration.toFixed(1)+'s')+'</span></div>';
   L.appendChild(head);
   pts.forEach((p,i)=>{
@@ -1758,7 +1789,9 @@ function renderMarkerList(){
     if(m.scale==null)m.scale=1; if(m.rot==null)m.rot=0;
     const sel=S.selMarker===m.id;
     const d=document.createElement('div');d.className='item'+(sel?' sel':'');
-    d.innerHTML='<div class="t"><span>'+m.type+' <span class="tag">'+m.height.toFixed(0)+'m</span></span><span class="x" data-x="'+m.id+'" title="Delete">&times;</span></div>';
+    d.innerHTML='<div class="t"><span>'+m.type+' <span class="tag">'+m.height.toFixed(0)+'m</span>'+
+      (m.travels?' <span class="tag tvon">\u2192 travels</span>':'')+
+      '</span><span class="x" data-x="'+m.id+'" title="Delete">&times;</span></div>';
     const sel2=document.createElement('select');SHOTTYPES.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;if(t===m.shotType)o.selected=true;sel2.appendChild(o);});
     sel2.style.marginTop='6px';sel2.onchange=()=>{m.shotType=sel2.value;const e=viewer.entities.getById(m.id);if(e)e.label.text=sel2.value;};
     d.appendChild(sel2);
@@ -1767,7 +1800,9 @@ function renderMarkerList(){
       ctl.innerHTML=
         '<div class="mrow"><span>Height</span><input type="range" min="0" max="400" step="1" value="'+m.height+'" data-k="height"><b>'+m.height.toFixed(0)+'m</b></div>'+
         '<div class="mrow"><span>Scale</span><button class="mb" data-k="scale" data-d="-0.1">\u2212</button><b>'+(worldProp(m.type)?(worldProp(m.type).h*m.scale).toFixed(2)+'m':m.scale.toFixed(1)+'\u00d7')+'</b><button class="mb" data-k="scale" data-d="0.1">+</button></div>'+
-        '<div class="mrow"><span>Rotate</span><button class="mb" data-k="rot" data-d="-15">\u21ba</button><b>'+m.rot+'\u00b0</b><button class="mb" data-k="rot" data-d="15">\u21bb</button></div>';
+        '<div class="mrow"><span>Rotate</span><button class="mb" data-k="rot" data-d="-15">\u21ba</button><b>'+m.rot+'\u00b0</b><button class="mb" data-k="rot" data-d="15">\u21bb</button></div>'+
+        '<div class="mrow"><span>Travel</span><button class="tvb'+(m.travels?' on':'')+'">'+(m.travels?'\u2192 rides the path':'stays put')+'</button></div>';
+      ctl.querySelector('.tvb').onclick=ev=>{ev.stopPropagation();toggleTravel(m.id);};
       ctl.querySelector('input[data-k="height"]').oninput=ev=>{m.height=+ev.target.value;syncMarkerVisual(m);ctl.querySelector('.mrow b').textContent=m.height.toFixed(0)+'m';d.querySelector('.tag').textContent=m.height.toFixed(0)+'m';};
       ctl.querySelectorAll('.mb').forEach(b=>b.onclick=ev=>{ev.stopPropagation();
         const k=b.dataset.k, dd=+b.dataset.d;
@@ -2532,7 +2567,8 @@ if(tabEl)tabEl.onclick=togglePanel;
 buildRail();
 
 window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
-  flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN};
+  flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN,
+  travelCast,toggleTravel,addMarker};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
 </script>
