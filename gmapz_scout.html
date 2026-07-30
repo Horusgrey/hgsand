@@ -593,7 +593,7 @@ function loadCesiumFallback(){
         <div class="list" id="shotList"></div>
         <div class="tlwrap"><div id="timeline" style="display:flex;gap:6px;overflow-x:auto;padding:6px 0;margin-top:4px"></div></div>
         <div class="row"><button class="btn g" id="playTake">&#9654; Play Take</button><button class="btn sm" id="clearSeq" style="flex:none;width:60px" title="Clear the shot sequence">Clear</button></div>
-        <div class="row"><button class="btn" id="scenePrompt">Generate full scene prompt</button></div>
+        <div class="row"><button class="btn" id="scenePrompt">Sequence prompts &mdash; the whole cut</button></div>
         <div class="row"><button class="btn" id="pdfReport">PDF blocking report</button></div>
       </div>
     </details>
@@ -2653,12 +2653,96 @@ async function exportTakeGifFile(){
   toast('GIF exported \u2014 '+((bytes.length/1024)|0)+' KB, '+frames.length+' frames, loops forever');
 }
 $('takeGif').onclick=exportTakeGifFile;
-$('scenePrompt').onclick=()=>{
-  if(!S.shots.length){toast('Save a shot first');return;}
-  const lines=S.shots.map((sh,i)=>'SHOT '+(i+1)+' — '+sh.name+'\n'+sh.spec.camera.shot_size+' / '+sh.spec.camera.angle+' / '+sh.spec.camera.lens_mm+'mm / '+(sh.spec.camera.move||'static')+' / '+sh.spec.light.phase+'\n'+(sh.spec.scene_description||'')+'\n');
-  const full='FULL SCENE — '+STYLES[S.style].name+' style\n'+STYLES[S.style].desc+'\n\n'+lines.join('\n');
-  showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span><h3>Full scene prompt</h3><div class="out" id="scenePromptOut">'+escapeHtml(full)+'</div><div class="row" style="margin-top:10px"><button class="btn y" onclick="navigator.clipboard.writeText(document.getElementById(\'scenePromptOut\').textContent)">Copy</button></div>');
-};
+// ---- Sequence prompts: the cut as one document, not N unrelated prompts ----
+const SPEC_NOUN={person:'person',prop:'car',light:'light',vfx:'effect'};
+// Rebuild a prompt context from a saved shot's spec, so a sequence describes what
+// was actually shot rather than whatever the camera happens to be doing now.
+function ctxFromSpec(sp){
+  const st=STYLES[sp.look.style]||STYLES.cinematic;
+  const az=sp.light.sun_azimuth_deg, el=sp.light.sun_elevation_deg, phase=sp.light.phase;
+  const compass=['north','northeast','east','southeast','south','southwest','west','northwest'][Math.round(((az%360)+360)%360/45)%8];
+  const subj=(sp.subjects||[]).map(s=>({role:s.label,kind:SPEC_NOUN[s.type]||'figure',h:s.height_m}));
+  const mm=Math.round(sp.camera.lens_mm);
+  return {desc:(sp.scene_description||'').trim().replace(/\.+$/,''),
+    size:(SHOT_SIZES[sp.camera.shot_size]||{label:sp.camera.shot_size}).label,
+    angle:sp.camera.angle, mm, feel:lensFeel(mm), phase,
+    lightWord:({day:'daylight',golden:'golden-hour light',blue:'blue-hour light',night:'night'})[phase]||'daylight',
+    sunEl:el, sunFrom:compass, style:st.name, styleDesc:st.desc,
+    atmos:sp.look.atmosphere, aspect:sp.delivery.aspect,
+    subj, near:subj.filter(x=>x.role==='foreground'||x.role==='subject'), far:subj.filter(x=>x.role==='background'),
+    subjLine:subj.length?subj.map(x=>x.role+' ('+x.kind+')').join(', '):''};
+}
+function metresBetween(a,b){
+  return Cesium.Cartesian3.distance(Cesium.Cartesian3.fromDegrees(a.lng,a.lat),Cesium.Cartesian3.fromDegrees(b.lng,b.lat));
+}
+// What actually changed at this cut — everything unsaid is held constant.
+function continuityClause(pa,pb,i){
+  const A=pa.camera,B=pb.camera, bits=[];
+  const dl=Math.round(B.lens_mm)-Math.round(A.lens_mm);
+  if(Math.abs(dl)>=5)bits.push(dl>0?('the lens tightens to '+Math.round(B.lens_mm)+'mm'):('the lens widens to '+Math.round(B.lens_mm)+'mm'));
+  if(A.shot_size!==B.shot_size)bits.push('cutting from '+(SHOT_SIZES[A.shot_size]||{label:A.shot_size}).label.toLowerCase()+' to '+(SHOT_SIZES[B.shot_size]||{label:B.shot_size}).label.toLowerCase());
+  if(A.angle!==B.angle)bits.push('the angle shifts from '+A.angle+' to '+B.angle);
+  const d=metresBetween(A,B);
+  if(d>15)bits.push('the camera has moved about '+Math.round(d)+'m along the route');
+  const dh=Math.abs(((B.heading_deg-A.heading_deg)%360+540)%360-180);
+  if(dh>25)bits.push('re-angled '+Math.round(dh)+'\u00b0');
+  if(Math.round(B.roll_deg||0)!==Math.round(A.roll_deg||0))bits.push('the horizon cants to '+Math.round(B.roll_deg||0)+'\u00b0');
+  const lightMoved=pa.light.phase!==pb.light.phase||Math.abs(pa.light.sun_elevation_deg-pb.light.sun_elevation_deg)>6;
+  const head='CONTINUITY \u2014 continuing from shot '+i+': same location, same subjects'+(lightMoved?'':', same light');
+  const tail=bits.length?('; '+bits.join(', ')+'.'):'; the framing holds.';
+  return head+tail+(lightMoved?'\n\u26a0 the sun differs from the previous shot \u2014 re-time it, or state the time jump deliberately.':'');
+}
+function sequenceHeader(eng){
+  const f=S.shots[0].spec, l=f.light;
+  return '=== GMAPz SEQUENCE \u00b7 '+S.shots.length+' shots \u00b7 '+ENGINES[eng]+' ===\n'+
+   'WORLD LOCK \u2014 identical in every shot below:\n'+
+   '  location   '+f.location.lat.toFixed(5)+', '+f.location.lng.toFixed(5)+(f.location.name?'  ('+f.location.name+')':'')+'\n'+
+   '  light      sun az '+l.sun_azimuth_deg+'\u00b0 \u00b7 el '+l.sun_elevation_deg+'\u00b0 \u00b7 '+l.phase+'\n'+
+   '  look       '+(STYLES[f.look.style]||{name:f.look.style}).name+' \u00b7 '+f.look.atmosphere+' \u00b7 '+f.delivery.aspect+'\n'+
+   '  subjects   '+(f.subjects.length?f.subjects.map(s=>(SPEC_NOUN[s.type]||s.type)+' as '+s.label).join(', '):'none placed')+'\n'+
+   'Hold all of the above constant across every shot. Do not re-invent the geography,\n'+
+   'the light direction, or the subjects between shots \u2014 only what each CONTINUITY line\n'+
+   'names has changed. Each shot has a matching start frame exported alongside it.\n';
+}
+function cameraSentence(ctx,sp){
+  const mv=sp.camera.move;
+  const move=mv==='path'
+    ? (S.path&&CAMERA_TYPES[S.path.cameraType]?CAMERA_TYPES[S.path.cameraType].feel:'moving camera following the route')
+    : (mv&&mv!=='static'?mv:null);
+  const frame=ctx.size.toLowerCase()+' on a '+ctx.mm+'mm lens ('+ctx.feel+'), '+ctx.angle+' angle';
+  return move?(move+', framed as '+aan(frame)):('locked off, framed as '+aan(frame)+', minimal drift');
+}
+function sequencePrompts(eng){
+  const parts=[sequenceHeader(eng)];
+  S.shots.forEach((sh,i)=>{
+    const ctx=ctxFromSpec(sh.spec);
+    const body=ENGINE_BUILDERS[eng](ctx,cameraSentence(ctx,sh.spec));
+    let head='\n--- SHOT '+(i+1)+' / '+S.shots.length+' \u00b7 '+sh.name+' ---\n';
+    if(i>0)head+=continuityClause(S.shots[i-1].spec,sh.spec,i)+'\n';
+    parts.push(head+body+(sh.spec.reference_frame?('\nstart frame: '+sh.spec.reference_frame):''));
+  });
+  return parts.join('\n');
+}
+function openSequenceStudio(){
+  if(!S.shots.length){toast('Save shots into the sequence first');return;}
+  let eng='runway';
+  showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span>'+
+    '<h3>Sequence prompts &mdash; '+S.shots.length+' shots as one cut</h3>'+
+    '<div class="mini">Every shot carries the one before it. The world lock holds location, light, look and cast constant; each CONTINUITY line names only what changed at that cut.</div>'+
+    '<div class="pstabs">'+Object.keys(ENGINES).map(k=>'<div class="pstab'+(k===eng?' on':'')+'" data-e="'+k+'">'+ENGINES[k]+'</div>').join('')+'</div>'+
+    '<textarea id="seqText" style="min-height:260px;font-family:ui-monospace,Menlo,monospace;font-size:11px"></textarea>'+
+    '<div class="row" style="margin-top:10px"><button class="btn y" id="seqCopy">Copy</button>'+
+    '<button class="btn" id="seqDl">Download this engine</button>'+
+    '<button class="btn" id="seqDlAll">Download all engines</button></div>');
+  const paint=()=>{ $('seqText').value=sequencePrompts(eng);
+    [...document.querySelectorAll('#modal .pstab')].forEach(t=>t.classList.toggle('on',t.dataset.e===eng)); };
+  [...document.querySelectorAll('#modal .pstab')].forEach(t=>t.onclick=()=>{eng=t.dataset.e;paint();});
+  paint();
+  $('seqCopy').onclick=()=>{navigator.clipboard.writeText($('seqText').value);toast('Sequence copied');};
+  $('seqDl').onclick=()=>downloadText($('seqText').value,'gmapz_sequence_'+eng+'.txt');
+  $('seqDlAll').onclick=()=>downloadText(Object.keys(ENGINES).map(k=>sequencePrompts(k)).join('\n\n\n'),'gmapz_sequence_all_engines.txt');
+}
+$('scenePrompt').onclick=openSequenceStudio;
 
 function reportPage(entry,i,total){
   const sp=entry.spec, c=sp.camera, lt=sp.light, lk=sp.look, dl=sp.delivery;
@@ -2962,7 +3046,7 @@ buildRail();
 window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN,
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
-  renderThumbs,nextStation,refreshPathVisuals,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
+  renderThumbs,nextStation,refreshPathVisuals,sequencePrompts,ctxFromSpec,openSequenceStudio,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
