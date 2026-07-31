@@ -405,6 +405,17 @@ function loadCesiumFallback(){
   .popt{display:flex;gap:4px;margin-top:7px;}
   .beatsel{width:auto;flex:none;padding:2px 16px 2px 6px;font-size:9.5px;border-radius:5px;
     background-position:0 0,right 4px center;background-size:100% 100%,7px 5px;}
+  .pcast{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px;}
+  .cchip{appearance:none;font-family:inherit;font-size:9px;line-height:1;padding:3px 6px;border-radius:5px;cursor:pointer;
+    background:#111114;border:1px solid var(--line);color:#52525b;transition:.12s;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cchip.on{background:#132018;border-color:rgba(52,211,153,.55);color:var(--emerald);}
+  .cchip:hover{border-color:var(--yellow);}
+  .pcol{flex:none;width:24px;height:24px;padding:0;border:1px solid var(--line2);border-radius:6px;
+    background:none;cursor:pointer;}
+  .pcol::-webkit-color-swatch-wrapper{padding:2px;}
+  .pcol::-webkit-color-swatch{border:none;border-radius:4px;}
+  .pcol::-moz-color-swatch{border:none;border-radius:4px;}
   .popt select{flex:1;min-width:0;padding:4px 18px 4px 7px;font-size:10px;border-radius:6px;
     background-position:0 0,right 5px center;background-size:100% 100%,8px 6px;}
   #pathSummary{display:none;align-items:center;gap:8px;margin:8px 0 4px;padding:8px 10px;border-radius:9px;
@@ -600,16 +611,19 @@ function loadCesiumFallback(){
         <div class="row"><button class="btn on" id="autoFrameBtn" title="Give a station a sensible setup when it has none of its own. Turn off to keep your framing everywhere.">Auto-frame: ON</button></div>
         <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every station</button></div>
         <div class="row"><button class="btn g" id="buildShotBtn">Build shot (start + end + spec)</button></div>
+        <label class="fld">Sequence presets &mdash; keep this move, lay it anywhere</label>
+        <div class="row"><input id="seqName" type="text" placeholder="Name it — e.g. Marina drone run"><button class="btn sm" id="saveSeqBtn" style="flex:none;width:50px">Save</button></div>
+        <div class="list" id="seqList"></div>
       </div>
     </details>
 
     <details class="sec"><summary>Director — auto-coverage <span class="ico">&#9656;</span></summary>
       <div class="body">
-        <label class="fld">Coverage recipe (plans setups around your framing)</label>
+        <label class="fld">Recipe &mdash; a sequence someone already blocked</label>
         <div class="chips" id="coverage"></div>
         <div class="mini" id="covIntent"></div>
         <div id="covPlan"></div>
-        <div class="mini" id="covHint">Pick a recipe: it plans a matched set of setups around your current target. Preview each one, toggle any off, then roll — every shot lands in the sequence with your locked light.</div>
+        <div class="mini" id="covHint">A recipe is a head start, not a rule. Pick one, preview any setup, toggle off what you don&rsquo;t want &mdash; then plot it as dots on the path. With a path already down it only fills points you haven&rsquo;t set. Rolling always happens on the path.</div>
       </div>
     </details>
 
@@ -745,14 +759,15 @@ const COVERAGE={
     {name:'Low hero',size:'medium',angle:'low',lens:50,dHead:180,move:'push-in'}]}
 };
 const CAMERA_TYPES={
-  drone:    {label:'\ud83d\udef8 Drone',     feel:'smooth aerial drone shot, gentle float, no jitter, cinematic stability',           defaultAlt:120, glyph:'\ud83d\udef8'},
-  handheld: {label:'\ud83d\udcf9 Handheld',  feel:'handheld camera, subtle natural shake, lived-in framing, organic motion',          defaultAlt:1.6, glyph:'\ud83d\udcf9'},
-  dolly:    {label:'\ud83c\udfac Dolly',     feel:'dolly track move, perfectly smooth lateral or in-and-out motion, locked horizon', defaultAlt:1.6, glyph:'\ud83c\udfac'},
-  crane:    {label:'\u2728 Crane',           feel:'crane move, sweeping vertical arc, controlled tilt change, epic scale reveal',    defaultAlt:8,   glyph:'\u2728'},
-  steady:   {label:'\ud83d\udeb6 Steadicam', feel:'steadicam follow, fluid floating motion, perfectly smoothed walking pace',         defaultAlt:1.6, glyph:'\ud83d\udeb6'},
-  fpv:      {label:'\u26a1 FPV',             feel:'first-person view drone, fast aggressive motion, dynamic banking, immersive',     defaultAlt:30,  glyph:'\u26a1'},
-  locked:   {label:'\ud83d\udd12 Locked',    feel:'locked-off tripod, no camera motion, only world moves through frame',              defaultAlt:1.6, glyph:'\ud83d\udd12'}
+  drone:    {label:'\ud83d\udef8 Drone',     feel:'smooth aerial drone shot, gentle float, no jitter, cinematic stability',           defaultAlt:120, glyph:'\ud83d\udef8', color:'#60a5fa'},
+  handheld: {label:'\ud83d\udcf9 Handheld',  feel:'handheld camera, subtle natural shake, lived-in framing, organic motion',          defaultAlt:1.6, glyph:'\ud83d\udcf9', color:'#fb923c'},
+  dolly:    {label:'\ud83c\udfac Dolly',     feel:'dolly track move, perfectly smooth lateral or in-and-out motion, locked horizon', defaultAlt:1.6, glyph:'\ud83c\udfac', color:'#a78bfa'},
+  crane:    {label:'\u2728 Crane',           feel:'crane move, sweeping vertical arc, controlled tilt change, epic scale reveal',    defaultAlt:8,   glyph:'\u2728', color:'#f472b6'},
+  steady:   {label:'\ud83d\udeb6 Steadicam', feel:'steadicam follow, fluid floating motion, perfectly smoothed walking pace',         defaultAlt:1.6, glyph:'\ud83d\udeb6', color:'#34d399'},
+  fpv:      {label:'\u26a1 FPV',             feel:'first-person view drone, fast aggressive motion, dynamic banking, immersive',     defaultAlt:30,  glyph:'\u26a1', color:'#facc15'},
+  locked:   {label:'\ud83d\udd12 Locked',    feel:'locked-off tripod, no camera motion, only world moves through frame',              defaultAlt:1.6, glyph:'\ud83d\udd12', color:'#a1a1aa'}
 };
+const plainType=t=>(CAMERA_TYPES[t]||CAMERA_TYPES.drone).label.replace(/^\W+\s*/,'');
 const PRESETS=[
   ['Marina City, Chicago',-87.6345,41.8885],['Times Square, NYC',-73.9855,40.7580],
   ['Griffith Observatory',-118.3004,34.1184],['Golden Gate',-122.4783,37.8199],
@@ -910,10 +925,14 @@ function promptBundleText(texts){
 function flashBtn(b,msg){const o=b.textContent;b.textContent=msg;setTimeout(()=>{b.textContent=o;},1200);}
 function motionFromPath(){
   if(!S.path||S.path.points.length<2)return null;
-  const ct=CAMERA_TYPES[S.path.cameraType];
   const pN=S.path.points[S.path.points.length-1];
   const compass8=['N','NE','E','SE','S','SW','W','NW'][Math.round(bearingDeg(S.path.points[0],pN)/45)%8];
-  return ct.feel+', traveling '+Math.round(pathLengthMeters(S.path))+'m '+compass8+' over '+S.pathDuration+'s between the supplied start and end frames, locked to real geography';
+  // If every point rides the same rig, say it once. If they differ, say how it hands over.
+  const types=S.path.points.map((_,i)=>pointCamType(i));
+  const uniq=[...new Set(types)];
+  const feel=uniq.length===1?CAMERA_TYPES[uniq[0]].feel
+    :CAMERA_TYPES[types[0]].feel+', handing off to '+uniq.slice(1).map(t=>plainType(t).toLowerCase()).join(' then ');
+  return feel+', traveling '+Math.round(pathLengthMeters(S.path))+'m '+compass8+' over '+S.pathDuration+'s between the supplied start and end frames, locked to real geography';
 }
 let PS=null;
 function openPromptStudio(cap,motion,title){
@@ -1277,7 +1296,7 @@ function clearPathEntities(){
 function startPath(lon,lat){
   if(S.path)clearPath();
   const ct=CAMERA_TYPES[S.cameraType];
-  S.path={cameraType:S.cameraType,points:[{lon,lat,alt:ct.defaultAlt}]};
+  S.path={cameraType:S.cameraType,points:[{lon,lat,alt:ct.defaultAlt,ct:S.cameraType}]};
   pathEntities.start=viewer.entities.add({
     position:Cesium.Cartesian3.fromDegrees(lon,lat,ct.defaultAlt),
     point:{pixelSize:14,color:Cesium.Color.fromCssColorString('#facc15'),outlineColor:Cesium.Color.BLACK,outlineWidth:2,disableDepthTestDistance:Number.POSITIVE_INFINITY},
@@ -1292,7 +1311,7 @@ function startPath(lon,lat){
 function addPathPoint(lon,lat,isEnd){
   if(!S.path)return;
   const ct=CAMERA_TYPES[S.cameraType];
-  S.path.points.push({lon,lat,alt:ct.defaultAlt});
+  S.path.points.push({lon,lat,alt:ct.defaultAlt,ct:S.cameraType});
   if(isEnd){
     if(pathEntities.end)viewer.entities.remove(pathEntities.end);
     pathEntities.end=viewer.entities.add({
@@ -1322,17 +1341,20 @@ function refreshPathVisuals(){
   if(!S.path||!pathEntities.pts.length)return;
   const C=Cesium.Color;
   const emerald=C.fromCssColorString('#34d399'), yellow=C.fromCssColorString('#facc15'),
-        open=C.fromCssColorString('#fb923c');
+        dark=C.fromCssColorString('#0a0a0a');
   S.path.points.forEach((p,i)=>{
     const e=pathEntities.pts[i]; if(!e)return;
     const active=STN.active===i;
+    // Fill = which rig shoots this point (or the colour you picked). Ring = its state.
     if(e.point){
-      e.point.color=p.locked?emerald:(active?yellow:open);
-      e.point.pixelSize=active?15:(p.locked?12:9);
+      e.point.color=C.fromCssColorString(pointColor(i));
+      e.point.outlineColor=active?yellow:(p.locked?emerald:dark);
+      e.point.outlineWidth=active?3:(p.locked?2.5:1.5);
+      e.point.pixelSize=active?16:(p.locked?13:10);
     }
     if(e.label){
       const tag=p.cam?framingSummary(p.cam).split(' · ').slice(0,2).join(' · '):stationLabel(i);
-      e.label.text=(i+1)+' \u00b7 '+tag+(p.locked?'  \u2713':'');
+      e.label.text=(i+1)+' '+pointCam(i).glyph+' '+tag+(p.locked?'  \u2713':'');
       e.label.fillColor=p.locked?emerald:(active?yellow:C.WHITE);
     }
   });
@@ -1343,9 +1365,36 @@ function redrawPathLine(){
   const positions=S.path.points.map(p=>Cesium.Cartesian3.fromDegrees(p.lon,p.lat,p.alt));
   pathEntities.line=viewer.entities.add({polyline:{positions,width:4,material:pathColorRed(),clampToGround:false,arcType:Cesium.ArcType.GEODESIC}});
 }
+// Rebuild every dot on the map from S.path.points. Anything that creates a sequence
+// wholesale — a recipe, a saved preset — goes through here rather than faking clicks.
+function rebuildPathEntities(){
+  clearPathEntities();
+  if(!S.path||!S.path.points.length)return;
+  S.path.points.forEach((p,i)=>{
+    pathEntities.pts.push(viewer.entities.add({
+      position:Cesium.Cartesian3.fromDegrees(p.lon,p.lat,p.alt||0),
+      point:{pixelSize:10,color:Cesium.Color.fromCssColorString(pointColor(i)),
+        outlineColor:Cesium.Color.BLACK,outlineWidth:2,disableDepthTestDistance:Number.POSITIVE_INFINITY},
+      label:{text:'',font:'600 10px ui-monospace,monospace',fillColor:Cesium.Color.WHITE,showBackground:true,
+        backgroundColor:Cesium.Color.fromCssColorString('#000000bb'),pixelOffset:new Cesium.Cartesian2(0,-18),
+        verticalOrigin:Cesium.VerticalOrigin.BOTTOM,scale:.9,disableDepthTestDistance:Number.POSITIVE_INFINITY}
+    }));
+  });
+  pathEntities.start=pathEntities.pts[0]||null;
+  pathEntities.end=pathEntities.pts.length>1?pathEntities.pts[pathEntities.pts.length-1]:null;
+  pathEntities.waypoints=pathEntities.pts.slice(1,-1);
+  redrawPathLine(); refreshPathVisuals();
+}
+// Move a lat/lon a given number of metres along a compass bearing.
+function offsetLatLon(lat,lon,brg,metres){
+  const R=6378137, d=metres/R, b=brg*Math.PI/180, la=lat*Math.PI/180, lo=lon*Math.PI/180;
+  const la2=Math.asin(Math.sin(la)*Math.cos(d)+Math.cos(la)*Math.sin(d)*Math.cos(b));
+  const lo2=lo+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(la),Math.cos(d)-Math.sin(la)*Math.sin(la2));
+  return {lat:la2*180/Math.PI, lon:((lo2*180/Math.PI+540)%360)-180};
+}
 function clearPath(){
   clearPathEntities(); S.path=null; S.pathMode=false; STN.active=-1;
-  S.markers.forEach(m=>{m.travels=false;}); renderMarkerList();
+  S.markers.forEach(m=>{m.travels=false;}); showAllCast(); renderMarkerList();
   if(S.shots.some(s=>s.stationIdx!==undefined)){ S.shots=S.shots.filter(s=>s.stationIdx===undefined); renderShots(); }
   $('pathMode').textContent='Draw path: OFF'; $('pathMode').classList.remove('on'); renderPathList();
 }
@@ -1358,6 +1407,29 @@ $('pathMode').onclick=()=>{
 // place cast, then lock the shot. Locked stations live in the normal shot sequence,
 // so the Take player, video export and every handoff pick them up for free.
 const STN={active:-1};
+// A point owns its camera. The path's type is only the default a new point inherits,
+// so "pt 1 is a tracking drone, pt 4 is handheld at eye level" is expressible.
+const pointCamType=i=>{const p=S.path&&S.path.points[i];return (p&&p.ct)||(S.path&&S.path.cameraType)||S.cameraType;};
+const pointCam=i=>CAMERA_TYPES[pointCamType(i)]||CAMERA_TYPES.drone;
+const pointColor=i=>{const p=S.path&&S.path.points[i];return (p&&p.color)||pointCam(i).color;};
+// Changing a point's camera changes its height — that's what a drone or a handheld IS.
+// Lens, size and angle are your choices and are left alone. A locked point is not touched.
+function setStationCamType(i,t){
+  const p=S.path&&S.path.points[i]; if(!p||!CAMERA_TYPES[t])return;
+  p.ct=t;
+  if(p.locked){ renderPathList(); toast('Point '+(i+1)+' reads as '+plainType(t)+' \u2014 framing untouched, it\u2019s locked'); return; }
+  const f=p.cam||stationDefaultFraming(i);
+  f.range=Math.max(60,Math.round(CAMERA_TYPES[t].defaultAlt*4));
+  p.cam=f; p.alt=CAMERA_TYPES[t].defaultAlt;
+  if(STN.active===i){ applyFraming(f); flyToParams(0.6); syncCamUI(); }
+  renderPathList(); redrawPathLine();
+  toast('Point '+(i+1)+' is a '+plainType(t)+' \u2014 height set, your lens and angle kept');
+}
+function setStationColor(i,c){
+  const p=S.path&&S.path.points[i]; if(!p)return;
+  if(c)p.color=c; else delete p.color;
+  renderPathList();
+}
 const stationTilt=t=>({drone:-35,fpv:-25,crane:-20,handheld:-8,dolly:-8,steady:-8,locked:-8})[t]||-12;
 function stationLabel(i){ const n=S.path?S.path.points.length:0;
   return i===0?'Start':(i===n-1?'End':'Waypoint '+i); }
@@ -1378,6 +1450,35 @@ function travelCast(i){
   return moved;
 }
 function travellerCount(){ return S.markers.filter(m=>m.travels).length; }
+// Who is in frame at a given dot. No list on the dot means everybody — a dot only
+// starts carrying a cast list the moment you switch someone off at it.
+function stationCast(i){
+  const p=S.path&&S.path.points[i];
+  return (p&&Array.isArray(p.cast))?p.cast:null;
+}
+function markerInStation(i,id){ const c=stationCast(i); return c?c.indexOf(id)>=0:true; }
+function applyStationCast(i){
+  const c=stationCast(i);
+  S.markers.forEach(m=>{
+    const on=c?c.indexOf(m.id)>=0:true;
+    const e=viewer.entities.getById(m.id); if(e)e.show=on;
+    const sh=viewer.entities.getById('sh_'+m.id);
+    if(sh){ if(on)syncShadow(m); else sh.show=false; }
+  });
+}
+// Everyone visible again — used when you leave the path or clear it.
+function showAllCast(){ S.markers.forEach(m=>{ const e=viewer.entities.getById(m.id); if(e)e.show=true; }); syncAllMarkerVisuals(); }
+function toggleStationCast(i,id){
+  const p=S.path&&S.path.points[i]; if(!p)return;
+  if(!Array.isArray(p.cast))p.cast=S.markers.map(m=>m.id);   // first change materialises the list
+  const at=p.cast.indexOf(id);
+  if(at>=0)p.cast.splice(at,1); else p.cast.push(id);
+  if(p.cast.length===S.markers.length)delete p.cast;          // back to "everyone"
+  if(STN.active===i)applyStationCast(i);
+  renderPathList();
+  const m=S.markers.find(x=>x.id===id);
+  toast('\u201c'+(m?m.shotType:'stand-in')+'\u201d '+(markerInStation(i,id)?'is in':'is out of')+' point '+(i+1));
+}
 function toggleTravel(id){
   const m=S.markers.find(x=>x.id===id); if(!m)return;
   if(!S.path&&!m.travels){toast('Plot a camera path first — then cast can ride it');return;}
@@ -1416,8 +1517,8 @@ function applyFraming(f){
   applyFov(); repaintFramingChips();
 }
 function stationDefaultFraming(i){
-  const ct=CAMERA_TYPES[S.path.cameraType];
-  return {head:stationHeading(i),tilt:stationTilt(S.path.cameraType),
+  const ct=pointCam(i);
+  return {head:stationHeading(i),tilt:stationTilt(pointCamType(i)),
     range:Math.max(60,Math.round(ct.defaultAlt*4)),fov:S.fov,lensMm:S.lensMm,
     sensor:S.sensor,roll:0,shotSize:S.shotSize,angle:S.angle};
 }
@@ -1445,14 +1546,14 @@ function saveStationFraming(i){
 }
 function flyToStation(i,quiet){
   if(!S.path||!S.path.points[i])return;
-  const p=S.path.points[i], ct=CAMERA_TYPES[S.path.cameraType];
+  const p=S.path.points[i], ct=pointCam(i);
   STN.active=i;
-  travelCast(i);
+  travelCast(i); applyStationCast(i);
   S.target={lat:p.lat,lon:p.lon};
   let how;
   if(p.cam){ applyFraming(p.cam); how='your framing'; }
   else if(S.autoFrame){
-    S.head=stationHeading(i); S.tilt=stationTilt(S.path.cameraType);
+    S.head=stationHeading(i); S.tilt=stationTilt(pointCamType(i));
     S.range=Math.max(60,Math.round(ct.defaultAlt*4));
     how='auto-framed for '+ct.label.replace(/^\W+\s/,'');
   } else how='your current framing';
@@ -1461,14 +1562,18 @@ function flyToStation(i,quiet){
 }
 function lockStation(i){
   if(!S.path||!S.path.points[i])return;
-  const p=S.path.points[i], ct=CAMERA_TYPES[S.path.cameraType];
-  travelCast(i); // the frame must match the station, even if Lock was clicked directly
+  const p=S.path.points[i], ct=pointCam(i);
+  travelCast(i); applyStationCast(i); // the frame must match the station, even if Lock was clicked directly
   const wasQuiet=S._quiet; S._quiet=true;
   const cap=capture(false);
   S._quiet=wasQuiet;
   if(!cap.url)return;
   const spec=buildSpec(cap.id,'path');
-  const name='Pt '+(i+1)+' — '+stationLabel(i)+' · '+ct.label.replace(/^\W+\s/,'');
+  spec.camera.camera_type=pointCamType(i);   // the spec says which rig shot this point
+  spec.camera.rig_feel=ct.feel;
+  // the frame is the truth: only list who was actually visible when the shutter fired
+  if(stationCast(i))spec.subjects=spec.subjects.filter(s=>markerInStation(i,s.id));
+  const name='Pt '+(i+1)+' — '+stationLabel(i)+' · '+plainType(pointCamType(i));
   const entry={name,spec,thumb:cap.url,move:'path',stationIdx:i};
   const at=S.shots.findIndex(s=>s.stationIdx===i);
   pushUndo({type:'shot'});
@@ -1527,19 +1632,22 @@ function syncPathPanelMode(){
   const show=!has||pathSetupOpen;
   setup.style.display=show?'':'none';
   sum.style.display=has?'flex':'none';
-  if(has){ const ct=CAMERA_TYPES[S.path.cameraType];
-    $('pathSummaryTxt').textContent=ct.label+' \u00b7 '+S.pathDuration.toFixed(1)+'s \u00b7 '+S.path.points.length+' points';
+  if(has){ const ct=CAMERA_TYPES[S.cameraType]||CAMERA_TYPES.drone;
+    $('pathSummaryTxt').textContent='New dots arrive as '+ct.label+' \u00b7 move runs '+S.pathDuration.toFixed(1)+'s';
     $('pathEdit').textContent=pathSetupOpen?'Done':'Edit'; }
 }
 function renderPathList(){
   refreshPathVisuals(); syncPathPanelMode();
   const L=$('pathList'); if(!L)return; L.innerHTML='';
   if(!S.path){return;}
-  const ct=CAMERA_TYPES[S.path.cameraType], pts=S.path.points;
+  const pts=S.path.points;
   const head=document.createElement('div'); head.className='item';
   const done=pts.filter(p=>p.locked).length;
   const tv=travellerCount();
-  head.innerHTML='<div class="t"><span>'+ct.label+' <span class="tag">'+pts.length+' point'+(pts.length===1?'':'s')+'</span>'+
+  const rigs=[...new Set(pts.map((_,i)=>pointCamType(i)))];
+  const rigLabel=rigs.length===1?CAMERA_TYPES[rigs[0]].label
+    :rigs.map(t=>CAMERA_TYPES[t].glyph).join('')+' '+rigs.length+' rigs';
+  head.innerHTML='<div class="t"><span>'+rigLabel+' <span class="tag">'+pts.length+' point'+(pts.length===1?'':'s')+'</span>'+
     (tv?' <span class="tag tvon ridechip" title="Select the cast riding this path">\u2192 '+tv+' cast riding</span>':'')+'</span>'+
     '<span class="tag">'+(done?done+'/'+pts.length+' locked':S.pathDuration.toFixed(1)+'s')+'</span></div>';
   const rc=head.querySelector('.ridechip');
@@ -1557,7 +1665,13 @@ function renderPathList(){
     d.className='item pstn'+(STN.active===i?' act':'')+(p.locked?' done':'');
     const shot=S.shots.find(s=>s.stationIdx===i);
     d.innerHTML='<div class="t"><span style="display:flex;align-items:center"><b class="pnum">'+(i+1)+'</b>'+
-      stationLabel(i)+'</span><span class="pst">'+(p.locked?'\u2713 locked':(p.cam?'set':'open'))+'</span></div>'+
+      (p.recipe?escapeHtml(p.recipe.split(' \u00b7 ').slice(-1)[0]):stationLabel(i))+'</span><span class="pst">'+(p.locked?'\u2713 locked':(p.cam?'set':'open'))+'</span></div>'+
+      '<div class="popt">'+
+        '<input class="pcol" type="color" value="'+pointColor(i)+'" title="Dot colour \u2014 follows the camera type until you pick one. Shift-click to put it back.">'+
+        '<select class="psct" title="Which rig shoots this point">'+
+          Object.entries(CAMERA_TYPES).map(([k,v])=>'<option value="'+k+'"'+(pointCamType(i)===k?' selected':'')+'>'+v.glyph+' '+plainType(k)+'</option>').join('')+
+        '</select>'+
+      '</div>'+
       '<div class="popt">'+
         '<select class="pssize" title="Shot size for this point">'+
           Object.entries(SHOT_SIZES).map(([k,v])=>'<option value="'+k+'"'+((p.cam?p.cam.shotSize:S.shotSize)===k?' selected':'')+'>'+v.label+'</option>').join('')+
@@ -1569,6 +1683,10 @@ function renderPathList(){
           Object.keys(ANGLES).map(a=>'<option value="'+a+'"'+((p.cam?p.cam.angle:S.angle)===a?' selected':'')+'>'+a+'</option>').join('')+
         '</select>'+
       '</div>'+
+      (S.markers.length?'<div class="pcast">'+S.markers.map(m=>
+          '<button class="cchip'+(markerInStation(i,m.id)?' on':'')+'" data-id="'+m.id+'" title="'+
+          escapeHtml(m.shotType)+' \u2014 click to put them in or out of this point">'+
+          escapeHtml(m.shotType.slice(0,10))+'</button>').join('')+'</div>':'')+
       '<div class="prow">'+(shot&&shot.thumb?'<img class="pthumb" src="'+shot.thumb+'">':'')+
       '<button class="btn sm pfly">Fly here</button>'+
       '<button class="btn sm'+(STN.active===i&&!p.locked?' y':'')+' plock">'+(p.locked?'Re-lock':'Lock shot')+'</button>'+
@@ -1577,6 +1695,13 @@ function renderPathList(){
     d.querySelector('.pfly').onclick=e=>{e.stopPropagation();flyToStation(i);};
     d.querySelector('.plock').onclick=e=>{e.stopPropagation();lockStation(i);};
     d.querySelector('.psave').onclick=e=>{e.stopPropagation();saveStationFraming(i);};
+    [...d.querySelectorAll('.cchip')].forEach(b=>{
+      b.onclick=e=>{e.stopPropagation();toggleStationCast(i,b.dataset.id);}; });
+    d.querySelector('.psct').onchange=e=>{e.stopPropagation();setStationCamType(i,e.target.value);};
+    const col=d.querySelector('.pcol');
+    col.onclick=e=>{ e.stopPropagation();
+      if(e.shiftKey){ e.preventDefault(); setStationColor(i,null); toast('Point '+(i+1)+' back to its camera-type colour'); } };
+    col.oninput=e=>{e.stopPropagation();setStationColor(i,e.target.value);};
     d.querySelector('.pssize').onchange=e=>{e.stopPropagation();setStationOpt(i,'shotSize',e.target.value);};
     d.querySelector('.pslens').onchange=e=>{e.stopPropagation();setStationOpt(i,'lensMm',e.target.value);};
     d.querySelector('.psang').onchange=e=>{e.stopPropagation();setStationOpt(i,'angle',e.target.value);};
@@ -1587,6 +1712,7 @@ function renderPathList(){
     d.ondragleave=()=>d.classList.remove('dragover');
     d.ondrop=ev=>{ ev.preventDefault(); ev.stopPropagation(); d.classList.remove('dragover');
       const data=ev.dataTransfer.getData('text/plain')||'';
+      if(data.indexOf('cam:')===0){ setStationCamType(i,data.slice(4)); return; }
       if(data.indexOf('shotopt:')!==0)return;
       const [,kind,val]=data.split(':');
       setStationOpt(i,kind==='lens'?'lensMm':(kind==='size'?'shotSize':'angle'),val);
@@ -1598,6 +1724,79 @@ renderPathList();
 function paintSensorChips(){paintChips('sensor',Object.entries(SENSORS).map(([k,v])=>[v.name,k]),S.sensor,v=>{S.sensor=v;S.fov=lensToFov(S.lensMm);applyFov();syncCamUI();toast('Film back: '+SENSORS[v].name);});}
 paintSensorChips();
 paintChips('coverage',Object.entries(COVERAGE).map(([k,v])=>[v.label,k]),null,v=>planCoverage(v));
+// ---- Sequence presets -------------------------------------------------------
+// Stored relative to point 1 and to the heading the move was blocked at, so a preset
+// is a SHAPE rather than a set of coordinates. Load it at a new place and the same
+// move re-lays itself, rotated to face wherever you're looking now.
+const SEQKEY='gmapz_seq_presets';
+function loadSeqPresets(){ try{ return JSON.parse(localStorage.getItem(SEQKEY)||'[]'); }catch(_){ return []; } }
+function storeSeqPresets(a){ try{ localStorage.setItem(SEQKEY,JSON.stringify(a)); }catch(_){ toast('Browser storage is full \u2014 preset not saved'); } }
+function seqBaseHead(){
+  const p=S.path&&S.path.points[0];
+  return (p&&p.cam&&typeof p.cam.head==='number')?p.cam.head:S.head;
+}
+function saveSeqPreset(name){
+  if(!S.path||S.path.points.length<1){toast('Plot a sequence first');return;}
+  const pts=S.path.points, p0=pts[0], base=seqBaseHead();
+  const preset={id:'seq'+Date.now(), name:name||('Sequence '+(loadSeqPresets().length+1)),
+    created:new Date().toISOString(), baseHead:base, cameraType:S.path.cameraType,
+    duration:S.pathDuration,
+    points:pts.map((p,i)=>({
+      dist:i===0?0:Math.round(haversineMeters(p0,p)*100)/100,
+      brg:i===0?0:Math.round(bearingDeg(p0,p)*100)/100,
+      alt:p.alt||0, ct:p.ct||S.path.cameraType, color:p.color||null,
+      recipe:p.recipe||null,
+      cam:p.cam?{...p.cam}:null   // absolute head here; rotated on load
+    }))};
+  const all=loadSeqPresets(); all.unshift(preset); storeSeqPresets(all.slice(0,24));
+  renderSeqPresets();
+  toast('Saved \u201c'+preset.name+'\u201d \u2014 '+preset.points.length+' dots, rig and framing on each');
+}
+function applySeqPreset(id){
+  const pre=loadSeqPresets().find(p=>p.id===id); if(!pre)return;
+  const rot=((S.head-(pre.baseHead||0))%360+360)%360;   // face where you're looking now
+  const t={lat:S.target.lat,lon:S.target.lon};
+  clearPath();
+  S.path={cameraType:pre.cameraType||'drone',points:pre.points.map(p=>{
+    const at=p.dist?offsetLatLon(t.lat,t.lon,p.brg+rot,p.dist):{lat:t.lat,lon:t.lon};
+    const pt={lon:at.lon,lat:at.lat,alt:p.alt||0,ct:p.ct};
+    if(p.color)pt.color=p.color;
+    if(p.recipe)pt.recipe=p.recipe;
+    if(p.cam){ pt.cam={...p.cam, head:((p.cam.head+rot)%360+360)%360}; }
+    return pt;
+  })};
+  if(pre.duration)S.pathDuration=pre.duration;
+  S.pathMode=false; STN.active=-1;
+  $('pathMode').textContent='Draw path: OFF'; $('pathMode').classList.remove('on');
+  rebuildPathEntities(); renderPathList(); openSectionByLabel('Path');
+  toast('\u201c'+pre.name+'\u201d laid down here \u2014 '+pre.points.length+' dots, rotated '+Math.round(rot)+'\u00b0 to your heading. Nothing is locked yet.');
+}
+function deleteSeqPreset(id){
+  storeSeqPresets(loadSeqPresets().filter(p=>p.id!==id)); renderSeqPresets(); toast('Preset deleted');
+}
+function renderSeqPresets(){
+  const L=$('seqList'); if(!L)return; L.innerHTML='';
+  const all=loadSeqPresets();
+  if(!all.length){ L.innerHTML='<div class="mini">Plot a sequence, then save it here. A preset keeps the shape and every dot\u2019s shot \u2014 load it at any place and it re-lays facing your heading.</div>'; return; }
+  all.forEach(p=>{
+    const rigs=[...new Set(p.points.map(x=>x.ct))].map(t=>(CAMERA_TYPES[t]||{glyph:'\u2022'}).glyph).join('');
+    const d=document.createElement('div'); d.className='item';
+    d.innerHTML='<div class="t"><span>'+rigs+' '+escapeHtml(p.name)+'</span>'+
+      '<span style="display:flex;align-items:center;gap:6px;flex:none">'+
+      '<span class="tag">'+p.points.length+' dots</span><span class="x">&times;</span></span></div>';
+    d.querySelector('.x').onclick=e=>{e.stopPropagation();
+      if(confirm('Delete preset \u201c'+p.name+'\u201d?'))deleteSeqPreset(p.id);};
+    d.onclick=()=>{
+      if(S.path&&S.path.points.length&&!confirm('Replace the sequence on the map with \u201c'+p.name+'\u201d?'))return;
+      applySeqPreset(p.id);
+    };
+    d.title='Lay this sequence down at whatever you\u2019re framing now';
+    L.appendChild(d);
+  });
+}
+$('saveSeqBtn').onclick=()=>{ saveSeqPreset($('seqName').value.trim()); $('seqName').value=''; };
+$('seqName').onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();$('saveSeqBtn').click();} };
+renderSeqPresets();
 function waitForTiles(maxMs){
   return new Promise(res=>{
     const start=performance.now(); let idle=0;
@@ -1718,10 +1917,61 @@ function renderCovPlan(){
   box.appendChild(wrap);
   const armed=COV.plan.steps.filter(s=>s.on).length;
   const row=document.createElement('div'); row.className='row';
-  row.innerHTML='<button class="btn g" id="rollBtn">● Roll coverage — '+armed+' setup'+(armed===1?'':'s')+'</button><button class="btn sm" id="covClear" style="flex:none;width:56px">Clear</button>';
+  const anyOpen=S.path?S.path.points.filter(p=>!p.locked&&!p.cam).length:0;
+  row.innerHTML='<button class="btn g" id="rollBtn">\u2295 '+(S.path&&S.path.points.length
+      ?'Fill '+anyOpen+' open point'+(anyOpen===1?'':'s')
+      :'Plot as sequence \u2014 '+armed+' dot'+(armed===1?'':'s'))+
+    '</button><button class="btn sm" id="covClear" style="flex:none;width:56px">Clear</button>';
   box.appendChild(row);
-  $('rollBtn').onclick=rollCoverage;
+  $('rollBtn').onclick=()=>plotRecipe(COV.plan.key);
   $('covClear').onclick=()=>{COV.plan=null;renderCovPlan();paintChips('coverage',Object.entries(COVERAGE).map(([k,v])=>[v.label,k]),null,v=>planCoverage(v));};
+}
+// A recipe move implies a rig. It's a suggestion the dot then owns and you can change.
+const MOVE_RIG={'static':'locked','push-in':'dolly','pull-out':'dolly','orbit L':'steady','orbit R':'steady','crane down':'crane'};
+function recipeFraming(st,baseHead){
+  return {head:((baseHead+(st.dHead||0))%360+360)%360, tilt:ANGLES[st.angle], range:SHOT_SIZES[st.size].r,
+    fov:lensToFov(st.lens), lensMm:st.lens, sensor:S.sensor, roll:0, shotSize:st.size, angle:st.angle};
+}
+function armedSteps(key){
+  const cov=COVERAGE[key]; if(!cov)return [];
+  const src=(COV.plan&&COV.plan.key===key)?COV.plan.steps:cov.steps.map(s=>({...s,on:true}));
+  return src.filter(s=>s.on!==false);
+}
+// Plot the recipe as dots. No path yet -> lay a fresh sequence. Path already there ->
+// fill only the points that are open (not locked, no framing of their own). Nothing
+// you set is overwritten, ever.
+function plotRecipe(key){
+  const cov=COVERAGE[key]; if(!cov)return;
+  const steps=armedSteps(key);
+  if(!steps.length){toast('Every setup is toggled off \u2014 arm at least one');return;}
+  const baseHead=S.head;
+  if(S.path&&S.path.points.length){
+    const open=S.path.points.map((p,i)=>({p,i})).filter(x=>!x.p.locked&&!x.p.cam);
+    if(!open.length){ toast('Every point already has a shot of its own \u2014 the recipe left them alone'); return; }
+    open.forEach((x,k)=>{
+      const st=steps[k%steps.length];
+      x.p.cam=recipeFraming(st,baseHead);
+      x.p.ct=MOVE_RIG[st.move]||x.p.ct||S.path.cameraType;
+      x.p.recipe=cov.label+' \u00b7 '+st.name;
+      if(st.grade)S.grade=st.grade;
+    });
+    renderPathList(); syncCamUI();
+    toast(cov.label+' filled '+open.length+' open point'+(open.length===1?'':'s')+' \u2014 your locked points were left alone');
+  } else {
+    // Fan the dots a few metres apart so each is separately visible and draggable.
+    // At these shot ranges the offset does not change what any of them frames.
+    const t=S.target;
+    S.path={cameraType:MOVE_RIG[steps[0].move]||'locked',points:steps.map((st,k)=>{
+      const off=offsetLatLon(t.lat,t.lon,baseHead+90,(k-(steps.length-1)/2)*6);
+      return {lon:off.lon,lat:off.lat,alt:0,ct:MOVE_RIG[st.move]||'locked',
+        cam:recipeFraming(st,baseHead),recipe:cov.label+' \u00b7 '+st.name};
+    })};
+    S.pathMode=false; STN.active=-1;
+    $('pathMode').textContent='Draw path: OFF'; $('pathMode').classList.remove('on');
+    rebuildPathEntities(); renderPathList();
+    toast(cov.label+' plotted as '+steps.length+' dots \u2014 drag, retune or delete any of them, then Roll');
+  }
+  openSectionByLabel('Path');
 }
 function applyCovStep(st){
   S.target={...COV.base.target};
@@ -1734,35 +1984,6 @@ function applyCovStep(st){
 function previewCovStep(st,i){
   applyCovStep(st); flyToParams(0.8); applyFov(); syncCamUI();
   toast('Previewing '+(i+1)+'/'+COV.plan.steps.length+' — '+st.name+' (nothing captured yet)');
-}
-async function rollCoverage(){
-  if(!COV.plan)return;
-  const armed=COV.plan.steps.map((s,i)=>({st:s,i})).filter(x=>x.st.on);
-  if(!armed.length){toast('Every setup is toggled off — arm at least one');return;}
-  const cov=COVERAGE[COV.plan.key];
-  const keep={shotSize:S.shotSize,angle:S.angle,fov:S.fov,lensMm:S.lensMm,grade:S.grade,head:S.head,tilt:S.tilt,range:S.range,target:{...S.target}};
-  S._quiet=true;
-  $('slate').style.display='none'; $('rollSlate').classList.add('show');
-  let added=0;
-  for(let n=0;n<armed.length;n++){
-    const {st,i}=armed[n];
-    $('rollInfo').textContent=' '+(n+1)+'/'+armed.length+' — '+st.name+' · '+st.lens+'mm · '+st.move;
-    $('rollFill').style.width=Math.round(n/armed.length*100)+'%';
-    applyCovStep(st); flyToParams(0); applyFov();
-    await waitForTiles(2600);
-    const cap=capture(false); if(!cap.url)continue;
-    st.done=true; if(COV.els[i])COV.els[i].classList.add('done');
-    pushUndo({type:'shot'});
-    S.shots.push({name:cov.label+' — '+st.name,spec:buildSpec(cap.id,st.move),thumb:cap.url,move:st.move});
-    added++;
-  }
-  $('rollFill').style.width='100%';
-  setTimeout(()=>{$('rollSlate').classList.remove('show');$('slate').style.display='';$('rollFill').style.width='0';},650);
-  S._quiet=false;
-  Object.assign(S,{shotSize:keep.shotSize,angle:keep.angle,fov:keep.fov,lensMm:keep.lensMm,grade:keep.grade,head:keep.head,tilt:keep.tilt,range:keep.range,target:keep.target});
-  flyToParams(0.9); syncCamUI(); renderShots(); renderCovPlan();
-  if(added){ openSectionByLabel('Post'); toast('✓ '+cov.label+' coverage in the can — '+added+' shot'+(added===1?'':'s')+' added to the sequence'); }
-  else toast('Coverage couldn’t capture frames — see the capture help that just opened');
 }
 
 $('fovSlider').oninput=e=>{S.fov=+e.target.value;$('fovVal').textContent=S.fov+'\u00b0';applyFov();S.lensMm=fovToLens(S.fov);};
@@ -2477,7 +2698,7 @@ function buildSpec(refId,move){
     light:{date:$('lDate').value,time:$('lTime').value,tz:'UTC',sun_azimuth_deg:+s.az.toFixed(1),sun_elevation_deg:+s.el.toFixed(1),phase:phaseOf(s.el)},
     look:{style:S.style,grade:S.grade,atmosphere:S.atmos,terrain_exaggeration:S.exag},
     delivery:{aspect:S.delivery,resolution:aspectRes(S.delivery)},
-    subjects:S.markers.map(m=>({type:isPersonType(m.type)?'person':(m.type==='vehicle'?'prop':m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:Math.max(0,Math.round((m.height||0)*100)/100)})),
+    subjects:S.markers.map(m=>({id:m.id,type:isPersonType(m.type)?'person':(m.type==='vehicle'?'prop':m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:Math.max(0,Math.round((m.height||0)*100)/100)})),
     scene_description:$('sceneDesc').value, reference_frame:(refId||'scout')+'.png'
   };
 }
@@ -2973,6 +3194,7 @@ function cameraSentence(ctx,sp){
   return move?(move+', framed as '+aan(frame)):('locked off, framed as '+aan(frame)+', minimal drift');
 }
 function sequencePrompts(eng){
+  if(!S.shots.length)return '';   // an empty cut has nothing to say
   const parts=[sequenceHeader(eng)];
   S.shots.forEach((sh,i)=>{
     const ctx=ctxFromSpec(sh.spec);
@@ -3305,10 +3527,13 @@ function togglePanel(){ panelEl.classList.toggle('closed'); if(!panelEl.classLis
 if(tabEl)tabEl.onclick=togglePanel;
 buildRail();
 
-window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
-  flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN,
+window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,plotRecipe,rebuildPathEntities,offsetLatLon,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
+  flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,clearPath,STN,
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
   renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,sequencePrompts,ctxFromSpec,openSequenceStudio,
+  setStationCamType,setStationColor,pointCamType,pointColor,plainType,
+  saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,
+  stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};
 }

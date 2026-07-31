@@ -49,7 +49,9 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
     "sensor_width_mm": 36,
     "shot_size": "medium",
     "angle": "eye",
-    "move": "static"
+    "move": "static",
+    "camera_type": "drone",
+    "rig_feel": "smooth aerial drone shot, gentle float, no jitter, cinematic stability"
   },
 
   "light": {
@@ -65,7 +67,7 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
   "delivery": { "aspect": "2.39:1", "resolution": [2048, 857] },
 
   "subjects": [
-    { "type": "person", "label": "subject", "lng": -87.6346, "lat": 41.8884, "scale": 1, "height_m": 0 }
+    { "id": "m1719360000123", "type": "person", "label": "subject", "lng": -87.6346, "lat": 41.8884, "scale": 1, "height_m": 0 }
   ],
 
   "scene_description": "",
@@ -94,7 +96,9 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
 | `camera.sensor_width_mm` | number | **New in v2.** Drives the lens↔FOV math. |
 | `camera.shot_size` | enum | See §2. |
 | `camera.angle` | enum | See §2. |
-| `camera.move` | string | `static` for stills; coverage rolls write the setup's move (`push-in`, `pull-out`, `orbit L`, `orbit R`, `crane down`); path builds write `path`. |
+| `camera.move` | string | `static` for stills; path shots (including recipe-plotted dots) write `path`. |
+| `camera.camera_type` | enum | **Path shots only.** The rig that shot this dot: `drone` / `handheld` / `dolly` / `crane` / `steady` / `fpv` / `locked`. Set per dot, not per path. |
+| `camera.rig_feel` | string | **Path shots only.** The prose the rig contributes to i2v prompts. Derived from `camera_type`; never authored by hand. |
 | `light.date/time` | string | As entered; pair with `tz`. |
 | `light.tz` | string | Always `UTC` in this build. |
 | `light.sun_azimuth_deg` | number | 0 = north, clockwise. |
@@ -105,7 +109,8 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
 | `look.atmosphere` | enum | Fog density + capture tint. |
 | `delivery.aspect` | enum | The PNG is cropped to this. |
 | `delivery.resolution` | [w,h] | Nominal target res for the aspect. |
-| `subjects[]` | array | One per marker. |
+| `subjects[]` | array | One per marker **that was visible when the shutter fired**. A path dot with its own cast list emits only the stand-ins in that list — the frame is the truth, so the spec never claims someone who wasn't in it. |
+| `subjects[].id` | string | Stable marker id, so a consumer can follow the same stand-in across shots. |
 | `subjects[].type` | string | `person` / `prop` / `light` / `vfx` (normalized from sticker). |
 | `subjects[].label` | string | The marker's assigned shot type. |
 | `subjects[].lng/lat` | number | Ground position. |

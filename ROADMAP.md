@@ -64,28 +64,50 @@ Everything that could be built without real photoreal tiles is done.
 | Sun re-light | ✅ re-shoots the sequence under one sun rather than relabelling specs |
 | Drag to place | ✅ stand-ins onto the globe; lens/size/angle chips onto a station |
 | Panel / rail rebuild | ✅ dividers not headings, workflow order, capture bar pinned above every section, Post panel |
+| One roll, anchored on the path | ✅ the rival `rollCoverage` is gone; recipes plot dots, the path rolls them |
+| Camera type per dot | ✅ "pt 1 is a 35mm tracking drone, pt 4 is handheld at eye level" |
+| Dot colour | ✅ reads the rig by default, overridable per dot |
+| Sequence presets | ✅ save the shape + every dot's shot, lay it down anywhere |
+| Per-dot cast | ✅ who's in frame at which dot; the spec lists only who was visible |
 | **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
-| **Roll anchors on the path** | 🗣 **user call open** — the camera roll is the capturing device, so it should roll the locked points rather than carry its own anchor. See below. |
 
-### Open: what the roll is anchored to
+---
 
-Right now there are two rolls, and only one of them uses the path:
+## The sequence, as of this pass
 
-- **`Roll stations`** (Path panel) flies your established points 1→N and captures each,
-  using that point's own framing where you set one. This is the behaviour the note
-  describes — the path is the anchor set.
-- **`Roll coverage`** (Coverage panel) keeps its *own* single anchor — `COV.base`, grabbed
-  from wherever the camera happens to be, with a "re-anchor" button — and generates its
-  setups around that. It ignores the path completely.
+Free roam and the shutter are always live — fly anywhere, snap anything, at any point.
+Everything below is the *other* mode, and it is one road, not two.
 
-The user's note: *the camera roll shouldn't have its own separate anchors, as that is the
-main capturing device — it should roll and take all of the locked points after the path
-has been established.* The proposed shape (**not built, awaiting confirmation**): when a
-path exists, a coverage recipe stops being a separate anchor and becomes a *filler* — it
-assigns a setup to each path point that has no framing of its own, leaves every point you
-locked exactly as you locked it, and then one roll takes all of them in path order. With
-no path, coverage falls back to today's single-anchor behaviour and says so. Recipes stay
-opt-in; nothing is applied to a point you already framed.
+**A dot is a shot.** Plot dots on the map; each one owns:
+
+| On the dot | Default |
+|---|---|
+| **Rig** — drone / handheld / dolly / crane / steadicam / FPV / locked | whatever chip was armed when you dropped it |
+| **Colour** | the rig's colour — override per dot, shift-click the swatch to put it back |
+| **Lens, shot size, angle** | inherited from your current framing; drag a chip onto the dot to set it |
+| **Cast** | everyone visible — a dot only carries a cast list once you switch someone off at it |
+| **Beat** | the player speed, until you set one in Post |
+
+Changing a dot's rig changes its **height** — that's what a drone or a handheld *is* —
+and leaves your lens, size and angle alone. A locked dot is never touched; it says so.
+
+**One Roll.** `Roll every station` flies dot 1→N with the cinematic move and captures
+each with that dot's own setup. It lives on the path and nowhere else.
+
+**Recipes are a head start, not a rule.** Fincher / Classic / Documentary / Aerial epic
+no longer carry their own anchor. Pick one and it **plots dots**: with no path it lays a
+fresh sequence (fanned a few metres so each dot is separately draggable — at these shot
+ranges the offset changes nothing); with a path already down it fills *only* the dots you
+haven't set and leaves everything you locked exactly as you locked it.
+
+**Sequence presets.** Save a plotted move — the shape plus every dot's rig, lens, size,
+angle and colour — and lay it down at any other location. It's stored relative to dot 1
+and to the heading you blocked it at, so it re-lays rotated to wherever you're now
+looking, and it always arrives **unlocked**. Nothing is decided for you.
+
+**Cast is placed before the shutter fires**, because the capture is the actual rendered
+frame, not a composite. A dot decides *who is in it*, not who gets added afterward. The
+spec for a locked dot lists only the stand-ins that were visible when it shot.
 
 **Explicitly out of scope** (per the anti-scope-creep guardrail): new engines, a framework
 migration, monetization/packaging work, or anything that doesn't improve the frame or the spec.
