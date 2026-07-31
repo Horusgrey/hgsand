@@ -92,21 +92,7 @@ function loadCesiumFallback(){
   #panelbody details.sec:not([open]){display:none;}
   #panelbody details.sec[open]{display:block;}
 
-  @media (max-width:900px){
-    #app{grid-template-columns:1fr;grid-template-rows:1fr auto;}
-    .panel{order:2;flex-direction:column;border-top:1px solid var(--line);max-height:48vh;}
-    #railbar{flex-direction:row;width:100%;height:auto;overflow-x:auto;overflow-y:hidden;
-      border-right:none;border-bottom:1px solid var(--line);padding:6px 4px;}
-    .railbtn{margin:0 2px;padding:7px 6px;}
-    #panelbody{width:100% !important;border-right:none;}
-    .panel.closed #panelbody{display:none;}
-    #panelTab{display:none;}
-    .stage{order:1;}
-    .kbd{display:none;}
-    .thumbs{bottom:6px;right:14px;}
-    #slate{display:none;}
-    #navCluster{display:none;}
-  }
+
 
   .body{padding:4px 16px 16px;}
   .row{display:flex;gap:7px;margin:7px 0;}
@@ -543,7 +529,30 @@ function loadCesiumFallback(){
         <label class="fld">Search a place</label>
         <div class="row"><span class="searchwrap"><input id="search" type="text" autocomplete="off" placeholder="Place name — or coords: 41.8885, -87.6345"><div id="sugg"></div></span><button class="btn sm" id="searchBtn" style="flex:none;width:64px">Go</button></div>
         <label class="fld">Load KML / KMZ</label>
-        <style>#kmlFile{min-width:0;}</style>
+        <style>#kmlFile{min-width:0;}
+  /* ---- narrow screens. Lives last on purpose: these are overrides, and CSS resolves
+     ties by source order — sitting up top meant #navCluster and .thumbs quietly lost. ---- */
+  @media (max-width:900px){
+    #app{grid-template-columns:1fr;grid-template-rows:1fr auto;}
+    .panel{order:2;flex-direction:column;border-top:1px solid var(--line);max-height:48vh;}
+    #app{overflow-x:hidden;}
+    .panel{min-width:0;max-width:100vw;}
+    /* a flex item won't shrink below its content unless told to — without this the
+       nine rail buttons forced a 528px page on a 420px phone */
+    #railbar{flex-direction:row;width:100%;min-width:0;height:auto;overflow-x:auto;overflow-y:hidden;
+      border-right:none;border-bottom:1px solid var(--line);padding:6px 4px;}
+    .raildiv{width:1px;height:26px;margin:0 5px;align-self:center;}
+    .railbtn{margin:0 2px;padding:7px 6px;}
+    #panelbody{width:100% !important;border-right:none;}
+    .panel.closed #panelbody{display:none;}
+    #panelTab{display:none;}
+    .stage{order:1;}
+    .kbd{display:none;}
+    .thumbs{bottom:6px;right:14px;}
+    #slate{display:none;}
+    #navCluster{display:none;}
+  }
+</style>
         <div class="row"><input id="kmlFile" type="file" accept=".kml,.kmz" style="font-size:11px;padding:5px"></div>
         <div class="list" id="kmlList"></div>
         <label class="fld">Photoreal &amp; terrain keys (optional)</label>
@@ -864,6 +873,7 @@ function subjectPhrase(c){
   if(c.far.length)bits.push(groupSubjects(c.far)+' in the background');
   return bits.join('; ');
 }
+const cap1=t=>t.charAt(0).toUpperCase()+t.slice(1);
 function atmosPhrase(a){return {clear:'crisp clear air',haze:'soft atmospheric haze',golden:'warm golden atmosphere',blue:'cool blue-hour atmosphere',storm:'heavy storm light, dense air',night:'deep night atmosphere'}[a]||'';}
 // What this place, at this hour, in this weather would actually sound like.
 function soundscape(sp){
@@ -916,7 +926,7 @@ const ENGINE_BUILDERS={
     return s1+s2+s3+s4+s5;
   },
   veo(c,motion){ // Veo 3: rich prose + it generates AUDIO — feed it an audio line
-    const p1=(c.desc?c.desc+'. ':'')+'A '+c.size.toLowerCase()+' shot from '+aan(c.angle)+' angle on a '+c.mm+'mm lens \u2014 '+c.feel+'. ';
+    const p1=(c.desc?c.desc+'. ':'')+cap1(aan(c.size.toLowerCase()+' shot'))+' from '+aan(c.angle)+' angle on a '+c.mm+'mm lens \u2014 '+c.feel+'. ';
     const p2=subjectPhrase(c)?(subjectPhrase(c).charAt(0).toUpperCase()+subjectPhrase(c).slice(1)+'. '):'';
     const p3=c.lightWord.charAt(0).toUpperCase()+c.lightWord.slice(1)+' rakes in from the '+c.sunFrom+' ('+c.sunEl.toFixed(0)+'\u00b0 elevation), '+atmosPhrase(c.atmos)+'. ';
     const p4='Camera: '+(motion||'near-static with gentle organic drift')+'. Natural physics, true light transport, '+c.style+' aesthetic: '+c.styleDesc+'. ';
@@ -2391,8 +2401,10 @@ document.addEventListener('paste',e=>{
   if(!im)return;
   e.preventDefault(); openSectionByLabel('Cast'); ingestImageFile(im.getAsFile());
 });
-function addMarker(lon,lat,height,type,shotType,scale,rot){
-  const id='m'+Date.now()+Math.floor(Math.random()*99);
+function addMarker(lon,lat,height,type,shotType,scale,rot,forceId){
+  // forceId is for restores: per-dot cast lists store marker ids, so a reloaded scene
+  // has to come back with the ids it was saved under.
+  const id=forceId||('m'+Date.now()+Math.floor(Math.random()*99));
   const wp=worldProp(type);
   const bb=wp?{image:stickerImage(type),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,sizeInMeters:true,width:wp.w*(scale||1),height:wp.h*(scale||1),rotation:Cesium.Math.toRadians(rot||0)}
             :{image:AVATARS[type]||pinSvg(STICKERS[type]||'#facc15'),verticalOrigin:Cesium.VerticalOrigin.BOTTOM,scale:(scale||1)*.8,rotation:Cesium.Math.toRadians(rot||0),disableDepthTestDistance:Number.POSITIVE_INFINITY};
@@ -3259,7 +3271,9 @@ function ctxFromSpec(sp){
     lightWord:({day:'daylight',golden:'golden-hour light',blue:'blue-hour light',night:'night'})[phase]||'daylight',
     sunEl:el, sunFrom:compass, style:st.name, styleDesc:st.desc,
     atmos:sp.look.atmosphere, aspect:sp.delivery.aspect,
-    subj, near:subj.filter(x=>x.role==='foreground'||x.role==='subject'), far:subj.filter(x=>x.role==='background'),
+    // Anything not explicitly background is in the scene. Filtering to subject/foreground
+    // silently dropped vehicles, lights and vfx from every prompt.
+    subj, near:subj.filter(x=>x.role!=='background'), far:subj.filter(x=>x.role==='background'),
     subjLine:subj.length?subj.map(x=>x.role+' ('+x.kind+')').join(', '):''};
 }
 function metresBetween(a,b){
@@ -3278,9 +3292,32 @@ function continuityClause(pa,pb,i){
   if(dh>25)bits.push('re-angled '+Math.round(dh)+'\u00b0');
   if(Math.round(B.roll_deg||0)!==Math.round(A.roll_deg||0))bits.push('the horizon cants to '+Math.round(B.roll_deg||0)+'\u00b0');
   const lightMoved=pa.light.phase!==pb.light.phase||Math.abs(pa.light.sun_elevation_deg-pb.light.sun_elevation_deg)>6;
-  const head='CONTINUITY \u2014 continuing from shot '+i+': same location, same subjects'+(lightMoved?'':', same light');
+  // Per-dot cast means the cast really can change between shots. Saying "same subjects"
+  // through a change would be the one thing the world lock must never do: lie.
+  const idsOf=sp=>new Set((sp.subjects||[]).map(x=>x.id||x.label));
+  const a=idsOf(pa), b=idsOf(pb);
+  const gone=[...a].filter(x=>!b.has(x)), came=[...b].filter(x=>!a.has(x));
+  const nameOf=(sp,id)=>{const s2=(sp.subjects||[]).find(x=>(x.id||x.label)===id);return s2?(SPEC_NOUN[s2.type]||s2.type):'figure';};
+  const castBits=[];
+  if(came.length)castBits.push(came.map(id=>aan(nameOf(pb,id))).join(' and ')+' enters frame');
+  if(gone.length)castBits.push(gone.map(id=>aan(nameOf(pa,id))).join(' and ')+' is no longer in frame');
+  const castSame=!castBits.length;
+  const head='CONTINUITY \u2014 continuing from shot '+i+': same location'+
+    (castSame?', same subjects':'')+(lightMoved?'':', same light')+
+    (castSame?'':'; '+castBits.join(', '));
   const tail=bits.length?('; '+bits.join(', ')+'.'):'; the framing holds.';
   return head+tail+(lightMoved?'\n\u26a0 the sun differs from the previous shot \u2014 re-time it, or state the time jump deliberately.':'');
+}
+// Cast can differ shot to shot, so the world lock names everyone the cut uses and
+// says so, rather than quietly reporting whoever happened to be in shot 1.
+function seqSubjectLine(){
+  const seen=new Map();
+  S.shots.forEach(sh=>(sh.spec.subjects||[]).forEach(s=>{
+    if(!seen.has(s.id||s.label))seen.set(s.id||s.label,(SPEC_NOUN[s.type]||s.type)+' as '+s.label); }));
+  if(!seen.size)return 'none placed';
+  const all=[...seen.values()];
+  const everyShot=S.shots.every(sh=>(sh.spec.subjects||[]).length===seen.size);
+  return all.join(', ')+(everyShot?'':'  (not all in every shot — see each CONTINUITY line)');
 }
 function sequenceHeader(eng){
   const f=S.shots[0].spec, l=f.light;
@@ -3289,20 +3326,24 @@ function sequenceHeader(eng){
    '  location   '+f.location.lat.toFixed(5)+', '+f.location.lng.toFixed(5)+(f.location.name?'  ('+f.location.name+')':'')+'\n'+
    '  light      sun az '+l.sun_azimuth_deg+'\u00b0 \u00b7 el '+l.sun_elevation_deg+'\u00b0 \u00b7 '+l.phase+'\n'+
    '  look       '+(STYLES[f.look.style]||{name:f.look.style}).name+' \u00b7 '+f.look.atmosphere+' \u00b7 '+f.delivery.aspect+'\n'+
-   '  subjects   '+(f.subjects.length?f.subjects.map(s=>(SPEC_NOUN[s.type]||s.type)+' as '+s.label).join(', '):'none placed')+'\n'+
+   '  subjects   '+seqSubjectLine()+'\n'+
    'Hold all of the above constant across every shot. Do not re-invent the geography,\n'+
    'the light direction, or the subjects between shots \u2014 only what each CONTINUITY line\n'+
    'names has changed. Each shot has a matching start frame exported alongside it.\n';
 }
 function cameraSentence(ctx,sp){
   const mv=sp.camera.move;
+  // The rig is recorded on the shot. Reading the path's default here made every shot
+  // in a mixed-rig sequence claim the first dot's camera.
+  const rig=CAMERA_TYPES[sp.camera.camera_type]||(S.path?CAMERA_TYPES[S.path.cameraType]:null);
   const move=mv==='path'
-    ? (S.path&&CAMERA_TYPES[S.path.cameraType]?CAMERA_TYPES[S.path.cameraType].feel:'moving camera following the route')
+    ? (rig?rig.feel:'moving camera following the route')
     : (mv&&mv!=='static'?mv:null);
   const frame=ctx.size.toLowerCase()+' on a '+ctx.mm+'mm lens ('+ctx.feel+'), '+ctx.angle+' angle';
   return move?(move+', framed as '+aan(frame)):('locked off, framed as '+aan(frame)+', minimal drift');
 }
 function sequencePrompts(eng){
+  if(!ENGINE_BUILDERS[eng])eng='runway';
   if(!S.shots.length)return '';   // an empty cut has nothing to say
   const parts=[sequenceHeader(eng)];
   S.shots.forEach((sh,i)=>{
@@ -3373,9 +3414,38 @@ function buildReport(){
 }
 $('pdfReport').onclick=buildReport;
 
+// A session is the whole scout. The plotted path IS the work — losing it on reload
+// threw away every dot, rig, colour and cast list. Uploads go too, or a life-size car
+// comes back as a map pin with a raw key for a name.
+function uploadPayload(withImages){
+  return Object.keys(UPLOADS).map(k=>({key:k,name:UPLOADS[k].name,kind:UPLOADS[k].kind,
+    w:(WORLD_PROPS[k]||{}).w, h:(WORLD_PROPS[k]||{}).h,
+    url:withImages?AVATARS[k]:null}));
+}
+function sessionPayload(o){
+  o=o||{};
+  return {v:3,
+    state:{shotSize:S.shotSize,angle:S.angle,fov:S.fov,sensor:S.sensor,target:S.target,head:S.head,tilt:S.tilt,
+      range:S.range,roll:S.roll,style:S.style,grade:S.grade,atmos:S.atmos,delivery:S.delivery,exag:S.exag,
+      cameraType:S.cameraType,pathDuration:S.pathDuration,autoFrame:S.autoFrame,
+      sceneDesc:$('sceneDesc').value,date:$('lDate').value,time:$('lTime').value},
+    markers:S.markers, looks:S.looks, path:S.path,
+    uploads:uploadPayload(o.images!==false),
+    shots:S.shots.map(s=>o.thumbs===false?{name:s.name,spec:s.spec,beat:s.beat,stationIdx:s.stationIdx}
+                                         :{name:s.name,spec:s.spec,beat:s.beat,stationIdx:s.stationIdx,thumb:s.thumb})};
+}
+function restoreUploads(list){
+  (list||[]).forEach(u=>{
+    if(!u||!u.key)return;
+    if(u.url)AVATARS[u.key]=u.url;
+    if(u.w&&u.h)WORLD_PROPS[u.key]={w:u.w,h:u.h};
+    UPLOADS[u.key]={name:u.name||u.key,kind:u.kind||'prop'};
+    const seq=+(String(u.key).match(/(\d+)$/)||[0,0])[1];
+    if(seq>UPLOAD_SEQ)UPLOAD_SEQ=seq;      // never reissue a key that is already in use
+  });
+}
 $('sessionSave').onclick=()=>{
-  const data={v:2,state:{shotSize:S.shotSize,angle:S.angle,fov:S.fov,sensor:S.sensor,target:S.target,head:S.head,tilt:S.tilt,range:S.range,roll:S.roll,style:S.style,grade:S.grade,atmos:S.atmos,delivery:S.delivery,exag:S.exag,sceneDesc:$('sceneDesc').value,date:$('lDate').value,time:$('lTime').value},markers:S.markers,looks:S.looks,shots:S.shots.map(s=>({name:s.name,spec:s.spec,thumb:s.thumb}))};
-  downloadText(JSON.stringify(data,null,2),'gmapz_session_'+Date.now()+'.json');
+  downloadText(JSON.stringify(sessionPayload(),null,2),'gmapz_session_'+Date.now()+'.json');
 };
 $('sessionLoadBtn').onclick=()=>$('sessionFile').click();
 function applySessionData(d,label){
@@ -3383,10 +3453,21 @@ function applySessionData(d,label){
   Object.assign(S,{shotSize:st.shotSize||S.shotSize,angle:st.angle||S.angle,fov:st.fov||S.fov,sensor:st.sensor||S.sensor,target:st.target||S.target,head:st.head==null?S.head:st.head,tilt:st.tilt==null?S.tilt:st.tilt,range:st.range||S.range,roll:st.roll==null?S.roll:st.roll,style:st.style||S.style,grade:st.grade||S.grade,atmos:st.atmos||S.atmos,delivery:st.delivery||S.delivery,exag:st.exag||S.exag});
   $('sceneDesc').value=st.sceneDesc||'';$('lDate').value=st.date||'';$('lTime').value=st.time||'';
   $('exagSlider').value=S.exag;$('exagVal').textContent=(+S.exag).toFixed(1)+'\u00d7';try{viewer.scene.verticalExaggeration=S.exag;}catch(_){}
+  if(st.cameraType)S.cameraType=st.cameraType;
+  if(st.pathDuration)S.pathDuration=st.pathDuration;
+  if(st.autoFrame!=null)S.autoFrame=st.autoFrame;
+  restoreUploads(d.uploads);          // before the markers, so uploaded stand-ins size in metres
   S.markers.forEach(m=>viewer.entities.removeById(m.id));S.markers=[];
-  (d.markers||[]).forEach(m=>addMarker(m.lon,m.lat,m.height,m.type,m.shotType,m.scale,m.rot));
+  (d.markers||[]).forEach(m=>{
+    addMarker(m.lon,m.lat,m.height,m.type,m.shotType,m.scale,m.rot,m.id);
+    const nm=S.markers[S.markers.length-1];
+    if(nm){ if(m.travels)nm.travels=true; if(m.flip)nm.flip=true; }
+  });
   S.looks=(d.looks||[]); renderLooks();
-  paintSensorChips();
+  paintSensorChips(); renderStickerChips();
+  clearPathEntities(); S.path=d.path||null; STN.active=-1;
+  if(S.path&&S.path.points&&S.path.points.length){ rebuildPathEntities(); }
+  renderPathList();
   S.shots=(d.shots||[]); renderShots(); applyMask();applyAtmos();applyGrade();flyToParams();syncCamUI();updateSun();
   toast(label||'Session loaded');
 }
@@ -3394,11 +3475,15 @@ $('sessionFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=ne
   applySessionData(JSON.parse(rd.result));
 }catch(err){toast('Bad session file');}};rd.readAsText(f);};
 // ---- autosave: never lose a scout (thumbs excluded so it fits localStorage) ----
+let _autosaveWarned=false;
 function autosaveSession(){
-  try{
-    localStorage.setItem('gmapz_autosave',JSON.stringify({v:2,auto:true,
-      state:{shotSize:S.shotSize,angle:S.angle,fov:S.fov,sensor:S.sensor,target:S.target,head:S.head,tilt:S.tilt,range:S.range,roll:S.roll,style:S.style,grade:S.grade,atmos:S.atmos,delivery:S.delivery,exag:S.exag,sceneDesc:$('sceneDesc').value,date:$('lDate').value,time:$('lTime').value},
-      markers:S.markers,looks:S.looks,shots:S.shots.map(s=>({name:s.name,spec:s.spec}))}));
+  // Thumbs never fit localStorage. Uploaded pictures usually do — try with them, and
+  // fall back to metadata only rather than losing the whole autosave.
+  const write=o=>localStorage.setItem('gmapz_autosave',JSON.stringify(Object.assign({auto:true},sessionPayload(o))));
+  try{ write({thumbs:false}); return; }catch(_){}
+  try{ write({thumbs:false,images:false});
+    if(!_autosaveWarned){ _autosaveWarned=true;
+      toast('Autosave is full \u2014 your pictures aren\u2019t in it. Use Save session to keep them.'); }
   }catch(_){}
 }
 let _autoT;function autosaveSoon(){clearTimeout(_autoT);_autoT=setTimeout(autosaveSession,800);}
@@ -3508,8 +3593,10 @@ document.addEventListener('keydown',e=>{
   try{ // restore the autosaved session, if any
     const raw=localStorage.getItem('gmapz_autosave');
     if(raw){ const d=JSON.parse(raw);
-      if(d&&((d.shots&&d.shots.length)||(d.markers&&d.markers.length)||(d.looks&&d.looks.length)))
-        applySessionData(d,'Restored your last session \u2014 '+((d.shots||[]).length)+' shot(s), '+((d.markers||[]).length)+' prop(s)');
+      const dots=(d&&d.path&&d.path.points)?d.path.points.length:0;
+      if(d&&((d.shots&&d.shots.length)||(d.markers&&d.markers.length)||(d.looks&&d.looks.length)||dots))
+        applySessionData(d,'Restored your last session \u2014 '+((d.shots||[]).length)+' shot(s), '+
+          ((d.markers||[]).length)+' stand-in(s)'+(dots?', '+dots+' dot(s)':''));
     }
   }catch(_){}
   $('goldenList').innerHTML='<div class="mini">Pick a date, then Find golden hour for the day\u2019s golden and blue windows.</div>';
@@ -3642,6 +3729,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,sequencePrompts,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,
+  sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};

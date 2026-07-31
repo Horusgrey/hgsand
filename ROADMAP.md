@@ -70,6 +70,7 @@ Everything that could be built without real photoreal tiles is done.
 | Sequence presets | ✅ save the shape + every dot's shot, lay it down anywhere |
 | Per-dot cast | ✅ who's in frame at which dot; the spec lists only who was visible |
 | Cast & upload cleanup | ✅ named tiles with artwork, one add control (click / drop / paste), live cutout preview, removable uploads |
+| Full-journey shakedown | ✅ seven defects found by driving it end to end and reading the output — see below |
 | **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
 
 ---
@@ -130,6 +131,26 @@ source picture must not quietly empty your scene.
 migration, monetization/packaging work, or anything that doesn't improve the frame or the spec.
 
 ---
+
+## What the end-to-end shakedown found
+
+Driving Scout the way a director would — plot five dots on mixed rigs, cast it, roll it,
+read every export, reload — turned up seven defects that no unit assertion had caught,
+because each one is only visible in the *output*.
+
+| Defect | Why it mattered |
+|---|---|
+| Every shot in a mixed-rig sequence carried the **first** dot's rig prose | The headline feature reached the spec but not the prompt: a crane, a steadicam and a handheld all read "smooth aerial drone shot" |
+| Any stand-in whose role wasn't `subject` / `foreground` / `background` was **silently dropped from every prompt** | Three of the six shot-types (`vehicle`, `light`, `vfx`) never made it into a single engine prompt |
+| The world lock listed only **shot 1's** cast | With per-dot cast the cut's roster varies; the lock has to name everyone and say so |
+| CONTINUITY claimed "same subjects" **through a cast change** | The one thing a continuity line must never do is lie |
+| **The plotted path did not survive a reload** | Five dots, every rig, colour, framing and cast list — gone. The plotting *is* the work |
+| **Uploads did not survive a reload** | A named, life-size "Hero car" came back as a screen-space map pin labelled `vehicle_up1` |
+| The rail forced a **528px page on a 420px phone**, and the mobile CSS block sat first in the stylesheet so `#navCluster` and `.thumbs` lost their overrides on source order | Sideways scroll, and a nav cluster that was supposed to be hidden on touch eating the small stage |
+
+All seven fixed and re-verified against the same journey. The lesson repeats from earlier
+passes: **read the artifact, not the assertion.** Green tests said the rig was on the spec;
+only the prompt text showed it never reached the sentence a human would read.
 
 ## The studio spine (cross-engine)
 
