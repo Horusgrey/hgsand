@@ -247,12 +247,29 @@ FORGE block:
 }
 ```
 
-> **Alignment target (planned).** The standalone VCS-15 app's FORGE schema uses
-> `character_lock`, `prop_lock`, `timeline`, `continuity_anchors`, `generation_risks`,
-> `next_sequence_handoff`, and `clip_type`. Scout currently emits the near-equivalent
-> `characters` / `props` / `shot_timeline` / `continuity_handoff`. Renaming Scout's fields to
-> match makes the Scout→VCS-15 handoff byte-clean (a `status: planned|observed` flag then
-> distinguishes the two) — the first step of the shared studio bible (see `ROADMAP.md`).
+> **Aligned.** The FORGE block now emits the standalone VCS-15 app's field names —
+> `clip_type`, `status`, `world_lock`, `character_lock`, `prop_lock`, `timeline`,
+> `camera_continuity`, `style_lock`, `audio_bed`, `continuity_anchors`, `generation_risks`,
+> `next_sequence_handoff` — so a Scout handoff drops straight into VCS-15. Scout always writes
+> `status: "planned"`; VCS-15 writes `"observed"` for the same document after generation, and
+> diffing the two is a continuity-error check. `next_sequence_handoff` points at the following
+> shot in the sequence when there is one, otherwise carries the suggested next coverage.
+
+### 4.1 Soundscape — `gmapz.audio.v1`
+
+Emitted inside `audio_bed` (VCS-15 FORGE) and `bible.sound_language` (VCO). Derived from the
+location, clock, weather and what is in frame — never a recording.
+
+```json
+{ "spec":"gmapz.audio.v1",
+  "location":{"lat":0,"lng":0,"name":""},
+  "time":{"date":"","time":"","tz":"UTC","phase":"golden"},
+  "weather":"storm",
+  "bed":["steady city ambience, traffic a few streets away","wind gusting in the open, low thunder rolling under it"],
+  "perspective":"ground level — close detail present",
+  "exclude":["music","score","narration","dialogue"],
+  "note":"PLANNED from location, clock and weather — not a recording of this place." }
+```
 
 ---
 
@@ -344,6 +361,12 @@ Consumers keying on `spec` should accept `v1` and treat missing `sensor_width_mm
 **2026-07 polish build:** adds `grok` to the engine enum, real values in `camera.move`
 (coverage moves + `path`), the Prompt Studio bundle format (§3), and the `gmapz.shot.v1` /
 `gmapz.path.v1` path bundle (§3.1). No breaking changes to `gmapz.capture.v2`.
+
+**2026-07 sequence build:** the Shots panel exports the whole cut as one
+sequence-prompt document (world lock + per-cut continuity lines, all six engines); each shot
+carries an optional `beat` (seconds) that drives the take player, video render and GIF frame
+delays; path stations carry their own framing; and the VCS-15 FORGE block is aligned to the
+real VCS-15 schema with a `gmapz.audio.v1` soundscape attached.
 
 **2026-07 operator build:** `camera.roll_deg` is now live (Dutch angle, rendered + round-tripped)
 and `session.state.roll` persists it. Adds operator feel (eased motion + establishing arc,

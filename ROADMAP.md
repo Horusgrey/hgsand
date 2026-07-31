@@ -34,23 +34,18 @@ viewfinder, coach, shadows — stays green with zero page errors.
 
 ## Backlog (Scout)
 
-Ordered by leverage. Nothing here is required for the tool to work — it works now.
+Everything that could be built without real photoreal tiles is done.
 
-1. **Contact-shadow tuning** *(needs real tiles)* — the shadow logic is verified, but alpha,
-   size, and pool-direction want a human eye on real Google photoreal tiles. One quick pass
-   after the first real-tile test.
-2. **VCS-15 export alignment** *(backbone)* — align Scout's VCS-FORGE field names to the real
-   VCS-15 app schema (`character_lock`, `prop_lock`, `timeline`, `continuity_anchors`,
-   `generation_risks`, `next_sequence_handoff`, `clip_type`) so the handoff is byte-clean.
-   This is the **first concrete step toward the shared studio bible** (below).
-3. **Location-aware audio spec** — Scout knows the place, time, and light; it could emit an
-   ambient/environmental audio spec (harbor at dusk, city at night) for VCO/Veo to perform.
-   The audio *authoring* stays in VCO; Scout contributes the location-derived spec.
-4. **KML → scout targets** — parse imported KML placemarks into a clickable fly-to list, so a
-   coordinate set (from any tool) becomes a batch of locations to block. Fixes the
-   clamp-to-ground-in-3D-mode gap at the same time.
-5. **Surface-more / stand-in polish** — continued refinement of discoverability and how the
-   captured cast reads to i2v engines.
+| Item | State |
+|---|---|
+| VCS-15 export alignment | ✅ FORGE now speaks the real VCS-15 schema (`character_lock`, `prop_lock`, `timeline`, `continuity_anchors`, `generation_risks`, `next_sequence_handoff`, `clip_type`, `status`) |
+| Location-aware audio spec | ✅ `gmapz.audio.v1` — soundscape derived from place, clock, weather and what's in frame; rides in the VCS handoff and the VCO bible |
+| KML → scout targets | ✅ placemarks become a clickable fly-to list; ground-clamping now skipped when the globe is hidden in photoreal mode |
+| Sequence-aware prompts | ✅ the cut exports as one document with a world lock and per-cut continuity lines |
+| Per-shot beat | ✅ drives the take player, video render and GIF frame delays |
+| Sun re-light | ✅ re-shoots the sequence under one sun rather than relabelling specs |
+| Drag to place | ✅ stand-ins onto the globe; lens/size/angle chips onto a station |
+| **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
 
 **Explicitly out of scope** (per the anti-scope-creep guardrail): new engines, a framework
 migration, monetization/packaging work, or anything that doesn't improve the frame or the spec.

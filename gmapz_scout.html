@@ -486,6 +486,7 @@ function loadCesiumFallback(){
         <label class="fld">Load KML / KMZ</label>
         <style>#kmlFile{min-width:0;}</style>
         <div class="row"><input id="kmlFile" type="file" accept=".kml,.kmz" style="font-size:11px;padding:5px"></div>
+        <div class="list" id="kmlList"></div>
         <label class="fld">Photoreal &amp; terrain keys (optional)</label>
         <div class="row"><input id="googleKey" type="text" placeholder="Google Map Tiles API key"></div>
         <div class="row"><input id="ionKey" type="text" placeholder="Cesium ion token"></div>
@@ -777,6 +778,31 @@ function subjectPhrase(c){
   return bits.join('; ');
 }
 function atmosPhrase(a){return {clear:'crisp clear air',haze:'soft atmospheric haze',golden:'warm golden atmosphere',blue:'cool blue-hour atmosphere',storm:'heavy storm light, dense air',night:'deep night atmosphere'}[a]||'';}
+// What this place, at this hour, in this weather would actually sound like.
+function soundscape(sp){
+  const lt=sp.light, look=sp.look, subj=sp.subjects||[];
+  const beds=[];
+  const night=lt.phase==='night', quiet=night||lt.phase==='blue';
+  beds.push(quiet?'low city hum, distant and sparse':'steady city ambience, traffic a few streets away');
+  if(look.atmosphere==='storm')beds.push('wind gusting in the open, low thunder rolling under it, rain hiss on hard surfaces');
+  else if(look.atmosphere==='haze')beds.push('air thick and muffled, sound carrying short');
+  else if(look.atmosphere==='golden')beds.push('warm evening air, birds settling');
+  else if(night)beds.push('night insects, an occasional far-off siren');
+  if(subj.some(s=>s.type==='prop'))beds.push('a vehicle passing close, tyre noise on the surface');
+  if(subj.some(s=>s.type==='person'))beds.push('footsteps and clothing movement near the camera');
+  if(Math.abs(sp.camera.pitch_deg)>55)beds.push('height ambience — wind aloft, ground sound thinned and distant');
+  return {
+    spec:'gmapz.audio.v1',
+    location:{lat:sp.location.lat,lng:sp.location.lng,name:sp.location.name||''},
+    time:{date:lt.date,time:lt.time,tz:lt.tz,phase:lt.phase},
+    weather:look.atmosphere,
+    bed:beds,
+    perspective:Math.abs(sp.camera.pitch_deg)>55?'aerial — sound distant and wind-dominated':'ground level — close detail present',
+    exclude:['music','score','narration','dialogue'],
+    note:'PLANNED from location, clock and weather — not a recording of this place.'
+  };
+}
+function audioLine(sp){ return soundscape(sp).bed.join('; ')+'.'; }
 function audioPhrase(c){ // Veo 3 generates sound — give it something true to the scene
   const base={clear:'light wind, distant city ambience',haze:'muffled distant traffic, soft wind',golden:'gentle evening ambience, birds settling',blue:'quiet dusk, far-off hum',storm:'wind gusts, low thunder rumble',night:'night insects, sparse distant sounds'}[c.atmos]||'natural location ambience';
   return base;
@@ -2261,10 +2287,47 @@ async function doSearch(){
   if(reached) toast('No match for \u201c'+q+'\u201d \u2014 try adding a city or country, or type coordinates ("41.8885, -87.6345")');
   else toast('Couldn\u2019t reach a geocoder (offline or blocked). Type coordinates instead \u2014 e.g. "41.8885, -87.6345" \u2014 or fly there by hand.');
 }
+// Imported placemarks become somewhere to shoot, not just decoration on the map.
+let KMLTARGETS=[];
+function renderKmlTargets(){
+  const L=$('kmlList'); if(!L)return; L.innerHTML='';
+  if(!KMLTARGETS.length)return;
+  const head=document.createElement('div'); head.className='mini';
+  head.textContent=KMLTARGETS.length+' place'+(KMLTARGETS.length===1?'':'s')+' from KML — click one to scout it';
+  L.appendChild(head);
+  KMLTARGETS.forEach((t,i)=>{
+    const d=document.createElement('div'); d.className='item';
+    d.innerHTML='<div class="t"><span>'+(i+1)+'. '+escapeHtml(t.name)+'</span><span class="tag">'+t.lat.toFixed(3)+', '+t.lon.toFixed(3)+'</span></div>';
+    d.onclick=()=>{ S.target={lat:t.lat,lon:t.lon}; $('search').value=t.name; flyToParams(); syncCamUI(); toast('Scouting '+t.name); };
+    L.appendChild(d);
+  });
+}
 $('kmlFile').onchange=async e=>{
   const f=e.target.files[0]; if(!f)return;
-  try{ const ds=await Cesium.KmlDataSource.load(f,{camera:viewer.scene.camera,canvas:viewer.scene.canvas,clampToGround:true});
-    viewer.dataSources.add(ds); viewer.flyTo(ds); toast('Loaded '+f.name);
+  try{
+    // Photoreal mode hides the globe, so ground-clamped placemarks vanish — only
+    // clamp when there is a globe to clamp to.
+    const clamp=viewer.scene.globe.show;
+    const ds=await Cesium.KmlDataSource.load(f,{camera:viewer.scene.camera,canvas:viewer.scene.canvas,clampToGround:clamp});
+    viewer.dataSources.add(ds);
+    KMLTARGETS=[];
+    ds.entities.values.forEach(en=>{
+      let pos=null;
+      try{ pos=en.position&&en.position.getValue(viewer.clock.currentTime); }catch(_){}
+      if(!pos&&en.polygon){ try{ const h=en.polygon.hierarchy.getValue(viewer.clock.currentTime);
+        if(h&&h.positions&&h.positions.length)pos=Cesium.BoundingSphere.fromPoints(h.positions).center; }catch(_){} }
+      if(!pos&&en.polyline){ try{ const ps=en.polyline.positions.getValue(viewer.clock.currentTime);
+        if(ps&&ps.length)pos=Cesium.BoundingSphere.fromPoints(ps).center; }catch(_){} }
+      if(!pos)return;
+      const c=Cesium.Cartographic.fromCartesian(pos);
+      if(!c)return;
+      if(!en.billboard&&!en.point&&!en.label&&!en.polygon&&!en.polyline)return;
+      KMLTARGETS.push({name:en.name||('Placemark '+(KMLTARGETS.length+1)),
+        lat:+toDeg(c.latitude).toFixed(6), lon:+toDeg(c.longitude).toFixed(6)});
+    });
+    renderKmlTargets();
+    viewer.flyTo(ds);
+    toast('Loaded '+f.name+(KMLTARGETS.length?(' \u2014 '+KMLTARGETS.length+' place'+(KMLTARGETS.length===1?'':'s')+' listed under Scout'):''));
   }catch(err){toast('KML failed: '+err.message);}
 };
 
@@ -2388,12 +2451,36 @@ function suggestNext(){ // read the saved sequence and recommend what a cutting 
 }
 function vcs15(){
   const sp=buildSpec(); const s=sp.light;
-  const forge={project_id:'GMAPZ',clip_id:sp.id,duration_seconds:4,fps:24,resolution:sp.delivery.resolution,
-    world_lock:{location:sp.location,heading_deg:sp.camera.heading_deg,sun_azimuth_deg:s.sun_azimuth_deg,sun_elevation_deg:s.sun_elevation_deg},
-    characters:S.markers.filter(m=>isPersonType(m.type)).map(m=>({label:m.shotType,planned:true})),
-    props:S.markers.filter(m=>!isPersonType(m.type)).map(m=>({label:m.shotType,type:subjectNoun(m.type)})),
-    shot_timeline:[{t:0,event:sp.camera.shot_size+' / '+sp.camera.angle}],
-    speaker_attribution:'UNKNOWN',camera_continuity:sp.camera,style_lock:sp.look,continuity_handoff:'authoritative_previs'};
+  // Field names match the VCS-15 app's FORGE schema so the handoff drops straight in.
+  const idx=S.shots.findIndex(x=>x.spec&&x.spec.id===sp.id);
+  const nxt=idx>=0&&S.shots[idx+1]?S.shots[idx+1]:null;
+  const forge={project_id:'GMAPZ',clip_id:sp.id,clip_type:'previs_plate',
+    status:'planned', // Scout authors; VCS-15 observes. Same document, different tense.
+    duration_seconds:4,fps:24,resolution:sp.delivery.resolution,
+    world_lock:{location:sp.location,heading_deg:sp.camera.heading_deg,
+      sun_azimuth_deg:s.sun_azimuth_deg,sun_elevation_deg:s.sun_elevation_deg,phase:s.phase},
+    character_lock:S.markers.filter(m=>isPersonType(m.type)).map(m=>({label:m.shotType,type:'person',
+      lng:+m.lon.toFixed(6),lat:+m.lat.toFixed(6),planned:true})),
+    prop_lock:S.markers.filter(m=>!isPersonType(m.type)).map(m=>({label:m.shotType,type:subjectNoun(m.type),
+      lng:+m.lon.toFixed(6),lat:+m.lat.toFixed(6)})),
+    timeline:[{t:0,event:sp.camera.shot_size+' / '+sp.camera.angle}],
+    speaker_attribution:'UNKNOWN',
+    camera_continuity:sp.camera,
+    style_lock:sp.look,
+    audio_bed:soundscape(sp),
+    continuity_anchors:{reference_frame:sp.reference_frame,
+      sun_azimuth_deg:s.sun_azimuth_deg,sun_elevation_deg:s.sun_elevation_deg,
+      lens_mm:sp.camera.lens_mm,sensor:sp.camera.sensor,delivery:sp.delivery.aspect},
+    generation_risks:[
+      'sun position is computed from the clock, not measured — re-time drifts rather than relighting in post',
+      'photoreal tile detail varies with altitude; low passes reveal texture the wide shot does not show',
+      'stand-ins are planned blocking, not performance'
+    ],
+    next_sequence_handoff:nxt?{clip_id:nxt.spec.id,shot_size:nxt.spec.camera.shot_size,
+      angle:nxt.spec.camera.angle,lens_mm:nxt.spec.camera.lens_mm,
+      note:'carry world_lock, character_lock and style_lock forward unchanged'}
+      :{clip_id:null,note:suggestNext()},
+    continuity_handoff:'authoritative_previs'};
   return [
    '# VCS-15 HANDOFF — '+sp.id,'',
    '## VCS-OBS','PLANNED. '+(sp.scene_description||'(scene)'),'Location '+sp.location.lat+', '+sp.location.lng+' · '+s.phase+' light.','',
@@ -2414,7 +2501,8 @@ function vco(){
   tags['@location_scout']={type:'location',displayName:sp.location.name||'scout',description:'Real geo '+sp.location.lat+','+sp.location.lng,vcsLocked:true,veoRef:sp.reference_frame};
   return {project:{
     brief:sp.scene_description||('Scouted '+sp.camera.shot_size+' at '+sp.location.lat.toFixed(3)+','+sp.location.lng.toFixed(3)),
-    bible:{visual_language:{palette:STYLES[S.style].name,forbidden_drift:'no neon cyberpunk, no glossy futurism',lighting_rules:sp.light.phase+' light, sun el '+sp.light.sun_elevation_deg+'\u00b0'}},
+    bible:{visual_language:{palette:STYLES[S.style].name,forbidden_drift:'no neon cyberpunk, no glossy futurism',lighting_rules:sp.light.phase+' light, sun el '+sp.light.sun_elevation_deg+'\u00b0'},
+      sound_language:soundscape(sp)},
     characters:S.markers.filter(m=>isPersonType(m.type)).map(m=>({name:m.shotType,stub:true})),
     shots:[{id:sp.id,scene:1,shot_type:sp.camera.shot_size,duration:4,description:basePrompt(),camera:sp.camera,lighting:sp.light}],
     script:null,storyboard:null,score:null,tags
@@ -3138,7 +3226,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN,
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
   renderThumbs,nextStation,refreshPathVisuals,sequencePrompts,ctxFromSpec,openSequenceStudio,
-  relightSequence,renderStickerChips,holdMs,BEATS,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
+  relightSequence,renderStickerChips,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
