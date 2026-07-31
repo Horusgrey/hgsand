@@ -547,7 +547,7 @@ function loadCesiumFallback(){
 
     <details class="sec"><summary>Cast &amp; props <span class="ico">&#9656;</span></summary>
       <div class="body">
-        <label class="fld">Sticker (click Place, then click the ground)</label>
+        <label class="fld">Stand-ins &mdash; drag onto the globe, or tap one and use Place mode</label>
         <div class="chips" id="stickers"></div>
         <div class="row"><input id="avatarFile" type="file" accept="image/*" style="font-size:11px;padding:5px;min-width:0;flex:1"><button class="btn sm" id="avatarBtn" style="flex:none;width:80px">Upload pic</button></div>
         <div class="mini">Uploaded photos appear as extra stickers below — pick one, then place it like any other marker.</div>
@@ -1186,15 +1186,22 @@ stageEl.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEf
 stageEl.addEventListener('drop',e=>{
   e.preventDefault();
   const data=e.dataTransfer.getData('text/plain');
-  if(!data.startsWith('cam:'))return;
-  const k=data.slice(4); S.cameraType=k;
+  if(!data.startsWith('cam:')&&!data.startsWith('sticker:'))return;
   // Convert page coords to canvas coords for screenPick
   const rect=viewer.canvas.getBoundingClientRect();
   const pos=new Cesium.Cartesian2(e.clientX-rect.left,e.clientY-rect.top);
   const p=screenPick(pos);
   if(!Cesium.defined(p)){toast('Drop on the terrain');return;}
   const c=Cesium.Cartographic.fromCartesian(p);
-  startPath(Cesium.Math.toDegrees(c.longitude),Cesium.Math.toDegrees(c.latitude));
+  const lon=Cesium.Math.toDegrees(c.longitude), lat=Cesium.Math.toDegrees(c.latitude);
+  if(data.startsWith('sticker:')){
+    const kind=data.slice(8); S.sticker=kind;
+    killGhost(); bounceIn(addMarker(lon,lat,0,kind));
+    toast('Placed \u2014 drag it to move, or select it to scale, raise and set travel');
+    return;
+  }
+  S.cameraType=data.slice(4);
+  startPath(lon,lat);
   toast('Camera start set \u2014 click again for end (or waypoints, then double-click)');
 });
 
@@ -1951,6 +1958,13 @@ function renderStickerChips(){
   const items=[...Object.keys(STICKERS).map(k=>[k,k]),
     ...Object.keys(AVATARS).map(k=>[(UPLOAD_KINDS[k.split('_')[0]]||{label:'Upload'}).label+' '+(k.match(/\d+$/)||[''])[0],k])];
   paintChips('stickers',items,S.sticker,v=>{S.sticker=v; killGhost();});
+  // Drag straight onto the globe — no mode to enter or forget. Tap-to-place stays for touch.
+  [...$('stickers').children].forEach((el,i)=>{
+    const val=items[i]&&items[i][1]; if(!val)return;
+    el.draggable=true; el.title='Drag onto the globe, or tap then use Place mode';
+    el.ondragstart=ev=>{ev.dataTransfer.setData('text/plain','sticker:'+val);
+      ev.dataTransfer.effectAllowed='copy'; S.sticker=val;};
+  });
 }
 $('avatarBtn').onclick=()=>$('avatarFile').click();
 $('avatarFile').onchange=e=>{
@@ -2389,7 +2403,35 @@ function checkContinuity(){
     if(a.date!==b.date){lines.push('\u26a0 Shot '+i+'\u2192'+(i+1)+': different date ('+a.date+' vs '+b.date+')');warn++;}
   }
   lines.push(''); lines.push(warn?(warn+' continuity flag(s). Re-time the flagged shots or note it as an intentional time jump.'):'No flags \u2014 light is consistent across the sequence.');
-  showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span><h3>Continuity check</h3><div class="out">'+escapeHtml(lines.join('\n'))+'</div>');
+  showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span><h3>Continuity check</h3>'+
+    '<div class="out">'+escapeHtml(lines.join('\n'))+'</div>'+
+    (warn?'<div class="row" style="margin-top:10px"><button class="btn y" id="relightBtn">Re-shoot every shot under shot 1\u2019s light</button></div>'+
+          '<div class="mini">Frames are genuinely re-captured, so the pictures and the specs stay honest \u2014 nothing is relabelled.</div>':''));
+  if(warn&&$('relightBtn'))$('relightBtn').onclick=()=>{$('modal').classList.remove('show');relightSequence();};
+}
+// Hold one sun across the whole take. The dishonest version would rewrite each
+// spec's light; instead every frame is re-shot so picture and record still match.
+async function relightSequence(){
+  if(S.shots.length<2){toast('Need at least two shots');return;}
+  const L=S.shots[0].spec.light;
+  if(!confirm('Re-shoot '+(S.shots.length-1)+' shot(s) under shot 1\u2019s light ('+L.date+' '+L.time+' UTC)?\n\nEach frame is captured again, so frames and specs stay in agreement.'))return;
+  const keep={target:{...S.target},head:S.head,tilt:S.tilt,range:S.range,fov:S.fov,roll:S.roll||0};
+  $('lDate').value=L.date; $('lTime').value=L.time; updateSun();
+  S._quiet=true;
+  for(let i=1;i<S.shots.length;i++){
+    const sh=S.shots[i], c=sh.spec.camera;
+    toast('Re-lighting shot '+(i+1)+' of '+S.shots.length+'\u2026');
+    if(sh.stationIdx!==undefined)travelCast(sh.stationIdx);
+    Object.assign(S,{target:{lat:c.lat,lon:c.lng},head:c.heading_deg,tilt:c.pitch_deg,
+      range:c.altitude_m,fov:c.fov_deg,roll:c.roll_deg||0});
+    applyFov(); flyToParams(0); await waitForTiles(2000);
+    const cap=capture(false);
+    if(cap.url){ sh.spec=buildSpec(cap.id,c.move); sh.thumb=cap.url; }
+  }
+  S._quiet=false;
+  Object.assign(S,keep); applyFov(); flyToParams(0.8); syncCamUI();
+  renderShots();
+  toast('\u2713 Sequence re-lit \u2014 every frame now shares shot 1\u2019s sun');
 }
 $('continuityBtn').onclick=checkContinuity;
 
@@ -3046,7 +3088,8 @@ buildRail();
 window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN,
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
-  renderThumbs,nextStation,refreshPathVisuals,sequencePrompts,ctxFromSpec,openSequenceStudio,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
+  renderThumbs,nextStation,refreshPathVisuals,sequencePrompts,ctxFromSpec,openSequenceStudio,
+  relightSequence,renderStickerChips,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
