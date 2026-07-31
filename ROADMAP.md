@@ -71,6 +71,7 @@ Everything that could be built without real photoreal tiles is done.
 | Per-dot cast | ✅ who's in frame at which dot; the spec lists only who was visible |
 | Cast & upload cleanup | ✅ named tiles with artwork, one add control (click / drop / paste), live cutout preview, removable uploads |
 | Full-journey shakedown | ✅ seven defects found by driving it end to end and reading the output — see below |
+| Flow pass | ✅ station rows collapse, Lock walks you on, Path taught at the first dot, `file://` says so up front |
 | **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
 
 ---
@@ -106,6 +107,23 @@ haven't set and leaves everything you locked exactly as you locked it.
 angle and colour — and lay it down at any other location. It's stored relative to dot 1
 and to the heading you blocked it at, so it re-lays rotated to wherever you're now
 looking, and it always arrives **unlocked**. Nothing is decided for you.
+
+**Working a station.** A row you aren't on is a **one-liner** — number, label, rig glyph
+and framing. Only the active row opens into its full controls, the same rule the cast
+list already followed. Ten dots read as a list, not as ten stacked panels.
+
+The active row's primary action is **`Lock shot →`**, and the arrow is literal: locking a
+station you hadn't locked before walks you to the next open dot. **Re-locking** one you're
+refining leaves you exactly where you are — being thrown to another dot mid-tune would be
+hostile — and its button says `Re-lock`. Roll drives its own walk, so it is never affected.
+
+Drop your first dot and a one-time coach says what the keys are: `Enter` locks the station
+you're on, `N` jumps to the next open dot, Roll shoots them all. Taught at the moment of
+need rather than on a welcome card nobody reads before they've seen the map.
+
+**Opened as a file?** Scout says so on arrival — a single line on the stage, not a modal —
+because browsers block saving the map canvas from `file://`. Clicking it opens the
+30-second fix. Everything else works either way; only frame capture needs a local server.
 
 **Cast is placed before the shutter fires**, because the capture is the actual rendered
 frame, not a composite. A dot decides *who is in it*, not who gets added afterward. The
