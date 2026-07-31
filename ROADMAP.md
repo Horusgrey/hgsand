@@ -69,6 +69,7 @@ Everything that could be built without real photoreal tiles is done.
 | Dot colour | ✅ reads the rig by default, overridable per dot |
 | Sequence presets | ✅ save the shape + every dot's shot, lay it down anywhere |
 | Per-dot cast | ✅ who's in frame at which dot; the spec lists only who was visible |
+| Cast & upload cleanup | ✅ named tiles with artwork, one add control (click / drop / paste), live cutout preview, removable uploads |
 | **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
 
 ---
@@ -108,6 +109,22 @@ looking, and it always arrives **unlocked**. Nothing is decided for you.
 **Cast is placed before the shutter fires**, because the capture is the actual rendered
 frame, not a composite. A dot decides *who is in it*, not who gets added afterward. The
 spec for a locked dot lists only the stand-ins that were visible when it shot.
+
+### The cast picker
+
+Stand-ins are **tiles with their own artwork and their real size on them** — `Person ·
+standing 1.80m`, `Car · 4.6 × 1.45m` — not internal keys like `person2` or `vehicle_up3`.
+Drag one onto the globe, or tap it and use Place mode.
+
+Adding a picture is **one control with three gestures**: click it, drop a file on it, or
+paste from the clipboard (paste jumps you to Cast automatically). The raw file input is
+gone. The dialog **shows the background cutout instead of promising it** — toggle it and
+the preview re-renders, so you find out before committing whether it ate your subject.
+You name the picture there too, so it lands as "Hero car", not "Vehicle 3".
+
+Your uploads sit on their own shelf below the built-ins, each removable. Removing one
+takes it out of the picker and leaves anything already placed standing — deleting a
+source picture must not quietly empty your scene.
 
 **Explicitly out of scope** (per the anti-scope-creep guardrail): new engines, a framework
 migration, monetization/packaging work, or anything that doesn't improve the frame or the spec.

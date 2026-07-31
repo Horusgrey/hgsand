@@ -162,6 +162,29 @@ function loadCesiumFallback(){
   .btn.vco{background:linear-gradient(180deg,#f0b055,#e0982f);color:#2a1f00;border-color:#e0982f;box-shadow:inset 0 1px 0 rgba(255,255,255,.22);}
   .btn.sm{padding:6px 8px;font-size:10px;}
   .btn.on{outline:1px solid var(--yellow);background:#1c1a0a;color:var(--yellow);border-color:var(--yellow);}
+  /* stand-in picker: see the thing before you place it */
+  .sigrid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;}
+  .sitile{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:8px;cursor:pointer;
+    background:linear-gradient(180deg,#141418,#0f0f12);border:1px solid var(--line);
+    transition:.12s;position:relative;min-width:0;user-select:none;}
+  .sitile:hover{border-color:#3a3a42;background:linear-gradient(180deg,#1b1b21,#141418);}
+  .sitile.on{border-color:var(--yellow);background:linear-gradient(180deg,#201d0b,#17150a);}
+  .sipic{flex:none;width:26px;height:30px;display:flex;align-items:flex-end;justify-content:center;
+    background:#08080a;border-radius:5px;border:1px solid #1d1d22;overflow:hidden;}
+  .sipic img{max-width:100%;max-height:100%;display:block;object-fit:contain;}
+  .sitxt{min-width:0;display:flex;flex-direction:column;gap:1px;line-height:1.15;}
+  .sitxt b{font-size:10.5px;font-weight:600;color:var(--dim);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sitile.on .sitxt b{color:var(--yellow);}
+  .sitxt i{font-style:normal;font-size:8.5px;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .six{position:absolute;top:2px;right:4px;font-size:12px;line-height:1;color:#3f3f46;padding:1px 2px;}
+  .sitile:hover .six{color:var(--faint);}
+  .six:hover{color:#f87171;}
+  .dropzone{border:1px dashed var(--line2);border-radius:9px;padding:9px 10px;text-align:center;
+    font-size:10.5px;color:var(--faint);cursor:pointer;transition:.14s;background:#0b0b0e;}
+  .dropzone:hover{border-color:var(--yellow);color:var(--dim);}
+  .dropzone.over{border-color:var(--yellow);color:var(--yellow);background:#17150a;}
   .chips{display:flex;flex-wrap:wrap;gap:6px;}
   .chip{background:linear-gradient(180deg,#15151a,#101013);border:1px solid var(--line);border-radius:999px;
     padding:5px 12px;font-size:11px;cursor:pointer;color:var(--dim);user-select:none;
@@ -586,12 +609,14 @@ function loadCesiumFallback(){
 
     <details class="sec"><summary>Cast &amp; props <span class="ico">&#9656;</span></summary>
       <div class="body">
-        <label class="fld">Stand-ins &mdash; drag onto the globe, or tap one and use Place mode</label>
-        <div class="chips" id="stickers"></div>
-        <div class="row"><input id="avatarFile" type="file" accept="image/*" style="font-size:11px;padding:5px;min-width:0;flex:1"><button class="btn sm" id="avatarBtn" style="flex:none;width:80px">Upload pic</button></div>
-        <div class="mini">Uploaded photos appear as extra stickers below — pick one, then place it like any other marker.</div>
-        <div class="row"><button class="btn" id="placeMode">Place mode: OFF</button><button class="btn sm" id="snapGround" style="flex:none;width:78px">Snap grd</button><button class="btn sm" id="clearMarkers" style="flex:none;width:56px">Clear</button></div>
-        <div class="mini">Drag a marker to move it. Select one, then Alt+scroll to raise/lower its height.</div>
+        <label class="fld">Stand-ins &mdash; drag one onto the globe</label>
+        <div class="sigrid" id="stickers"></div>
+        <label class="fld" id="upHead" style="display:none">Your pictures</label>
+        <div class="sigrid" id="uploads" style="display:none"></div>
+        <div style="margin:9px 0 2px"><div class="dropzone" id="dropzone">Add a picture &mdash; click, drop a file here, or paste</div></div>
+        <input id="avatarFile" type="file" accept="image/*" style="display:none">
+        <div class="row"><button class="btn" id="placeMode">Place mode: OFF</button><button class="btn sm" id="snapGround" style="flex:none;width:88px">Snap to ground</button><button class="btn sm" id="clearMarkers" style="flex:none;width:56px">Clear</button></div>
+        <div class="mini">Drag a placed stand-in to move it. Select one to size, rotate, raise it, or send it along the path.</div>
         <div class="list" id="markerList"></div>
       </div>
     </details>
@@ -786,6 +811,24 @@ const STYLES={
 const GRADES={none:null,cinematic:'contrast(1.12) saturate(1.12) brightness(.98)',teal:'contrast(1.15) saturate(1.2) hue-rotate(-6deg)',bleach:'contrast(1.25) saturate(.55) brightness(1.05)',noir:'grayscale(1) contrast(1.3) brightness(.95)',warm:'sepia(.22) saturate(1.25) contrast(1.05) brightness(1.03)'};
 const ATMOS={clear:{fog:.0001,hue:''},haze:{fog:.0008,hue:'brightness(1.05) contrast(.95)'},golden:{fog:.0003,hue:'sepia(.18) saturate(1.2)'},blue:{fog:.0005,hue:'brightness(.8) saturate(1.1) hue-rotate(8deg)'},storm:{fog:.0012,hue:'brightness(.78) saturate(.85) contrast(1.1)'},night:{fog:.0004,hue:'brightness(.5) saturate(.9)'}};
 const STICKERS={person:'#facc15',person2:'#34d399',vehicle:'#60a5fa',light:'#f472b6',marker:'#f87171'};
+// What each built-in stand-in is called and what it stands for. The picker reads this
+// instead of showing internal keys, so nobody has to know what "person2" means.
+const STAND_INS={
+  person:  {label:'Person',      note:'standing \u00b7 1.80m'},
+  person2: {label:'Person',      note:'walking \u00b7 1.75m'},
+  vehicle: {label:'Car',         note:'4.6 \u00d7 1.45m'},
+  light:   {label:'Light stand', note:'2.00m'},
+  marker:  {label:'Pin',         note:'not life-size'}
+};
+const standInName=k=>{
+  if(STAND_INS[k])return STAND_INS[k].label;
+  const u=UPLOADS[k]; return u?u.name:k;
+};
+const standInNote=k=>{
+  if(STAND_INS[k])return STAND_INS[k].note;
+  const w=WORLD_PROPS[k];
+  return w?(w.h.toFixed(2)+'m \u00d7 '+w.w.toFixed(2)+'m'):'';
+};
 const AVATARS={}; // declared with the other constants: renderStickerChips() reads it during boot
 const SHOTTYPES=['subject','background','foreground','vehicle','light','vfx'];
 const ASPECTS={'2.39:1':2.39,'1.85:1':1.85,'16:9':16/9,'4:3':4/3,'1:1':1,'9:16':9/16};
@@ -1230,7 +1273,6 @@ makeShotChipsDraggable(); // chips are drop-sources for stations from first pain
 paintChips('styles',Object.entries(STYLES).map(([k,v])=>[v.name,k]),S.style,v=>S.style=v);
 paintChips('grades',Object.keys(GRADES).map(k=>[k,k]),S.grade,v=>{S.grade=v;applyGrade();});
 paintChips('atmos',Object.keys(ATMOS).map(k=>[k,k]),S.atmos,v=>{S.atmos=v;applyAtmos();});
-renderStickerChips();
 paintChips('aspects',Object.keys(ASPECTS).map(k=>[k,k]),S.delivery,v=>{S.delivery=v;applyMask();});
 paintChips('engines',Object.entries(ENGINES).map(([k,v])=>[v,k]),S.engine,v=>S.engine=v);
 
@@ -1606,14 +1648,19 @@ async function rollStations(){
   if(!S.path||S.path.points.length<2){toast('Plot a camera path first');return;}
   const total=S.path.points.length;
   S._quiet=true;
+  $('slate').style.display='none'; $('rollSlate').classList.add('show');
   for(let i=0;i<total;i++){
-    toast('Rolling station '+(i+1)+' of '+total+'…');
+    $('rollInfo').textContent=' '+(i+1)+'/'+total+' — '+stationLabel(i)+' · '+
+      plainType(pointCamType(i))+(S.path.points[i].cam?' · '+framingSummary(S.path.points[i].cam):'');
+    $('rollFill').style.width=Math.round(i/total*100)+'%';
     flyToStation(i,true); await waitForTiles(2200);
     lockStation(i);
   }
+  $('rollFill').style.width='100%';
+  setTimeout(()=>{$('rollSlate').classList.remove('show');$('slate').style.display='';$('rollFill').style.width='0';},650);
   S._quiet=false;
   openSectionByLabel('Post');
-  toast('\u2713 All '+total+' stations locked — press Play Take to watch the move');
+  toast('\u2713 All '+total+' stations in the can — press Play take to watch the move');
 }
 $('pathEdit').onclick=()=>{pathSetupOpen=!pathSetupOpen;syncPathPanelMode();};
 $('rollStationsBtn').onclick=rollStations;
@@ -2187,10 +2234,12 @@ function propSvg(kind){
 }
 // What an upload is standing in for — drives its real-world size.
 const UPLOAD_KINDS={
-  person:  {label:'Person',  h:1.80, note:'stands 1.8m tall'},
-  vehicle: {label:'Vehicle', h:1.50, note:'1.5m tall, length from the picture'},
-  prop:    {label:'Prop',    h:2.00, note:'2m tall — resize after placing'}
+  person:  {label:'Person',  h:1.80, note:'1.80m tall'},
+  vehicle: {label:'Vehicle', h:1.50, note:'1.50m tall'},
+  prop:    {label:'Prop',    h:2.00, note:'2.00m tall'}
 };
+const UPLOADS={};        // key -> {name, kind}; what the user actually calls their pictures
+let UPLOAD_SEQ=0;
 function imgToCanvas(img,maxW){
   const s=Math.min(1,(maxW||512)/img.width);
   const cv=document.createElement('canvas');
@@ -2228,60 +2277,120 @@ function flippedImage(key){
   return FLIPPED[key]=cv.toDataURL('image/png');
 }
 // Register an upload as a placeable, life-size stand-in.
-function registerUpload(img,kind,knock){
+function registerUpload(img,kind,knock,name){
   let cv=imgToCanvas(img,512);
   if(knock)cv=knockoutBg(cv);
   const url=cv.toDataURL('image/png');
-  const key=kind+'_up'+(Object.keys(AVATARS).length+1);
+  const key=kind+'_up'+(++UPLOAD_SEQ);
   const spec=UPLOAD_KINDS[kind]||UPLOAD_KINDS.prop;
   const h=spec.h, w=Math.max(0.15,+(h*(cv.width/cv.height)).toFixed(2));
   AVATARS[key]=url;
   WORLD_PROPS[key]={w,h};            // this is what makes it stand in the world
+  UPLOADS[key]={name:(name||'').trim()||(spec.label+' '+UPLOAD_SEQ), kind};
   S.sticker=key; renderStickerChips();
-  toast('Added — '+h.toFixed(2)+'m \u00d7 '+w.toFixed(2)+'m. Place mode, then click the ground.');
+  toast('\u201c'+UPLOADS[key].name+'\u201d added \u2014 '+h.toFixed(2)+'m tall. Drag it onto the globe.');
+}
+// Remove an upload. Anything already placed keeps standing — deleting the source
+// picture shouldn't quietly empty your scene.
+function removeUpload(key){
+  const placed=S.markers.filter(m=>m.type===key).length;
+  if(placed&&!confirm('\u201c'+standInName(key)+'\u201d is placed '+placed+' time'+(placed===1?'':'s')+' in the scene.\n\nRemove it from the picker? Anything already placed stays where it is.'))return;
+  delete AVATARS[key]; delete UPLOADS[key];
+  if(!placed)delete WORLD_PROPS[key];   // still needed to draw what's already out there
+  if(S.sticker===key)S.sticker='person';
+  renderStickerChips(); toast('Removed from the picker');
 }
 function askUploadKind(dataUrl){
   const img=new Image();
   img.onload=()=>{
     const opaque=imageIsOpaque(img);
-    const thumb=imgToCanvas(img,150).toDataURL('image/png');
+    const plain=imgToCanvas(img,180).toDataURL('image/png');
+    const cutURL=()=>knockoutBg(imgToCanvas(img,180)).toDataURL('image/png');
+    let knock=opaque, kind='person';
     showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span>'+
-      '<h3>What is this a stand-in for?</h3>'+
-      '<div class="uprow"><img class="upthumb" src="'+thumb+'">'+
-      '<div class="mini">Scout places it life-size in the scene, so it needs a real height. '+
-      (opaque?'<b style="color:var(--yellow)">This picture has no transparency</b> — it will read as a flat card unless the background is removed.'
-             :'This picture has transparency, so it will sit in the scene cleanly.')+'</div></div>'+
-      (opaque?'<label class="chk"><input type="checkbox" id="upKnock" checked> Try to remove the background</label>':'')+
-      '<div class="row" style="margin-top:12px">'+
-        Object.entries(UPLOAD_KINDS).map(([k,v])=>'<button class="btn" data-kind="'+k+'">'+v.label+'<span class="mini" style="margin:0 0 0 6px">'+v.note+'</span></button>').join('')+
-      '</div>');
-    [...document.querySelectorAll('#modal [data-kind]')].forEach(b=>b.onclick=()=>{
-      const kn=$('upKnock')&&$('upKnock').checked;
-      $('modal').classList.remove('show');
-      registerUpload(img,b.dataset.kind,kn);
-    });
+      '<h3>Add a stand-in</h3>'+
+      '<div class="uprow"><img class="upthumb" id="upPrev" src="'+(knock?cutURL():plain)+'">'+
+      '<div style="min-width:0">'+
+        '<div class="mini" style="margin:0 0 8px">Scout stands it in the scene at real size, so it needs a height. '+
+        (opaque?'This picture has no transparency, so it would read as a flat card \u2014 the cutout below is on by default.'
+               :'This picture already has transparency, so it will sit in the scene cleanly.')+'</div>'+
+        '<label class="fld" style="margin-top:0">Call it</label>'+
+        '<input id="upName" type="text" placeholder="e.g. Lead, Hero car, Streetlight">'+
+        '<label class="chk" style="margin-top:9px"><input type="checkbox" id="upKnock"'+(knock?' checked':'')+'> Remove the background</label>'+
+        '<div class="mini" id="upWarn" style="margin-top:4px"></div>'+
+      '</div></div>'+
+      '<label class="fld">What is it?</label>'+
+      '<div class="chips" id="upKinds">'+
+        Object.entries(UPLOAD_KINDS).map(([k,v])=>'<span class="chip'+(k===kind?' on':'')+'" data-kind="'+k+'">'+v.label+' \u00b7 '+v.note+'</span>').join('')+
+      '</div>'+
+      '<div class="row" style="margin-top:14px"><button class="btn y" id="upGo">Add to the picker</button>'+
+      '<button class="btn sm" id="upCancel" style="flex:none;width:64px">Cancel</button></div>');
+    const paint=()=>{ $('upPrev').src=knock?cutURL():plain;
+      $('upWarn').textContent=knock?'Works on a flat, even background. If it eats the subject, switch it off.':''; };
+    paint();
+    $('upKnock').onchange=e=>{ knock=e.target.checked; paint(); };
+    [...document.querySelectorAll('#upKinds .chip')].forEach(c=>c.onclick=()=>{
+      kind=c.dataset.kind;
+      [...document.querySelectorAll('#upKinds .chip')].forEach(x=>x.classList.toggle('on',x===c)); });
+    $('upCancel').onclick=()=>$('modal').classList.remove('show');
+    $('upGo').onclick=()=>{ const nm=$('upName').value;
+      $('modal').classList.remove('show'); registerUpload(img,kind,knock,nm); };
   };
+  img.onerror=()=>toast('That image couldn\u2019t be read');
   img.src=dataUrl;
 }
-function renderStickerChips(){
-  const items=[...Object.keys(STICKERS).map(k=>[k,k]),
-    ...Object.keys(AVATARS).map(k=>[(UPLOAD_KINDS[k.split('_')[0]]||{label:'Upload'}).label+' '+(k.match(/\d+$/)||[''])[0],k])];
-  paintChips('stickers',items,S.sticker,v=>{S.sticker=v; killGhost();});
-  // Drag straight onto the globe — no mode to enter or forget. Tap-to-place stays for touch.
-  [...$('stickers').children].forEach((el,i)=>{
-    const val=items[i]&&items[i][1]; if(!val)return;
-    el.draggable=true; el.title='Drag onto the globe, or tap then use Place mode';
-    el.ondragstart=ev=>{ev.dataTransfer.setData('text/plain','sticker:'+val);
-      ev.dataTransfer.effectAllowed='copy'; S.sticker=val;};
-  });
+// You should be able to see what you're about to place, and read what it is.
+function standInTile(key,removable){
+  const t=document.createElement('div');
+  t.className='sitile'+(S.sticker===key?' on':'');
+  t.innerHTML='<span class="sipic"><img src="'+stickerImage(key)+'" alt=""></span>'+
+    '<span class="sitxt"><b>'+escapeHtml(standInName(key))+'</b><i>'+escapeHtml(standInNote(key))+'</i></span>'+
+    (removable?'<span class="six" title="Remove from the picker">&times;</span>':'');
+  t.title='Drag onto the globe, or tap it and use Place mode';
+  t.draggable=true;
+  t.ondragstart=ev=>{ev.dataTransfer.setData('text/plain','sticker:'+key);
+    ev.dataTransfer.effectAllowed='copy'; S.sticker=key; renderStickerChips();};
+  t.onclick=ev=>{ if(ev.target.classList.contains('six')){ev.stopPropagation();removeUpload(key);return;}
+    S.sticker=key; killGhost(); renderStickerChips(); };
+  return t;
 }
-$('avatarBtn').onclick=()=>$('avatarFile').click();
-$('avatarFile').onchange=e=>{
-  const f=e.target.files[0]; if(!f)return;
+function renderStickerChips(){
+  const box=$('stickers'); if(!box)return; box.innerHTML='';
+  Object.keys(STICKERS).forEach(k=>box.appendChild(standInTile(k,false)));
+  const ups=Object.keys(AVATARS);
+  const head=$('upHead'), grid=$('uploads');
+  if(grid){ grid.innerHTML='';
+    ups.forEach(k=>grid.appendChild(standInTile(k,true)));
+    if(head)head.style.display=ups.length?'':'none';
+    grid.style.display=ups.length?'':'none';
+  }
+}
+// One way in, three gestures: click the zone, drop a file on it, or paste from the clipboard.
+function ingestImageFile(f){
+  if(!f||!/^image\//.test(f.type||'')){toast('That isn\u2019t an image file');return;}
   const rd=new FileReader();
   rd.onload=()=>askUploadKind(rd.result);
-  rd.readAsDataURL(f); e.target.value='';
-};
+  rd.onerror=()=>toast('Couldn\u2019t read that file');
+  rd.readAsDataURL(f);
+}
+renderStickerChips();   // painted here: the tiles draw real artwork and real sizes
+$('dropzone').onclick=()=>$('avatarFile').click();
+$('avatarFile').onchange=e=>{ ingestImageFile(e.target.files[0]); e.target.value=''; };
+['dragenter','dragover'].forEach(t=>$('dropzone').addEventListener(t,e=>{
+  e.preventDefault(); e.stopPropagation(); $('dropzone').classList.add('over'); }));
+['dragleave','drop'].forEach(t=>$('dropzone').addEventListener(t,e=>{
+  e.preventDefault(); e.stopPropagation(); $('dropzone').classList.remove('over'); }));
+$('dropzone').addEventListener('drop',e=>{
+  const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+  if(f)ingestImageFile(f);
+});
+document.addEventListener('paste',e=>{
+  if(/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))return;
+  const items=[...((e.clipboardData&&e.clipboardData.items)||[])];
+  const im=items.find(i=>/^image\//.test(i.type));
+  if(!im)return;
+  e.preventDefault(); openSectionByLabel('Cast'); ingestImageFile(im.getAsFile());
+});
 function addMarker(lon,lat,height,type,shotType,scale,rot){
   const id='m'+Date.now()+Math.floor(Math.random()*99);
   const wp=worldProp(type);
@@ -2341,7 +2450,7 @@ function renderMarkerList(){
     if(m.scale==null)m.scale=1; if(m.rot==null)m.rot=0;
     const sel=S.selMarker===m.id;
     const d=document.createElement('div');d.className='item'+(sel?' sel':'');
-    d.innerHTML='<div class="t"><span>'+m.type+' <span class="tag">'+m.height.toFixed(0)+'m</span>'+
+    d.innerHTML='<div class="t"><span>'+escapeHtml(standInName(m.type))+' <span class="tag">'+m.height.toFixed(0)+'m</span>'+
       (m.travels?' <span class="tag tvon">\u2192 travels</span>':'')+
       '</span><span class="x" data-x="'+m.id+'" title="Delete">&times;</span></div>';
     const sel2=document.createElement('select');SHOTTYPES.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;if(t===m.shotType)o.selected=true;sel2.appendChild(o);});
@@ -3534,7 +3643,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
-  relightSequence,renderStickerChips,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
+  relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
