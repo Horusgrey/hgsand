@@ -28,7 +28,25 @@ viewfinder, coach, shadows — stays green with zero page errors.
 | **Cast & props** | Ghost placement, life-size mannequins, drag/scale/rotate/raise, honest captures, sun-aware contact shadows |
 | **Coverage** | Recipe → editable plan → preview → roll a whole scene into the sequence |
 | **Exports** | `gmapz.capture.v2`, six-engine Prompt Studio, VCS-15 handoff, VCO project, contact sheet, PDF report, session save/load |
+| **Post** | Frame bin (every frame you've shot, one click in or out of the cut), the cut with per-shot beat, take player, GIF + video render, contact sheet, PDF report |
 | **UX** | Welcome slate, empty states, autosave + restore, drag-reorder shots, discovery coach, Esc exits modes, mobile-aware |
+
+### The panel, as of this pass
+
+The rail is nine buttons and three hairline dividers — no headings. A heading in a
+column of buttons reads as a dead button, which is exactly how the old `Where / Look /
+Who / Move / Out` labels landed. Order follows how you actually work:
+
+**Scout** → **Camera** → **Cast** → **Path** ┊ **Light** → **Style** → **Coverage** ┊ **Post** → **Export**
+
+Find the place, choose the shot, put people in it, lay the path they're shot along; then
+light it, grade it, add coverage; then look at the frames and send them out.
+
+Capture is not a section. It's a bar pinned to the top of the panel — visible from every
+section — plus the labelled on-stage shutter and `C`. Snapping a frame anywhere, any
+time, at any point in the workflow, is the one thing that must never be more than one
+click away. Scratch frames are full-opacity in the strip and the bin, with a `+` that
+promotes them into the cut; nothing you shoot is treated as a reject.
 
 ---
 
@@ -45,7 +63,29 @@ Everything that could be built without real photoreal tiles is done.
 | Per-shot beat | ✅ drives the take player, video render and GIF frame delays |
 | Sun re-light | ✅ re-shoots the sequence under one sun rather than relabelling specs |
 | Drag to place | ✅ stand-ins onto the globe; lens/size/angle chips onto a station |
+| Panel / rail rebuild | ✅ dividers not headings, workflow order, capture bar pinned above every section, Post panel |
 | **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
+| **Roll anchors on the path** | 🗣 **user call open** — the camera roll is the capturing device, so it should roll the locked points rather than carry its own anchor. See below. |
+
+### Open: what the roll is anchored to
+
+Right now there are two rolls, and only one of them uses the path:
+
+- **`Roll stations`** (Path panel) flies your established points 1→N and captures each,
+  using that point's own framing where you set one. This is the behaviour the note
+  describes — the path is the anchor set.
+- **`Roll coverage`** (Coverage panel) keeps its *own* single anchor — `COV.base`, grabbed
+  from wherever the camera happens to be, with a "re-anchor" button — and generates its
+  setups around that. It ignores the path completely.
+
+The user's note: *the camera roll shouldn't have its own separate anchors, as that is the
+main capturing device — it should roll and take all of the locked points after the path
+has been established.* The proposed shape (**not built, awaiting confirmation**): when a
+path exists, a coverage recipe stops being a separate anchor and becomes a *filler* — it
+assigns a setup to each path point that has no framing of its own, leaves every point you
+locked exactly as you locked it, and then one roll takes all of them in path order. With
+no path, coverage falls back to today's single-anchor behaviour and says so. Recipes stay
+opt-in; nothing is applied to a point you already framed.
 
 **Explicitly out of scope** (per the anti-scope-creep guardrail): new engines, a framework
 migration, monetization/packaging work, or anything that doesn't improve the frame or the spec.

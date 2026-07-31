@@ -56,9 +56,7 @@ function loadCesiumFallback(){
     stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
   .railbtn .rl{font-size:7.5px;letter-spacing:.03em;text-transform:uppercase;font-weight:600;
     max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .railgrp{font-size:7px;letter-spacing:.2em;text-transform:uppercase;color:#3f3f47;text-align:center;
-    margin:11px 8px 4px;padding-top:9px;border-top:1px solid #17171b;user-select:none;}
-  .railgrp:first-child{border-top:none;padding-top:0;margin-top:2px;}
+  .raildiv{flex:none;height:1px;background:#191920;margin:7px 14px;}
   .railbtn{position:relative;}
   .railbtn:hover{background:#141418;color:var(--txt);}
   .railbtn:focus-visible{outline:none;box-shadow:0 0 0 2px rgba(250,204,21,.4);}
@@ -83,6 +81,11 @@ function loadCesiumFallback(){
     background:linear-gradient(180deg,#101013,#0a0a0c);}
   .brand h1{margin:0;font-size:15px;font-weight:700;letter-spacing:.02em;}
   .brand h1 span{color:var(--yellow);}
+  /* The shutter is the product. It stays reachable from every section of the panel. */
+  #capbar{flex:none;display:flex;gap:6px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#101013,#0b0b0e);position:sticky;top:0;z-index:4;}
+  #capCount{flex:none;font:600 9px/1 ui-monospace,monospace;color:var(--faint);letter-spacing:.1em;
+    min-width:30px;text-align:right;white-space:nowrap;}
   .brand p{margin:2px 0 0;font-size:10px;color:var(--faint);letter-spacing:.14em;text-transform:uppercase;}
   #panelbody details.sec{border-bottom:1px solid var(--line);}
   #panelbody details.sec>summary{display:none;}
@@ -219,6 +222,22 @@ function loadCesiumFallback(){
   #maskR{position:absolute;top:0;bottom:0;right:0;background:#000;z-index:3;pointer-events:none;}
   .gradelayer{position:absolute;inset:0;z-index:2;pointer-events:none;mix-blend-mode:overlay;opacity:0;transition:.3s;}
   #captureFlash{position:absolute;inset:0;z-index:8;background:#fff;opacity:0;pointer-events:none;}
+  /* The frame bin: the panel-side view of everything the shutter has taken. */
+  .bin{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;max-height:184px;overflow-y:auto;
+    padding:5px;border:1px solid var(--line);border-radius:8px;background:#08080a;margin-bottom:9px;}
+  .bincell{position:relative;border:1px solid var(--line2);border-radius:5px;overflow:hidden;background:#000;
+    cursor:pointer;transition:.12s;}
+  .bincell:hover{border-color:var(--yellow);}
+  .bincell img{width:100%;height:44px;object-fit:cover;display:block;}
+  .bincell .bn{position:absolute;top:2px;left:2px;min-width:14px;height:14px;padding:0 3px;border-radius:4px;
+    background:rgba(9,9,11,.9);border:1px solid rgba(255,255,255,.22);color:#e4e4e7;
+    font:700 8px/13px ui-monospace,monospace;text-align:center;}
+  .bincell .bx{position:absolute;bottom:2px;right:2px;padding:0 4px;border-radius:4px;
+    background:rgba(9,9,11,.86);border:1px solid var(--line2);color:var(--dim);
+    font:700 8px/13px ui-monospace,monospace;}
+  .bincell.in{border-color:var(--yellow);}
+  .bincell.in .bn{background:var(--yellow);color:#1a1500;border-color:var(--yellow);}
+  .bincell.in .bx{color:var(--yellow);border-color:rgba(250,204,21,.5);}
   .thumbs{position:absolute;bottom:14px;left:14px;right:74px;z-index:6;display:flex;gap:8px;overflow-x:auto;padding:4px;}
   .thumb{flex:none;width:104px;border:1px solid rgba(255,255,255,.12);border-radius:8px;overflow:hidden;background:#000;
     cursor:pointer;position:relative;box-shadow:0 3px 14px rgba(0,0,0,.55);
@@ -228,8 +247,7 @@ function loadCesiumFallback(){
   .thumb .cap{font-size:9px;color:#d4d4d8;padding:3px 6px;letter-spacing:.04em;
     background:linear-gradient(180deg,transparent,rgba(0,0,0,.82));position:absolute;bottom:0;left:0;right:0;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .thumb:not(.incut){opacity:.62;}
-  .thumb:not(.incut):hover{opacity:1;}
+  .thumb:not(.incut){border-style:dashed;border-color:rgba(255,255,255,.22);}
   .thumb.incut{border-color:rgba(255,255,255,.3);}
   .thumb.live{border-color:var(--yellow);box-shadow:0 0 0 2px rgba(250,204,21,.3),0 8px 22px rgba(0,0,0,.6);}
   .tseq{position:absolute;top:3px;left:3px;z-index:2;min-width:16px;height:16px;padding:0 4px;border-radius:5px;
@@ -276,8 +294,10 @@ function loadCesiumFallback(){
   #rollBar{height:3px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden;}
   #rollBar i{display:block;height:100%;width:0;background:var(--yellow);transition:width .35s;}
   /* ---- on-stage shutter ---- */
-  #shutter{position:absolute;bottom:46px;right:14px;z-index:7;width:48px;height:48px;border-radius:50%;padding:0;
+  #shutter{position:absolute;bottom:50px;right:14px;z-index:7;width:50px;height:50px;border-radius:50%;padding:0;
     background:rgba(9,9,11,.85);border:2px solid var(--yellow);cursor:pointer;transition:.12s;}
+  #shutter:after{content:"CAPTURE";position:absolute;left:50%;top:-16px;transform:translateX(-50%);
+    font:700 7px/1 ui-monospace,monospace;letter-spacing:.18em;color:var(--yellow);opacity:.8;pointer-events:none;}
   #shutter:before{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--yellow);transition:.12s;}
   #shutter:hover{box-shadow:0 0 14px rgba(250,204,21,.35);}
   #shutter:hover:before{filter:brightness(1.1);}
@@ -321,7 +341,7 @@ function loadCesiumFallback(){
   .psfoot{display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:9.5px;color:var(--faint);
     font-family:ui-monospace,monospace;}
   /* ---- Google-Earth navigation cluster ---- */
-  #navCluster{position:absolute;right:14px;bottom:112px;z-index:7;display:flex;flex-direction:column;gap:7px;align-items:center;}
+  #navCluster{position:absolute;right:14px;bottom:126px;z-index:7;display:flex;flex-direction:column;gap:7px;align-items:center;}
   .navbtn{width:40px;height:40px;border-radius:50%;background:rgba(10,10,13,.72);border:1px solid rgba(255,255,255,.1);
     backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 3px 14px rgba(0,0,0,.5);
     color:var(--txt);font-size:18px;font-weight:600;cursor:pointer;transition:.12s;font-family:inherit;
@@ -478,6 +498,11 @@ function loadCesiumFallback(){
     <div id="panelTab" title="Show / hide panel"><span>Panel</span></div>
     <div id="panelbody">
     <div class="brand"><h1>GMAPz <span>Scout</span></h1><p>Mobile Hollywood · location → block → spec</p></div>
+    <div id="capbar">
+      <button class="btn y" id="capBarBtn" title="Capture the exact on-screen frame (C)">&#9673;&nbsp; Capture frame</button>
+      <button class="btn sm" id="capBarHQ" title="Capture at double resolution" style="flex:none;width:42px">HQ</button>
+      <span id="capCount" title="Frames shot this session"></span>
+    </div>
 
     <details class="sec" open><summary>Scout <span class="ico">&#9656;</span></summary>
       <div class="body">
@@ -588,16 +613,19 @@ function loadCesiumFallback(){
       </div>
     </details>
 
-    <details class="sec"><summary>Shot sequence <span class="ico">&#9656;</span></summary>
+    <details class="sec"><summary>Post &mdash; frames &amp; the cut <span class="ico">&#9656;</span></summary>
       <div class="body">
-        <label class="fld">Shot name</label>
-        <div class="row"><input id="shotName" type="text" placeholder="e.g. 01 — Tower establish"></div>
-        <div class="row"><button class="btn y" id="saveShot">Save shot (S)</button></div>
+        <label class="fld">Frame bin &mdash; every frame you&rsquo;ve shot</label>
+        <div class="bin" id="frameBin"></div>
+        <label class="fld">The cut &mdash; drag to reorder, set a beat per shot</label>
+        <div class="row"><input id="shotName" type="text" placeholder="Name this shot — e.g. 01 Tower establish"><button class="btn y" id="saveShot" style="flex:none;width:96px">Save shot</button></div>
         <div class="list" id="shotList"></div>
         <div class="tlwrap"><div id="timeline" style="display:flex;gap:6px;overflow-x:auto;padding:6px 0;margin-top:4px"></div></div>
-        <div class="row"><button class="btn g" id="playTake">&#9654; Play Take</button><button class="btn sm" id="clearSeq" style="flex:none;width:60px" title="Clear the shot sequence">Clear</button></div>
-        <div class="row"><button class="btn" id="scenePrompt">Sequence prompts &mdash; the whole cut</button></div>
-        <div class="row"><button class="btn" id="pdfReport">PDF blocking report</button></div>
+        <div class="row"><button class="btn g" id="playTake">&#9654; Play take</button><button class="btn sm" id="clearSeq" style="flex:none;width:60px" title="Clear the shot sequence">Clear</button></div>
+        <label class="fld">Render the cut</label>
+        <div class="row"><button class="btn y" id="postGif">Render GIF</button><button class="btn" id="postVid">Render video</button></div>
+        <div class="row"><button class="btn sm" id="contactSheetBtn">Contact sheet</button><button class="btn sm" id="pdfReport">PDF report</button></div>
+        <div class="mini" id="postProg" style="margin-top:6px"></div>
       </div>
     </details>
 
@@ -609,7 +637,8 @@ function loadCesiumFallback(){
         <div class="row"><button class="btn y" id="i2vBtn">Prompt studio — frame + all engines</button></div>
         <div class="row"><button class="btn" id="specBtn">Export gmapz.capture.v2 (.json)</button></div>
         <div class="row"><button class="btn vcs" id="vcsBtn">VCS-15 handoff (.md)</button><button class="btn vco" id="vcoBtn">VCO (.json)</button></div>
-        <div class="row"><button class="btn" id="continuityBtn">Check continuity</button><button class="btn" id="contactSheetBtn">Contact sheet</button></div>
+        <div class="row"><button class="btn" id="scenePrompt">Sequence prompts &mdash; the whole cut</button></div>
+        <div class="row"><button class="btn" id="continuityBtn">Check continuity</button></div>
         <div class="row"><button class="btn sm" id="sessionSave">Save session</button><button class="btn sm" id="sessionLoadBtn">Load session</button><button class="btn sm" id="sessionNew" title="Clear the autosaved session and start clean" style="flex:none;width:44px">New</button><input id="sessionFile" type="file" accept=".json" style="display:none"></div>
       </div>
     </details>
@@ -1478,7 +1507,7 @@ async function rollStations(){
     lockStation(i);
   }
   S._quiet=false;
-  openSectionByLabel('Shots');
+  openSectionByLabel('Post');
   toast('\u2713 All '+total+' stations locked — press Play Take to watch the move');
 }
 $('pathEdit').onclick=()=>{pathSetupOpen=!pathSetupOpen;syncPathPanelMode();};
@@ -1732,7 +1761,7 @@ async function rollCoverage(){
   S._quiet=false;
   Object.assign(S,{shotSize:keep.shotSize,angle:keep.angle,fov:keep.fov,lensMm:keep.lensMm,grade:keep.grade,head:keep.head,tilt:keep.tilt,range:keep.range,target:keep.target});
   flyToParams(0.9); syncCamUI(); renderShots(); renderCovPlan();
-  if(added){ openSectionByLabel('Shots'); toast('✓ '+cov.label+' coverage in the can — '+added+' shot'+(added===1?'':'s')+' added to the sequence'); }
+  if(added){ openSectionByLabel('Post'); toast('✓ '+cov.label+' coverage in the can — '+added+' shot'+(added===1?'':'s')+' added to the sequence'); }
   else toast('Coverage couldn’t capture frames — see the capture help that just opened');
 }
 
@@ -2382,9 +2411,11 @@ function renderThumbs(){
     t.title=inCut?('Shot '+(inCut.i+1)+' — '+inCut.sh.name):'Scratch frame';
     t.innerHTML=(inCut?'<span class="tseq">'+(inCut.i+1)+'</span>':'')+
       '<img src="'+c.url+'"><div class="cap">'+(inCut?escapeHtml(inCut.sh.name.slice(0,16)):S.delivery)+'</div>'+
-      '<div class="acts"><button class="ta" title="Prompt studio with this frame">\u26a1</button>'+
+      '<div class="acts">'+(inCut?'':'<button class="ta" title="Add this frame to the cut">+</button>')+
+      '<button class="ta" title="Prompt studio with this frame">\u26a1</button>'+
       '<button class="ta" title="Download PNG">\u2b07</button></div>';
-    const acts=t.querySelectorAll('.ta');
+    const acts=[...t.querySelectorAll('.ta')];
+    if(!inCut) acts.shift().onclick=e=>{e.stopPropagation();addCaptureToCut(c);};
     acts[0].onclick=e=>{e.stopPropagation();openPromptStudio({id:c.id,url:c.url},motionFromPath(),null);};
     acts[1].onclick=e=>{e.stopPropagation();downloadURI(c.url,c.id+'.png');};
     t.onclick=()=>{
@@ -2397,7 +2428,40 @@ function renderThumbs(){
     wrap.appendChild(t);
   });
   wrap.scrollLeft=wrap.scrollWidth;
+  const cc=$('capCount'); if(cc)cc.textContent=S.captures.length?S.captures.length+' FR':'';
+  renderFrameBin();
 }
+// A frame is either in the cut or it isn't. One click moves it either way — that is
+// the whole of post: look at what you shot, decide what stays.
+function addCaptureToCut(c){
+  if(S.shots.some(s=>s.spec&&s.spec.id===c.id)){ toast('That frame is already in the cut'); return; }
+  S.shots.push({name:'Shot '+(S.shots.length+1),spec:c.spec,thumb:c.url});
+  renderShots(); toast('Frame added to the cut as shot '+S.shots.length);
+}
+function dropFromCut(id){
+  const i=S.shots.findIndex(s=>s.spec&&s.spec.id===id);
+  if(i<0)return;
+  S.shots.splice(i,1); renderShots(); toast('Frame pulled from the cut \u2014 it stays in the bin');
+}
+function renderFrameBin(){
+  const B=$('frameBin'); if(!B)return; B.innerHTML='';
+  if(!S.captures.length){
+    B.innerHTML='<div class="mini" style="grid-column:1/-1;margin:3px 2px">No frames yet \u2014 hit <b>Capture frame</b> (or C, or the shutter) anywhere, any time. Everything you shoot lands here.</div>';
+    return; }
+  const shotOf={}; S.shots.forEach((sh,i)=>{ if(sh.spec&&sh.spec.id)shotOf[sh.spec.id]={i,sh}; });
+  S.captures.forEach(c=>{
+    const cut=shotOf[c.id];
+    const d=document.createElement('div'); d.className='bincell'+(cut?' in':'');
+    d.title=cut?('Shot '+(cut.i+1)+' \u2014 '+cut.sh.name+' \u00b7 click to pull it from the cut')
+               :'Scratch frame \u2014 click to put it in the cut';
+    d.innerHTML='<img src="'+c.url+'" alt="">'+(cut?'<span class="bn">'+(cut.i+1)+'</span>':'')+
+      '<span class="bx">'+(cut?'IN':'+')+'</span>';
+    d.onclick=()=>{ cut?dropFromCut(c.id):addCaptureToCut(c); };
+    B.appendChild(d);
+  });
+}
+$('capBarBtn').onclick=()=>capture(false);
+$('capBarHQ').onclick=()=>capture(true);
 $('captureBtn').onclick=()=>capture(false);
 $('captureHQ').onclick=()=>capture(true);
 $('shutter').onclick=e=>capture(e.shiftKey);
@@ -2678,11 +2742,26 @@ function takeMime(){ if(!window.MediaRecorder)return null;
     try{ if(MediaRecorder.isTypeSupported(type))return {type,ext}; }catch(_){} } return null; }
 function drawContain(ctx,im,W,H){ const r=Math.min(W/im.width,H/im.height),w=im.width*r,h=im.height*r; ctx.drawImage(im,(W-w)/2,(H-h)/2,w,h); }
 function downloadBlob(blob,name){ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500); }
+// Render can be started from the take player or from the Post panel; progress and the
+// disabled state have to show up in whichever one you're looking at.
+function progSink(){
+  const els=[$('takeCap'),$('postProg')].filter(Boolean);
+  const o={_h:els[0]?els[0].innerHTML:''};
+  Object.defineProperty(o,'innerHTML',{get(){return o._h;},
+    set(v){o._h=v; els.forEach(e=>e.innerHTML=v);}});
+  return o;
+}
+function btnPair(a,b){
+  const els=[$(a),$(b)].filter(Boolean); const o={};
+  Object.defineProperty(o,'disabled',{get(){return !!(els[0]&&els[0].disabled);},
+    set(v){els.forEach(e=>e.disabled=v);}});
+  return o;
+}
 async function exportTake(){
   const list=takeShots(); if(!list.length){toast('Save shots with captured frames first');return;}
   const mime=takeMime(); if(!mime){toast('Video export isn’t supported in this browser');return;}
   takePause();
-  const cap=$('takeCap'), oldCap=cap.innerHTML, btn=$('takeSave'); btn.disabled=true;
+  const cap=progSink(), oldCap=cap.innerHTML, btn=btnPair('takeSave','postVid'); btn.disabled=true;
   let imgs; try{ imgs=await Promise.all(list.map(s=>loadImg(s.thumb))); }catch(_){ cap.innerHTML=oldCap; btn.disabled=false; toast('Couldn’t read the frames'); return; }
   const W=1280,H=720, cv=document.createElement('canvas'); cv.width=W; cv.height=H; const ctx=cv.getContext('2d');
   const stream=cv.captureStream(30);
@@ -2808,7 +2887,7 @@ function encodeGIF(frames,W,H,delayCs){ // delayCs: one value, or one per frame
 async function exportTakeGifFile(){
   const list=takeShots(); if(!list.length){toast('Save shots with captured frames first');return;}
   takePause();
-  const cap=$('takeCap'), old=cap.innerHTML, btn=$('takeGif'); btn.disabled=true;
+  const cap=progSink(), old=cap.innerHTML, btn=btnPair('takeGif','postGif'); btn.disabled=true;
   let imgs; try{ imgs=await Promise.all(list.map(s=>loadImg(s.thumb))); }
   catch(_){ cap.innerHTML=old; btn.disabled=false; toast('Couldn\u2019t read the frames'); return; }
   const ar=imgs[0].height/imgs[0].width;
@@ -2832,6 +2911,8 @@ async function exportTakeGifFile(){
   toast('GIF exported \u2014 '+((bytes.length/1024)|0)+' KB, '+frames.length+' frames, loops forever');
 }
 $('takeGif').onclick=exportTakeGifFile;
+$('postGif').onclick=exportTakeGifFile;
+$('postVid').onclick=exportTake;
 // ---- Sequence prompts: the cut as one document, not N unrelated prompts ----
 const SPEC_NOUN={person:'person',prop:'car',light:'light',vfx:'effect'};
 // Rebuild a prompt context from a saved shot's spec, so a sequence describes what
@@ -3173,16 +3254,18 @@ const ICONS={
   shots:  '<rect x="3.2" y="6.2" width="17.6" height="11.6" rx="1.6"/><path d="M7.4 6.2v11.6M16.6 6.2v11.6"/>',
   export: '<path d="M12 15.8V4.2M8.4 7.8 12 4.2l3.6 3.6"/><path d="M4.4 15.4v3.4a1.2 1.2 0 0 0 1.2 1.2h12.8a1.2 1.2 0 0 0 1.2-1.2v-3.4"/>'
 };
-// The rail reads as a workflow: where -> how it looks -> who -> the move -> what comes out
+// The rail is the order you actually work in: find the place, choose the shot, put
+// people in it, lay the path they're shot along, then light, look, coverage, cut, out.
+// Dividers only — no headings. A heading in a column of buttons reads as a dead button.
 const SECTION_META=[
-  {match:'scout',         icon:svgIcon(ICONS.scout),  label:'Scout',    group:'Where'},
-  {match:'block the shot',icon:svgIcon(ICONS.camera), label:'Camera',   group:'Look'},
-  {match:'light',         icon:svgIcon(ICONS.light),  label:'Light'},
+  {match:'scout',         icon:svgIcon(ICONS.scout),  label:'Scout'},
+  {match:'block the shot',icon:svgIcon(ICONS.camera), label:'Camera', div:true},
+  {match:'cast &',        icon:svgIcon(ICONS.cast),   label:'Cast'},
+  {match:'cameras &',     icon:svgIcon(ICONS.path),   label:'Path'},
+  {match:'light',         icon:svgIcon(ICONS.light),  label:'Light', div:true},
   {match:'style &',       icon:svgIcon(ICONS.look),   label:'Style'},
-  {match:'cast &',        icon:svgIcon(ICONS.cast),   label:'Cast',     group:'Who'},
-  {match:'cameras &',     icon:svgIcon(ICONS.path),   label:'Path',     group:'Move'},
   {match:'director',      icon:svgIcon(ICONS.cover),  label:'Coverage'},
-  {match:'shot sequence', icon:svgIcon(ICONS.shots),  label:'Shots',    group:'Out'},
+  {match:'post',          icon:svgIcon(ICONS.shots),  label:'Post', div:true},
   {match:'capture &',     icon:svgIcon(ICONS.export), label:'Export'}
 ];
 const panelEl=$('panel'), bodyEl=$('panelbody'), railEl=$('railbar'), tabEl=$('panelTab');
@@ -3202,7 +3285,7 @@ function buildRail(){
   // build rail buttons
   railEl.innerHTML='';
   ordered.forEach((o,i)=>{
-    if(o.meta.group){ const g=document.createElement('div'); g.className='railgrp'; g.textContent=o.meta.group; railEl.appendChild(g); }
+    if(o.meta.div&&i){ const g=document.createElement('div'); g.className='raildiv'; railEl.appendChild(g); }
     const b=document.createElement('button');
     b.className='railbtn'; b.type='button'; b.title=o.meta.label;
     b.innerHTML='<span class="ri">'+o.meta.icon+'</span><span class="rl">'+o.meta.label+'</span>';
@@ -3225,7 +3308,7 @@ buildRail();
 window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,rollCoverage,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,STN,
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
-  renderThumbs,nextStation,refreshPathVisuals,sequencePrompts,ctxFromSpec,openSequenceStudio,
+  renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,sequencePrompts,ctxFromSpec,openSequenceStudio,
   relightSequence,renderStickerChips,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};
 }
