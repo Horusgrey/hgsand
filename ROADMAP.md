@@ -73,6 +73,7 @@ Everything that could be built without real photoreal tiles is done.
 | Full-journey shakedown | ✅ seven defects found by driving it end to end and reading the output — see below |
 | Flow pass | ✅ station rows collapse, Lock walks you on, Path taught at the first dot, `file://` says so up front |
 | Second shakedown | ✅ four more defects, including a spec that recorded the wrong hemisphere's sun — see below |
+| Third shakedown (adversarial) | ✅ deleting and emptying things — ghost cast ids, no way to drop one dot, a player left on a dead frame |
 | **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
 
 ---
@@ -203,6 +204,40 @@ handheld instead of hoping the verb implies it.
 Plus one hardening the run suggested rather than proved: autosave debounces 800ms, so the
 last moment of work was always unwritten. It now flushes on `pagehide` and on the tab
 being hidden — closing the tab or the phone locking can no longer land in that window.
+
+## What the third shakedown found
+
+This one was adversarial: delete things that other things reference, feed junk, hammer
+keys, empty the cut mid-playback. Four defects, all of the same family — **the app was
+fine as long as you only ever added**.
+
+**Deleting a stand-in left its ghost in every dot that named it.** Cast lists store marker
+ids. Delete the person, and dot 1's list still read `[person]` — so the *car*, the one
+still on the globe, silently vanished from that dot's frames. Nothing said so. Deletion
+now purges the id everywhere, and a list that ends up covering everyone goes back to
+meaning "everyone". Clearing the whole cast clears every list. The shadow entity goes too.
+
+**The Path panel kept a chip for a stand-in that no longer existed.** The marker list
+repainted; the path list didn't.
+
+**One wrong dot cost you the whole path.** There was no way to remove a single dot — only
+`Clear`, which takes all of them. Every row now has a `×`. Removing a dot takes its shot
+out of the sequence and shuffles the later shots' indices down, so the cut stays in path
+order. Removing the last dot clears the path cleanly. The `⌫` next to it still means the
+older thing: clear this dot's *shot*, keep the dot.
+
+**The take player sat on a dead frame.** Empty the cut while it's open and it kept showing
+a shot that no longer existed. It follows the cut now — shrinks onto a real shot, closes
+when there's nothing left.
+
+Nine degenerate calls (roll with no path, unknown recipe, unknown preset, remove dot −1,
+remove dot 99, cast on no path, prompts on an empty cut) all return quietly rather than
+throwing. Fifteen assertions guard it (`edgetest`).
+
+Two things I *thought* were bugs and weren't: the FOV and lens readings looked wildly
+wrong until I checked — `lensToFov` returns **degrees**, `S.fov` is degrees throughout, and
+my harness had been injecting radians. And the autosave "regression" was my test racing an
+800ms debounce. Worth recording: two of six suspicions were mine, not the app's.
 
 ## The studio spine (cross-engine)
 

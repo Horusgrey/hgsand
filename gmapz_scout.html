@@ -1534,6 +1534,17 @@ function stationCast(i){
   return (p&&Array.isArray(p.cast))?p.cast:null;
 }
 function markerInStation(i,id){ const c=stationCast(i); return c?c.indexOf(id)>=0:true; }
+// Cast lists store marker ids. Deleting a stand-in has to take its id out of every
+// list — a ghost id keeps the list looking "partial" and silently drops whoever is
+// actually left out of frame at that dot. Call this AFTER S.markers has been pruned.
+function purgeMarkerFromCasts(id){
+  if(!S.path||!S.path.points)return;
+  S.path.points.forEach(p=>{
+    if(!Array.isArray(p.cast))return;
+    p.cast=p.cast.filter(x=>x!==id);
+    if(!p.cast.length||p.cast.length>=S.markers.length)delete p.cast;   // back to "everyone"
+  });
+}
 function applyStationCast(i){
   const c=stationCast(i);
   S.markers.forEach(m=>{
@@ -1670,6 +1681,19 @@ function lockStation(i){
   // its own walk, so it never fires there either.
   if(!wasLocked&&!S._quiet&&S.path.points.some(x=>!x.locked))setTimeout(()=>nextStation(),260);
 }
+// A wrong dot shouldn't cost you the other nine. Shots keyed to later dots shuffle
+// down with them, so the sequence stays in path order.
+function removePathPoint(i){
+  if(!S.path||!S.path.points[i])return;
+  if(S.path.points.length<=1){ clearPath(); toast('Last dot removed \u2014 path cleared'); return; }
+  pushUndo({type:'shot'});
+  S.shots=S.shots.filter(s=>s.stationIdx!==i);
+  S.shots.forEach(s=>{ if(s.stationIdx!==undefined&&s.stationIdx>i)s.stationIdx--; });
+  S.path.points.splice(i,1);
+  if(STN.active===i)STN.active=-1; else if(STN.active>i)STN.active--;
+  rebuildPathEntities(); renderShots(); renderPathList();
+  toast('Dot '+(i+1)+' removed \u2014 '+S.path.points.length+' left');
+}
 function unlockStation(i){
   const at=S.shots.findIndex(s=>s.stationIdx===i);
   if(at>=0)S.shots.splice(at,1);
@@ -1782,7 +1806,8 @@ function renderPathList(){
         (p.locked?'Re-shoot this station \u2014 you stay here':'Shoot this station, then walk to the next open one')+'">'+
         (p.locked?'Re-lock':'Lock shot \u2192')+'</button>'+
       '<button class="btn sm psave" title="Remember the framing I have right now">\u2691</button>'+
-      (p.locked?'<button class="btn sm punlock" style="flex:none;width:26px" title="Clear this station">&times;</button>':'')+'</div>';
+      (p.locked?'<button class="btn sm punlock" style="flex:none;width:26px" title="Clear this dot\u2019s shot \u2014 the dot stays">\u232b</button>':'')+
+      '<button class="btn sm pdel" style="flex:none;width:26px" title="Delete this dot from the path">&times;</button></div>';
     d.querySelector('.pfly').onclick=e=>{e.stopPropagation();flyToStation(i);};
     d.querySelector('.plock').onclick=e=>{e.stopPropagation();lockStation(i);};
     d.querySelector('.psave').onclick=e=>{e.stopPropagation();saveStationFraming(i);};
@@ -1798,6 +1823,10 @@ function renderPathList(){
     d.querySelector('.psang').onchange=e=>{e.stopPropagation();setStationOpt(i,'angle',e.target.value);};
     [...d.querySelectorAll('select')].forEach(s=>s.onclick=e=>e.stopPropagation());
     const un=d.querySelector('.punlock'); if(un)un.onclick=e=>{e.stopPropagation();unlockStation(i);};
+    d.querySelector('.pdel').onclick=e=>{e.stopPropagation();
+      const sh=S.shots.find(x=>x.stationIdx===i);
+      if(sh&&!confirm('Delete dot '+(i+1)+'? Its shot leaves the sequence too.'))return;
+      removePathPoint(i);};
     d.onclick=()=>flyToStation(i);
     d.ondragover=ev=>{ if((ev.dataTransfer.types||[]).length){ev.preventDefault();d.classList.add('dragover');} };
     d.ondragleave=()=>d.classList.remove('dragover');
@@ -2545,11 +2574,18 @@ function renderMarkerList(){
     d.onclick=ev=>{if(ev.target.dataset.x||ev.target.classList.contains('mb')||ev.target.tagName==='INPUT'||ev.target.tagName==='SELECT')return;S.selMarker=m.id;renderMarkerList();syncAllMarkerVisuals();};
     L.appendChild(d);
   });
-  L.querySelectorAll('[data-x]').forEach(x=>x.onclick=()=>{const id=x.dataset.x;pushUndo({type:'markerDel'});viewer.entities.removeById(id);S.markers=S.markers.filter(m=>m.id!==id);if(S.selMarker===id)S.selMarker=null;renderMarkerList();});
+  L.querySelectorAll('[data-x]').forEach(x=>x.onclick=()=>{const id=x.dataset.x;pushUndo({type:'markerDel'});
+    viewer.entities.removeById(id); viewer.entities.removeById('sh_'+id);
+    S.markers=S.markers.filter(m=>m.id!==id); if(S.selMarker===id)S.selMarker=null;
+    purgeMarkerFromCasts(id); renderMarkerList(); renderPathList();});
   syncAllMarkerVisuals();
 }
 $('placeMode').onclick=()=>{S.placeMode=!S.placeMode;$('placeMode').textContent='Place mode: '+(S.placeMode?'ON':'OFF');$('placeMode').classList.toggle('on',S.placeMode);stageEl.classList.toggle('placing',S.placeMode);if(!S.placeMode)killGhost();};
-$('clearMarkers').onclick=()=>{S.markers.forEach(m=>viewer.entities.removeById(m.id));S.markers=[];S.selMarker=null;renderMarkerList();};
+$('clearMarkers').onclick=()=>{
+  S.markers.forEach(m=>{viewer.entities.removeById(m.id);viewer.entities.removeById('sh_'+m.id);});
+  S.markers=[]; S.selMarker=null;
+  if(S.path&&S.path.points)S.path.points.forEach(p=>{delete p.cast;});  // no cast, no cast lists
+  renderMarkerList(); renderPathList();};
 $('snapGround').onclick=async()=>{
   if(!S.markers.length){toast('No markers to snap');return;}
   const scene=viewer.scene;
@@ -3065,6 +3101,14 @@ function reorderShots(from,to){
 }
 function renderShots(){
   autosaveSoon(); renderThumbs();
+  // If the cut changes under an open player, the player has to notice. Otherwise it
+  // sits there showing a shot you just removed.
+  const tk=$('take');
+  if(tk&&tk.classList.contains('show')){
+    const list=takeShots();
+    if(!list.length)closeTake();
+    else { if(TAKE.i>=list.length)TAKE.i=list.length-1; takeRender(); }
+  }
   const L=$('shotList');L.innerHTML='';
   if(!S.shots.length){L.innerHTML='<div class="mini">No shots yet \u2014 press S (or Save shot) to add your current framing to the sequence.</div>';renderTimeline();return;}
   S.shots.forEach((sh,i)=>{const d=document.createElement('div');d.className='item';
@@ -3802,6 +3846,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,clearPath,STN,
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
   renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,renderPathList,
+  removePathPoint,purgeMarkerFromCasts,
   renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,sequencePrompts,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
