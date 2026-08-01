@@ -120,6 +120,41 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
 | `scene_description` | string | Free text from the Style panel. |
 | `reference_frame` | string | `<id>.png` — the captured frame this record describes. |
 
+
+---
+
+## Export 5 — `gmapz.cut.v1` (the whole cut, inside the handoff zip)
+
+`Export the cut (.zip)` writes one archive containing everything a downstream engine
+needs. `cut.json` is its index:
+
+```json
+{
+  "spec": "gmapz.cut.v1",
+  "exported_at": "<ISO8601>",
+  "location": { "...": "same shape as capture.v2 location" },
+  "world_lock": { "light": {}, "look": {}, "delivery": {} },
+  "shots": [
+    { "n": 1, "name": "Pt 1 — Start · Drone",
+      "frame": "frames/01_Pt_1_Start_Drone.png",
+      "spec":  "specs/01_Pt_1_Start_Drone.json",
+      "beat_s": 1.2, "camera_type": "drone",
+      "lens_mm": 24, "shot_size": "ewide", "angle": "aerial" }
+  ]
+}
+```
+
+| Path | Notes |
+|---|---|
+| `world_lock` | Taken from shot 1 — the light, look and delivery every shot shares. |
+| `shots[].frame` / `.spec` | Archive-relative paths. **The same filenames the prompt documents print after `start frame:`** — one function generates both, so they cannot disagree. |
+| `shots[].beat_s` | `null` unless a beat was set; the player speed applies otherwise. |
+| `shots[].camera_type` | `null` for free-roam frames; set for path shots. |
+
+Archive layout: `frames/`, `prompts/<engine>.txt` (all six), `specs/`, `cut.json`,
+`vcs15.md`, `vco.json`, `README.txt`. Store-only zip, no compression — the PNGs are
+already compressed.
+
 ### Lens ↔ FOV math
 
 ```

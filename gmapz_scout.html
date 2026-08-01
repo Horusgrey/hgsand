@@ -714,10 +714,13 @@ function loadCesiumFallback(){
       <div class="body">
         <label class="fld">Default engine tab</label>
         <div class="chips" id="engines"></div>
-        <div class="row"><button class="btn y" id="i2vBtn">Prompt studio — frame + all engines</button></div>
+        <div class="row"><button class="btn" id="i2vBtn">Prompt studio &mdash; this frame, all engines</button></div>
         <div class="row"><button class="btn" id="specBtn">Export gmapz.capture.v2 (.json)</button></div>
         <div class="row"><button class="btn vcs" id="vcsBtn" title="VCS-15 continuity handoff (.md)">VCS-15 (.md)</button><button class="btn vco" id="vcoBtn" title="VCO / Director&rsquo;s Chair project (.json)">VCO (.json)</button></div>
         <div class="row"><button class="btn" id="scenePrompt">Sequence prompts &mdash; the whole cut</button></div>
+        <label class="fld">Hand off the whole cut</label>
+        <div class="row"><button class="btn y" id="bundleBtn" title="Every frame, every prompt, every spec — one file, filenames already matching">Export the cut (.zip)</button></div>
+        <div class="mini" id="bundleProg"></div>
         <div class="row"><button class="btn" id="continuityBtn">Check continuity</button></div>
         <div class="row"><button class="btn sm" id="sessionSave">Save session</button><button class="btn sm" id="sessionLoadBtn">Load session</button><button class="btn sm" id="sessionNew" title="Clear the autosaved session and start clean" style="flex:none;width:44px">New</button><input id="sessionFile" type="file" accept=".json" style="display:none"></div>
       </div>
@@ -3278,6 +3281,48 @@ async function exportTake(){
 }
 $('takeSave').onclick=exportTake;
 
+// ---- ZIP writer (store-only), no dependencies -------------------------------
+// PNGs are already compressed and the text is small, so deflate would buy almost
+// nothing and cost a lot of code. Store-only is a fully valid zip.
+const CRC_T=(()=>{ const t=new Uint32Array(256);
+  for(let i=0;i<256;i++){ let c=i; for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[i]=c>>>0; }
+  return t; })();
+function crc32(b){ let c=0xFFFFFFFF; for(let i=0;i<b.length;i++)c=CRC_T[(c^b[i])&0xFF]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+const utf8=s=>new TextEncoder().encode(s);
+function b64ToBytes(b64){
+  const bin=atob(b64); const out=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);
+  return out;
+}
+const dataUrlBytes=u=>b64ToBytes(String(u).slice(String(u).indexOf(',')+1));
+// DOS date/time, or every entry lands as 1980-00-00 and some tools call the zip damaged.
+function dosStamp(d){
+  d=d||new Date();
+  const time=((d.getHours()&31)<<11)|((d.getMinutes()&63)<<5)|((d.getSeconds()/2)&31);
+  const date=(((d.getFullYear()-1980)&127)<<9)|(((d.getMonth()+1)&15)<<5)|(d.getDate()&31);
+  return {time,date};
+}
+function makeZip(files){            // files: [{name, bytes}]
+  const chunks=[], central=[]; let offset=0;
+  const ts=dosStamp();
+  const u16=v=>[v&255,(v>>8)&255];
+  const u32=v=>[v&255,(v>>8)&255,(v>>16)&255,(v>>24)&255];
+  files.forEach(f=>{
+    const name=utf8(f.name), data=f.bytes, crc=crc32(data);
+    const local=new Uint8Array([...u32(0x04034b50),...u16(20),...u16(0),...u16(0),
+      ...u16(ts.time),...u16(ts.date),...u32(crc),...u32(data.length),...u32(data.length),
+      ...u16(name.length),...u16(0),...name]);
+    chunks.push(local,data);
+    central.push(new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0),...u16(0),
+      ...u16(ts.time),...u16(ts.date),...u32(crc),...u32(data.length),...u32(data.length),
+      ...u16(name.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset),...name]));
+    offset+=local.length+data.length;
+  });
+  const cdSize=central.reduce((a,c)=>a+c.length,0);
+  const end=new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),
+    ...u16(files.length),...u16(files.length),...u32(cdSize),...u32(offset),...u16(0)]);
+  return new Blob([...chunks,...central,end],{type:'application/zip'});
+}
 // ---- GIF encoder (median-cut palette + GIF-flavoured LZW), no dependencies ----
 function gifPalette(frames,maxColors){
   const hist=new Int32Array(32768), rs=new Float64Array(32768), gs=new Float64Array(32768), bs=new Float64Array(32768);
@@ -3398,6 +3443,12 @@ async function exportTakeGifFile(){
 $('takeGif').onclick=exportTakeGifFile;
 $('postGif').onclick=exportTakeGifFile;
 $('postVid').onclick=exportTake;
+// The zip and the prompt doc must never disagree about a filename, so exactly one
+// function decides them. Everything else asks.
+function slugify(s){ return String(s||'').normalize('NFKD').replace(/[^\x20-\x7E]/g,'')
+  .replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40)||'shot'; }
+function frameFileName(sh,i){ return String(i+1).padStart(2,'0')+'_'+slugify(sh.name)+'.png'; }
+function specFileName(sh,i){ return String(i+1).padStart(2,'0')+'_'+slugify(sh.name)+'.json'; }
 // ---- Sequence prompts: the cut as one document, not N unrelated prompts ----
 const SPEC_NOUN={person:'person',prop:'car',light:'light',vfx:'effect'};
 // Rebuild a prompt context from a saved shot's spec, so a sequence describes what
@@ -3494,7 +3545,7 @@ function sequencePrompts(eng){
     const body=ENGINE_BUILDERS[eng](ctx,cameraSentence(ctx,sh.spec));
     let head='\n--- SHOT '+(i+1)+' / '+S.shots.length+' \u00b7 '+sh.name+' ---\n';
     if(i>0)head+=continuityClause(S.shots[i-1].spec,sh.spec,i)+'\n';
-    parts.push(head+body+(sh.spec.reference_frame?('\nstart frame: '+sh.spec.reference_frame):''));
+    parts.push(head+body+'\nstart frame: frames/'+frameFileName(sh,i));
   });
   return parts.join('\n');
 }
@@ -3518,6 +3569,62 @@ function openSequenceStudio(){
   $('seqDlAll').onclick=()=>downloadText(Object.keys(ENGINES).map(k=>sequencePrompts(k)).join('\n\n\n'),'gmapz_sequence_all_engines.txt');
 }
 $('scenePrompt').onclick=openSequenceStudio;
+// One motion, one file. The prompt docs already name the frames the way the zip
+// writes them, so nothing has to be matched up by hand on the other side.
+async function exportBundle(){
+  const cut=S.shots.filter(s=>s.thumb);
+  if(!cut.length){ toast('Nothing in the cut yet \u2014 add frames in Post first'); return; }
+  const btn=$('bundleBtn'), prog=$('bundleProg'); btn.disabled=true;
+  const say=t=>{ if(prog)prog.textContent=t; };
+  try{
+    say('Packing '+cut.length+' frame'+(cut.length===1?'':'s')+'\u2026');
+    const files=[];
+    cut.forEach((sh,i)=>{
+      files.push({name:'frames/'+frameFileName(sh,i), bytes:dataUrlBytes(sh.thumb)});
+      files.push({name:'specs/'+specFileName(sh,i), bytes:utf8(JSON.stringify(sh.spec,null,2))});
+    });
+    await new Promise(r=>setTimeout(r,0));
+    say('Writing the prompts\u2026');
+    Object.keys(ENGINES).forEach(k=>{
+      files.push({name:'prompts/'+k+'.txt', bytes:utf8(sequencePrompts(k))});
+    });
+    const first=cut[0].spec;
+    files.push({name:'cut.json', bytes:utf8(JSON.stringify({
+      spec:'gmapz.cut.v1', exported_at:new Date().toISOString(),
+      location:first.location, world_lock:{light:first.light, look:first.look, delivery:first.delivery},
+      shots:cut.map((sh,i)=>({n:i+1, name:sh.name, frame:'frames/'+frameFileName(sh,i),
+        spec:'specs/'+specFileName(sh,i), beat_s:sh.beat||null,
+        camera_type:sh.spec.camera.camera_type||null, lens_mm:sh.spec.camera.lens_mm,
+        shot_size:sh.spec.camera.shot_size, angle:sh.spec.camera.angle}))
+    },null,2))});
+    files.push({name:'vcs15.md', bytes:utf8(vcs15(first))});
+    files.push({name:'vco.json', bytes:utf8(JSON.stringify(vco(first),null,2))});
+    files.push({name:'README.txt', bytes:utf8(
+      'GMAPz Scout \u2014 cut handoff\n'+
+      '='.repeat(34)+'\n\n'+
+      cut.length+' shot'+(cut.length===1?'':'s')+' \u00b7 '+(first.location.name||'unnamed location')+
+      ' \u00b7 exported '+new Date().toISOString()+'\n\n'+
+      'frames/    the captured frames, numbered in cut order. These are the real\n'+
+      '           rendered frames, not previews \u2014 use them as start frames.\n'+
+      'prompts/   one document per engine. Each names its start frame by the exact\n'+
+      '           filename in frames/, so nothing needs matching up by hand.\n'+
+      'specs/     gmapz.capture.v2, one per shot. resolution is the delivery target;\n'+
+      '           capture_px is what the PNG actually is.\n'+
+      'cut.json   the sequence itself: order, beats, and the shared world lock.\n'+
+      'vcs15.md   VCS-15 continuity handoff.\n'+
+      'vco.json   VCO / Director\u2019s Chair project.\n\n'+
+      'Everything here is PLANNED and AUTHORITATIVE \u2014 blocking authored in Scout.\n'+
+      'Nothing in it was observed from generated footage. Speaker attribution is\n'+
+      'UNKNOWN at pre-vis and is not guessed at.\n')});
+    say('Zipping\u2026'); await new Promise(r=>setTimeout(r,0));
+    const blob=makeZip(files);
+    downloadBlob(blob,'gmapz_cut_'+Date.now()+'.zip');
+    say('');
+    toast('\u2713 Cut exported \u2014 '+files.length+' files, '+((blob.size/1048576).toFixed(1))+' MB');
+  }catch(err){ say(''); toast('Bundle failed: '+err.message); }
+  finally{ btn.disabled=false; }
+}
+$('bundleBtn').onclick=exportBundle;
 
 function reportPage(entry,i,total){
   const sp=entry.spec, c=sp.camera, lt=sp.light, lk=sp.look, dl=sp.delivery;
@@ -3885,6 +3992,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
   saveLook,loadLook,renderLooks,SENSORS,GRADES,ATMOS,applyMask,applyGrade,
   sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,stepRig,
+  exportBundle,makeZip,frameFileName,specFileName,slugify,crc32,
   relight:relightSequence,buildReport,checkContinuity,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,

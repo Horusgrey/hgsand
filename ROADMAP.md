@@ -75,6 +75,8 @@ Everything that could be built without real photoreal tiles is done.
 | Second shakedown | ✅ four more defects, including a spec that recorded the wrong hemisphere's sun — see below |
 | Third shakedown (adversarial) | ✅ deleting and emptying things — ghost cast ids, no way to drop one dot, a player left on a dead frame |
 | Fourth shakedown (optical) | ✅ looks dropped the cant; the spec claimed a resolution its PNG didn't have |
+| UI hierarchy pass | ✅ one primary per panel, no control offered twice, no raw file inputs, labels that fit |
+| **Cut handoff (.zip)** | ✅ the whole cut in one file — frames, prompts, specs, VCS, VCO, README, filenames matching by construction |
 | **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
 
 ---
@@ -315,6 +317,41 @@ gate (5–9) opens only after a real location is captured and one spec is export
 | 5–9 | Not started (correctly) — resist until the gate is proven |
 
 ---
+
+## The handoff, in one motion
+
+The constitution says the captured frame **plus** the spec is the product. Until now the
+product could not actually be handed over: a five-shot cut meant downloading five PNGs
+one at a time from the stage strip, copying a prompt document out of a modal, exporting
+specs one by one, and then matching filenames by hand against the `start frame:` lines.
+About a dozen interactions to assemble what Scout already knew.
+
+**Export the cut (.zip)** does it in one:
+
+```
+frames/01_<shot>.png …   the real rendered frames, numbered in cut order
+prompts/<engine>.txt     one document per engine, each naming its start frame
+                         by the exact path in frames/
+specs/01_<shot>.json     gmapz.capture.v2 per shot
+cut.json                 gmapz.cut.v1 — order, beats, rigs, the shared world lock
+vcs15.md · vco.json      the two studio handoffs
+README.txt               what's in here, and the PLANNED-not-observed rule
+```
+
+The zip is written by hand — store-only, CRC32, real DOS timestamps, no dependency.
+PNGs are already compressed, so deflate would buy nothing and cost a lot of code.
+
+The part that matters is **one function decides a frame's filename**, and both the zip
+and the prompt documents ask it. They cannot drift apart, because there is nothing to
+keep in sync. That is the same rule that fixed the lens two passes ago: when two things
+must agree, don't store both — derive one.
+
+Verified with real tools rather than my own writer: `unzip -t` passes, all six prompt
+documents name three frames that exist, `cut.json` points only at files in the archive,
+the frames are real PNGs by magic number, and an empty cut writes nothing at all.
+
+This is also the thing standing between the user and the output test below. Putting a
+Scout sequence through Runway or Kling no longer requires assembling the handoff by hand.
 
 ## Needs the user (can't be done headlessly)
 
