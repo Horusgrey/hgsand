@@ -801,9 +801,9 @@ const COVERAGE={
     {name:'Locked medium',size:'medium',angle:'eye',lens:50,dHead:0,move:'static',grade:'teal'},
     {name:'Creeping close',size:'close',angle:'eye',lens:85,dHead:0,move:'push-in',grade:'teal'}]},
   handheld:{label:'Handheld',intent:'Energy — orbit the subject from both sides, then punch in low for the close.',steps:[
-    {name:'Orbit-left wide',size:'wide',angle:'eye',lens:35,dHead:-30,move:'orbit L'},
-    {name:'Orbit-right medium',size:'medium',angle:'eye',lens:35,dHead:35,move:'orbit R'},
-    {name:'Punch-in close',size:'close',angle:'low',lens:50,dHead:10,move:'push-in'}]},
+    {name:'Orbit-left wide',size:'wide',angle:'eye',lens:35,dHead:-30,move:'orbit L',rig:'handheld'},
+    {name:'Orbit-right medium',size:'medium',angle:'eye',lens:35,dHead:35,move:'orbit R',rig:'handheld'},
+    {name:'Punch-in close',size:'close',angle:'low',lens:50,dHead:10,move:'push-in',rig:'handheld'}]},
   doc:{label:'Documentary',intent:'Context first — aerial geography, a high pull-back, then honest eye-level coverage.',steps:[
     {name:'Aerial context',size:'ewide',angle:'aerial',lens:24,dHead:0,move:'static'},
     {name:'High pull-back',size:'wide',angle:'high',lens:35,dHead:40,move:'pull-out'},
@@ -866,7 +866,7 @@ const ASPECTS={'2.39:1':2.39,'1.85:1':1.85,'16:9':16/9,'4:3':4/3,'1:1':1,'9:16':
 const ENGINES={runway:'Runway Gen-4',kling:'Kling',veo:'Veo 3',sora:'Sora',luma:'Luma',grok:'Grok Imagine'};
 // Everything the prompt builders need, gathered once
 function promptCtx(){
-  const st=STYLES[S.style], s=S._sun||sunPos(S.target.lat,S.target.lon,localDateTime());
+  const st=STYLES[S.style], s=sunNow();
   const mm=fovToLens(S.fov);
   const compass=['north','northeast','east','southeast','south','southwest','west','northwest'][Math.round(((s.az%360)+360)%360/45)%8];
   const subj=S.markers.map(m=>({role:m.shotType,kind:subjectNoun(m.type),h:m.height}));
@@ -1282,7 +1282,7 @@ viewer.scene.postRender.addEventListener(()=>{
    'heading '+Math.round(toDeg(cam.heading))+'\u00b0  tilt '+Math.round(toDeg(cam.pitch))+'\u00b0\n'+
    'lens    '+(cam.frustum.fov!==undefined?fovToLens(toDeg(cam.frustum.fov))+'mm / '+Math.round(toDeg(cam.frustum.fov))+'\u00b0':'-');
   const mm=cam.frustum.fov!==undefined?fovToLens(toDeg(cam.frustum.fov)):S.lensMm;
-  const line=SHOT_SIZES[S.shotSize].label+' · '+mm+'mm · '+S.angle+' · '+(S._sun?phaseOf(S._sun.el):'—')+' · '+S.delivery;
+  const line=SHOT_SIZES[S.shotSize].label+' · '+mm+'mm · '+S.angle+' · '+phaseOf(sunNow().el)+' · '+S.delivery;
   if(line!==_slateTxt){_slateTxt=line;$('slate').textContent=line;}
   const hd=Math.round(toDeg(cam.heading)*10)/10;
   if(hd!==_lastHd){_lastHd=hd;$('compassNeedle').style.transform='rotate('+(-hd)+'deg)';}
@@ -2017,8 +2017,18 @@ function renderCovPlan(){
   $('rollBtn').onclick=()=>plotRecipe(COV.plan.key);
   $('covClear').onclick=()=>{COV.plan=null;renderCovPlan();paintChips('coverage',Object.entries(COVERAGE).map(([k,v])=>[v.label,k]),null,v=>planCoverage(v));};
 }
-// A recipe move implies a rig. It's a suggestion the dot then owns and you can change.
-const MOVE_RIG={'static':'locked','push-in':'dolly','pull-out':'dolly','orbit L':'steady','orbit R':'steady','crane down':'crane'};
+// A recipe step implies a rig — but the move verb alone isn't enough. An aerial
+// establishing orbit is a drone, not a steadicam on an impossibly tall tripod. A step
+// can also just say which rig it wants. Either way it's a suggestion the dot then owns.
+function stepRig(st){
+  if(st.rig)return st.rig;
+  if(st.angle==='aerial')return 'drone';
+  if(/crane/.test(st.move))return 'crane';
+  if(st.angle==='high'&&st.move!=='static')return 'crane';
+  if(/orbit/.test(st.move))return 'steady';
+  if(/push-in|pull-out/.test(st.move))return 'dolly';
+  return 'locked';
+}
 function recipeFraming(st,baseHead){
   return {head:((baseHead+(st.dHead||0))%360+360)%360, tilt:ANGLES[st.angle], range:SHOT_SIZES[st.size].r,
     fov:lensToFov(st.lens), lensMm:st.lens, sensor:S.sensor, roll:0, shotSize:st.size, angle:st.angle};
@@ -2042,7 +2052,7 @@ function plotRecipe(key){
     open.forEach((x,k)=>{
       const st=steps[k%steps.length];
       x.p.cam=recipeFraming(st,baseHead);
-      x.p.ct=MOVE_RIG[st.move]||x.p.ct||S.path.cameraType;
+      x.p.ct=stepRig(st);
       x.p.recipe=cov.label+' \u00b7 '+st.name;
       if(st.grade)S.grade=st.grade;
     });
@@ -2052,9 +2062,9 @@ function plotRecipe(key){
     // Fan the dots a few metres apart so each is separately visible and draggable.
     // At these shot ranges the offset does not change what any of them frames.
     const t=S.target;
-    S.path={cameraType:MOVE_RIG[steps[0].move]||'locked',points:steps.map((st,k)=>{
+    S.path={cameraType:stepRig(steps[0]),points:steps.map((st,k)=>{
       const off=offsetLatLon(t.lat,t.lon,baseHead+90,(k-(steps.length-1)/2)*6);
-      return {lon:off.lon,lat:off.lat,alt:0,ct:MOVE_RIG[st.move]||'locked',
+      return {lon:off.lon,lat:off.lat,alt:0,ct:stepRig(st),
         cam:recipeFraming(st,baseHead),recipe:cov.label+' \u00b7 '+st.name};
     })};
     S.pathMode=false; STN.active=-1;
@@ -2184,9 +2194,20 @@ function utcMinsToLocalStr(mins){const m=((mins+lonOffsetHrs()*60)%1440+1440)%14
 function localDateTime(){ const dv=$('lDate').value, tv=$('lTime').value; if(!dv||!tv) return new Date(); return new Date(dv+'T'+tv+':00Z'); }
 function setClockFrom(dt){ viewer.clock.currentTime=Cesium.JulianDate.fromDate(dt); }
 function syncTimeSlider(){const tv=$('lTime').value;if(!tv)return;const[h,m]=tv.split(':').map(Number);const mins=h*60+m;$('timeSlider').value=mins;$('timeLabel').textContent=tv+' UTC · ≈'+utcMinsToLocalStr(mins)+' local';}
+// The sun depends on where you are and what the clock says. Cache it, but key the
+// cache on both — an unkeyed cache is just a way to be confidently wrong somewhere else.
+function sunKey(){ const dt=localDateTime();
+  return S.target.lat.toFixed(4)+','+S.target.lon.toFixed(4)+'@'+dt.getTime(); }
+function sunNow(){
+  const k=sunKey();
+  if(S._sun&&S._sunKey===k)return S._sun;
+  S._sunKey=k; S._sun=sunPos(S.target.lat,S.target.lon,localDateTime());
+  return S._sun;
+}
 function updateSun(){
   const dt=localDateTime(); setClockFrom(dt);
   const s=sunPos(S.target.lat,S.target.lon,dt);
+  S._sunKey=sunKey();
   const utcM=dt.getUTCHours()*60+dt.getUTCMinutes(), oh=lonOffsetHrs();
   $('sunReadout').textContent='sun az '+s.az.toFixed(0)+'\u00b0  el '+s.el.toFixed(1)+'\u00b0\nphase  '+phaseOf(s.el)+'\nlocal  \u2248'+utcMinsToLocalStr(utcM)+' (UTC'+(oh>=0?'+':'')+oh+' by longitude)';
   S._sun=s; syncTimeSlider();
@@ -2844,7 +2865,7 @@ $('shutter').onclick=e=>capture(e.shiftKey);
 
 function aspectRes(a){const map={'2.39:1':[2048,857],'1.85:1':[1998,1080],'16:9':[1920,1080],'4:3':[1440,1080],'1:1':[1080,1080],'9:16':[1080,1920]};return map[a]||[1920,1080];}
 function buildSpec(refId,move){
-  const s=S._sun||sunPos(S.target.lat,S.target.lon,localDateTime());
+  const s=sunNow();
   return {
     spec:'gmapz.capture.v2', id:refId||('scout_'+Date.now()), captured_at:new Date().toISOString(),
     location:{name:$('search').value||'',lng:S.target.lon,lat:S.target.lat,ground_elevation_m:0},
@@ -2859,7 +2880,7 @@ function buildSpec(refId,move){
 }
 function lensFeel(mm){return mm<=24?'wide':mm<=35?'natural-wide':mm<=50?'normal':mm<=85?'telephoto':'long telephoto (heavily compressed)';}
 function basePrompt(){
-  const st=STYLES[S.style], s=S._sun||sunPos(S.target.lat,S.target.lon,localDateTime());
+  const st=STYLES[S.style], s=sunNow();
   const subj=S.markers.length?groupSubjects(S.markers.map(m=>({kind:subjectNoun(m.type)}))):'no figures placed';
   const mm=fovToLens(S.fov);
   const sd=($('sceneDesc').value||'').trim().replace(/\.+$/,'');
@@ -2982,13 +3003,24 @@ async function relightSequence(){
   for(let i=1;i<S.shots.length;i++){
     const sh=S.shots[i], c=sh.spec.camera;
     toast('Re-lighting shot '+(i+1)+' of '+S.shots.length+'\u2026');
-    if(sh.stationIdx!==undefined)travelCast(sh.stationIdx);
+    // the station's own cast has to be back in place before the shutter fires, or the
+    // re-lit frame quietly shows whoever was visible last
+    if(sh.stationIdx!==undefined){ travelCast(sh.stationIdx); applyStationCast(sh.stationIdx); }
     Object.assign(S,{target:{lat:c.lat,lon:c.lng},head:c.heading_deg,tilt:c.pitch_deg,
       range:c.altitude_m,fov:c.fov_deg,roll:c.roll_deg||0});
     applyFov(); flyToParams(0); await waitForTiles(2000);
     const cap=capture(false);
-    if(cap.url){ sh.spec=buildSpec(cap.id,c.move); sh.thumb=cap.url; }
+    if(cap.url){
+      const fresh=buildSpec(cap.id,c.move);
+      // buildSpec can't see what the shot already knows: which rig shot it, and who
+      // its station keeps in frame. Re-lighting moves the sun, not the blocking.
+      if(c.camera_type){ fresh.camera.camera_type=c.camera_type; fresh.camera.rig_feel=c.rig_feel; }
+      if(sh.stationIdx!==undefined&&stationCast(sh.stationIdx))
+        fresh.subjects=fresh.subjects.filter(s=>markerInStation(sh.stationIdx,s.id));
+      sh.spec=fresh; sh.thumb=cap.url;
+    }
   }
+  if(STN.active>=0)applyStationCast(STN.active); else showAllCast();
   S._quiet=false;
   Object.assign(S,keep); applyFov(); flyToParams(0.8); syncCamUI();
   renderShots();
@@ -3521,6 +3553,11 @@ function autosaveSession(){
   }catch(_){}
 }
 let _autoT;function autosaveSoon(){clearTimeout(_autoT);_autoT=setTimeout(autosaveSession,800);}
+// The debounce means the last 800ms of work is unwritten at any moment. Closing the
+// tab, switching apps or the phone locking should not be able to land in that window.
+function autosaveNow(){ clearTimeout(_autoT); autosaveSession(); }
+window.addEventListener('pagehide',autosaveNow);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden')autosaveNow(); });
 $('sessionNew').onclick=()=>{
   if(confirm('Start a new session? Anything not exported with Save session is cleared.')){
     try{localStorage.removeItem('gmapz_autosave');}catch(_){}
@@ -3764,10 +3801,12 @@ buildRail();
 window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,plotRecipe,rebuildPathEntities,offsetLatLon,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,clearPath,STN,
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
-  renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,renderPathList,sequencePrompts,ctxFromSpec,openSequenceStudio,
+  renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,renderPathList,
+  renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,sequencePrompts,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
-  saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,
-  sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,
+  saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
+  sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,stepRig,
+  relight:relightSequence,buildReport,checkContinuity,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming};

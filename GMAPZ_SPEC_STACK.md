@@ -101,7 +101,7 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
 | `camera.rig_feel` | string | **Path shots only.** The prose the rig contributes to i2v prompts. Derived from `camera_type`; never authored by hand. |
 | `light.date/time` | string | As entered; pair with `tz`. |
 | `light.tz` | string | Always `UTC` in this build. |
-| `light.sun_azimuth_deg` | number | 0 = north, clockwise. |
+| `light.sun_azimuth_deg` | number | 0 = north, clockwise. Computed for the spec's own `location` at its own `date`/`time` — the sun is re-derived whenever either changes, so a frame can never carry another place's light. |
 | `light.sun_elevation_deg` | number | Degrees above horizon; negative = below. |
 | `light.phase` | enum | `night` / `blue` / `golden` / `day` (from elevation). |
 | `look.style` | enum | See §2. |

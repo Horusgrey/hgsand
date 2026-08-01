@@ -72,6 +72,7 @@ Everything that could be built without real photoreal tiles is done.
 | Cast & upload cleanup | ✅ named tiles with artwork, one add control (click / drop / paste), live cutout preview, removable uploads |
 | Full-journey shakedown | ✅ seven defects found by driving it end to end and reading the output — see below |
 | Flow pass | ✅ station rows collapse, Lock walks you on, Path taught at the first dot, `file://` says so up front |
+| Second shakedown | ✅ four more defects, including a spec that recorded the wrong hemisphere's sun — see below |
 | **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
 
 ---
@@ -169,6 +170,39 @@ because each one is only visible in the *output*.
 All seven fixed and re-verified against the same journey. The lesson repeats from earlier
 passes: **read the artifact, not the assertion.** Green tests said the rig was on the spec;
 only the prompt text showed it never reached the sentence a human would read.
+
+## What the second shakedown found
+
+The first shakedown drove the sequence road. This one drove everything else — free roam,
+recipes, undo, golden hour, KML, the single-frame studio, the PDF report, re-light, and a
+preset across a reload. Four more defects, and the first is the most serious yet.
+
+**The spec recorded the wrong place's sun.** `S._sun` was a cache with no key. It was
+refreshed when you changed the date or time, and never when you *moved*. So: scout Chicago
+at 18:40, fly to Paris, capture — and the frame ships with Chicago's sun. Measured, before
+the fix: az 201.1° / el 48.3° for both. Paris at that instant is az 281.8° / el −7.4° —
+below the horizon. The light block is what every downstream engine locks to, and it could
+be for the wrong hemisphere. The cache is now keyed on target *and* clock, so it can be a
+cache without ever being wrong. Six assertions guard it permanently (`suntest`).
+
+**Re-light showed the wrong cast.** It called `travelCast` but not `applyStationCast`, so
+a re-lit frame captured whoever happened to be visible rather than that station's own cast
+list — and the spec then listed them.
+
+**Re-light stripped the rig.** It rebuilt each spec with `buildSpec`, which cannot see
+`camera_type` or `rig_feel` (those are written at lock time). Re-lighting a path sequence
+silently reverted every shot's prompt to a generic camera. Re-light moves the sun; it now
+carries the blocking forward untouched.
+
+**A recipe picked its rig from the move verb alone.** "Aerial epic / High orbit" — an
+establishing shot at an *aerial* angle — came out as a **steadicam**. Rig selection now
+reads the whole step (angle, move, and an explicit `rig` when a recipe wants to name one),
+so the aerial orbit is a drone, the crane reveal is a crane, and the Handheld recipe says
+handheld instead of hoping the verb implies it.
+
+Plus one hardening the run suggested rather than proved: autosave debounces 800ms, so the
+last moment of work was always unwritten. It now flushes on `pagehide` and on the tab
+being hidden — closing the tab or the phone locking can no longer land in that window.
 
 ## The studio spine (cross-engine)
 
