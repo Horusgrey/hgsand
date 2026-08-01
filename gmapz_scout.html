@@ -96,6 +96,9 @@ function loadCesiumFallback(){
 
   .body{padding:4px 16px 16px;}
   .row{display:flex;gap:7px;margin:7px 0;}
+  /* second-tier actions: present, reachable, not competing with the panel's one primary */
+  .subrow{display:flex;gap:7px;margin:6px 0 2px;}
+  .subrow .btn{font-size:10px;padding:6px 8px;}
   .row.wrap{flex-wrap:wrap;}
   label.fld{display:block;font-size:9.5px;color:#6a6a74;text-transform:uppercase;letter-spacing:.13em;
     font-weight:600;margin:12px 0 5px;}
@@ -148,6 +151,10 @@ function loadCesiumFallback(){
   .btn.vco{background:linear-gradient(180deg,#f0b055,#e0982f);color:#2a1f00;border-color:#e0982f;box-shadow:inset 0 1px 0 rgba(255,255,255,.22);}
   .btn.sm{padding:6px 8px;font-size:10px;}
   .btn.on{outline:1px solid var(--yellow);background:#1c1a0a;color:var(--yellow);border-color:var(--yellow);}
+  /* A setting that happens to be on is not the panel's primary action. Emerald says
+     "active" in this house; yellow says "press me", and only one thing per panel should. */
+  .subrow .btn.on{outline:none;background:#0f1a15;color:var(--emerald);border-color:rgba(52,211,153,.45);}
+  .subrow .btn.on:hover{border-color:var(--emerald);background:#12211b;}
   /* stand-in picker: see the thing before you place it */
   .sigrid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;}
   .sitile{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:8px;cursor:pointer;
@@ -433,6 +440,8 @@ function loadCesiumFallback(){
   .tvb:hover{border-color:#3a3a42;color:var(--txt);}
   .tvb.on{background:linear-gradient(180deg,#123528,#0d2a1f);border-color:rgba(52,211,153,.55);color:var(--emerald);}
   .popt{display:flex;gap:4px;margin-top:7px;}
+  /* the name is the thing you scan for — let it have the width */
+  #shotList .item .t>span:first-child{flex:1;min-width:0;}
   .beatsel{width:auto;flex:none;padding:2px 16px 2px 6px;font-size:9.5px;border-radius:5px;
     background-position:0 0,right 4px center;background-size:100% 100%,7px 5px;}
   .pcast{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px;}
@@ -530,29 +539,9 @@ function loadCesiumFallback(){
   .repsec{margin-top:12px;font-size:12.5px;line-height:1.5;}
   .repsec h4{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#666;}
   .repfoot{margin-top:16px;font-size:9px;color:#999;font-family:ui-monospace,monospace;border-top:1px solid #ddd;padding-top:6px;}
-</style>
-</head>
-<body>
-<div id="app">
-  <aside class="panel" id="panel">
-    <nav id="railbar"></nav>
-    <div id="panelTab" title="Show / hide panel"><span>Panel</span></div>
-    <div id="panelbody">
-    <div class="brand"><h1>GMAPz <span>Scout</span></h1><p>Mobile Hollywood · location → block → spec</p></div>
-    <div id="capbar">
-      <button class="btn y" id="capBarBtn" title="Capture the exact on-screen frame (C)">&#9673;&nbsp; Capture frame</button>
-      <button class="btn sm" id="capBarHQ" title="Capture at double resolution" style="flex:none;width:42px">HQ</button>
-      <span id="capCount" title="Frames shot this session"></span>
-    </div>
 
-    <details class="sec" open><summary>Scout <span class="ico">&#9656;</span></summary>
-      <div class="body">
-        <label class="fld">Search a place</label>
-        <div class="row"><span class="searchwrap"><input id="search" type="text" autocomplete="off" placeholder="Place name — or coords: 41.8885, -87.6345"><div id="sugg"></div></span><button class="btn sm" id="searchBtn" style="flex:none;width:64px">Go</button></div>
-        <label class="fld">Load KML / KMZ</label>
-        <style>#kmlFile{min-width:0;}
-  /* ---- narrow screens. Lives last on purpose: these are overrides, and CSS resolves
-     ties by source order — sitting up top meant #navCluster and .thumbs quietly lost. ---- */
+  /* ---- narrow screens. Last on purpose: these are overrides and CSS breaks ties
+     by source order, so sitting up top meant #navCluster and .thumbs quietly lost. ---- */
   @media (max-width:900px){
     #app{grid-template-columns:1fr;grid-template-rows:1fr auto;}
     .panel{order:2;flex-direction:column;border-top:1px solid var(--line);max-height:48vh;}
@@ -574,12 +563,32 @@ function loadCesiumFallback(){
     #navCluster{display:none;}
   }
 </style>
-        <div class="row"><input id="kmlFile" type="file" accept=".kml,.kmz" style="font-size:11px;padding:5px"></div>
+</head>
+<body>
+<div id="app">
+  <aside class="panel" id="panel">
+    <nav id="railbar"></nav>
+    <div id="panelTab" title="Show / hide panel"><span>Panel</span></div>
+    <div id="panelbody">
+    <div class="brand"><h1>GMAPz <span>Scout</span></h1><p>Mobile Hollywood · location → block → spec</p></div>
+    <div id="capbar">
+      <button class="btn y" id="capBarBtn" title="Capture the exact on-screen frame (C)">&#9673;&nbsp; Capture frame</button>
+      <button class="btn sm" id="capBarHQ" title="Capture at double resolution" style="flex:none;width:42px">HQ</button>
+      <span id="capCount" title="Frames shot this session"></span>
+    </div>
+
+    <details class="sec" open><summary>Scout <span class="ico">&#9656;</span></summary>
+      <div class="body">
+        <label class="fld">Search a place</label>
+        <div class="row"><span class="searchwrap"><input id="search" type="text" autocomplete="off" placeholder="Place name — or coords: 41.8885, -87.6345"><div id="sugg"></div></span><button class="btn sm" id="searchBtn" style="flex:none;width:64px">Go</button></div>
+        <label class="fld">Places from a KML / KMZ</label>
+        <div style="margin:2px 0 4px"><div class="dropzone" id="kmlZone">Load a KML or KMZ &mdash; click, or drop the file here</div></div>
+        <input id="kmlFile" type="file" accept=".kml,.kmz" style="display:none">
         <div class="list" id="kmlList"></div>
         <label class="fld">Photoreal &amp; terrain keys (optional)</label>
         <div class="row"><input id="googleKey" type="text" placeholder="Google Map Tiles API key"></div>
         <div class="row"><input id="ionKey" type="text" placeholder="Cesium ion token"></div>
-        <div class="row"><button class="btn y" id="applyKeys">Apply keys &amp; reload Earth</button></div>
+        <div class="row"><button class="btn" id="applyKeys">Apply keys &amp; reload Earth</button></div>
         <label class="fld">Terrain exaggeration <span id="exagVal" style="color:var(--dim);float:right">1.0&times;</span></label>
         <input id="exagSlider" type="range" min="1" max="5" step="0.5" value="1">
         <div class="mini">No keys? Runs on keyless ESRI satellite. Google key = photorealistic 3D Earth. Keys are remembered on this device.</div>
@@ -599,13 +608,13 @@ function loadCesiumFallback(){
         </div>
         <label class="fld">Sensor / film back</label>
         <div class="chips" id="sensor"></div>
-        <label class="fld">Exact parameters (Google-Earth edit panel)</label>
+        <label class="fld">Exact parameters</label>
         <div class="row"><div style="flex:1"><span class="tag">Lat</span><input id="pLat" class="num" type="number" step="0.0001"></div><div style="flex:1"><span class="tag">Lon</span><input id="pLon" class="num" type="number" step="0.0001"></div></div>
         <div class="row"><div style="flex:1"><span class="tag">Heading&deg;</span><input id="pHead" class="num" type="number" step="1"></div><div style="flex:1"><span class="tag">Tilt&deg;</span><input id="pTilt" class="num" type="number" step="1"></div><div style="flex:1"><span class="tag">Range m</span><input id="pRange" class="num" type="number" step="10"></div></div>
         <div class="row" style="align-items:center"><span class="tag" style="flex:none">Dutch roll&deg;</span><input id="pRoll" type="range" min="-30" max="30" step="1" value="0" style="flex:1"><b id="pRollVal" style="min-width:34px;text-align:right;font-size:11px;color:var(--faint)">0&deg;</b><button class="btn sm" id="levelRoll" style="flex:none;width:52px" title="Level the horizon (\)">Level</button></div>
         <div class="row"><button class="btn" id="getCurrent">Get current (G)</button><button class="btn y" id="flyParams">Fly to params (F)</button></div>
         <div class="readout" id="readout">aim the globe…</div>
-        <label class="fld">Camera looks (save / recall positions)</label>
+        <label class="fld">Saved looks</label>
         <div class="row"><input id="lookName" type="text" placeholder="Look name"><button class="btn sm" id="saveLook" style="flex:none;width:74px">Save look</button></div>
         <div class="list" id="lookList"></div>
       </div>
@@ -630,7 +639,7 @@ function loadCesiumFallback(){
         <div class="chips" id="grades"></div>
         <label class="fld">Atmosphere</label>
         <div class="chips" id="atmos"></div>
-        <label class="fld">Delivery aspect (frames + crops the capture)</label>
+        <label class="fld">Delivery aspect</label>
         <div class="chips" id="aspects"></div>
         <label class="fld">Scene description</label>
         <textarea id="sceneDesc" placeholder="What happens in frame — action, mood, subject."></textarea>
@@ -654,7 +663,7 @@ function loadCesiumFallback(){
     <details class="sec" open><summary>Cameras &amp; path <span class="ico">&#9656;</span></summary>
       <div class="body">
         <div id="pathSetup">
-          <label class="fld">Camera type — drag onto the globe (or tap a chip + tap the globe on mobile)</label>
+          <label class="fld">Camera type &mdash; drag onto the globe</label>
           <div class="chips" id="cameraTypes"></div>
           <div class="row"><button class="btn" id="pathMode">Draw path: OFF</button><button class="btn sm" id="clearPath" style="flex:none;width:54px">Clear</button></div>
           <div class="mini">After dropping a camera: click ground to set start, click again to add waypoints, double-click to finish. The red line is the move.</div>
@@ -663,10 +672,12 @@ function loadCesiumFallback(){
         </div>
         <div id="pathSummary"><span id="pathSummaryTxt"></span><button class="btn sm" id="pathEdit" style="flex:none;width:44px">Edit</button></div>
         <div class="list" id="pathList"></div>
-        <div class="row"><button class="btn on" id="autoFrameBtn" title="Give a station a sensible setup when it has none of its own. Turn off to keep your framing everywhere.">Auto-frame: ON</button></div>
         <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every station</button></div>
-        <div class="row"><button class="btn g" id="buildShotBtn">Build shot (start + end + spec)</button></div>
-        <label class="fld">Sequence presets &mdash; keep this move, lay it anywhere</label>
+        <div class="subrow">
+          <button class="btn sm on" id="autoFrameBtn" title="Give a dot a sensible setup when it has none of its own. Turn it off to keep your framing everywhere.">Auto-frame: ON</button>
+          <button class="btn sm" id="buildShotBtn" title="Export this path as a single start-and-end move with one spec">Start+end move</button>
+        </div>
+        <label class="fld">Sequence presets</label>
         <div class="row"><input id="seqName" type="text" placeholder="Name it — e.g. Marina drone run"><button class="btn sm" id="saveSeqBtn" style="flex:none;width:50px">Save</button></div>
         <div class="list" id="seqList"></div>
       </div>
@@ -674,7 +685,7 @@ function loadCesiumFallback(){
 
     <details class="sec"><summary>Director — auto-coverage <span class="ico">&#9656;</span></summary>
       <div class="body">
-        <label class="fld">Recipe &mdash; a sequence someone already blocked</label>
+        <label class="fld">Recipes</label>
         <div class="chips" id="coverage"></div>
         <div class="mini" id="covIntent"></div>
         <div id="covPlan"></div>
@@ -686,8 +697,9 @@ function loadCesiumFallback(){
       <div class="body">
         <label class="fld">Frame bin &mdash; every frame you&rsquo;ve shot</label>
         <div class="bin" id="frameBin"></div>
-        <label class="fld">The cut &mdash; drag to reorder, set a beat per shot</label>
-        <div class="row"><input id="shotName" type="text" placeholder="Name this shot — e.g. 01 Tower establish"><button class="btn y" id="saveShot" style="flex:none;width:96px">Save shot</button></div>
+        <label class="fld">The cut</label>
+        <div class="row"><input id="shotName" type="text" placeholder="Name this shot — e.g. 01 Tower establish"><button class="btn" id="saveShot" style="flex:none;width:96px" title="Capture the current framing straight into the cut (S)">Save shot</button></div>
+        <div class="mini" style="margin:-2px 0 4px">Drag a row to reorder. <b>beat</b> sets how long that shot holds.</div>
         <div class="list" id="shotList"></div>
         <div class="tlwrap"><div id="timeline" style="display:flex;gap:6px;overflow-x:auto;padding:6px 0;margin-top:4px"></div></div>
         <div class="row"><button class="btn g" id="playTake">&#9654; Play take</button><button class="btn sm" id="clearSeq" style="flex:none;width:60px" title="Clear the shot sequence">Clear</button></div>
@@ -700,12 +712,11 @@ function loadCesiumFallback(){
 
     <details class="sec"><summary>Capture &amp; export <span class="ico">&#9656;</span></summary>
       <div class="body">
-        <div class="row"><button class="btn g" id="captureBtn">Capture frame (C)</button><button class="btn sm" id="captureHQ" style="flex:none;width:54px">HQ</button></div>
-        <label class="fld">i2v engine (default studio tab)</label>
+        <label class="fld">Default engine tab</label>
         <div class="chips" id="engines"></div>
         <div class="row"><button class="btn y" id="i2vBtn">Prompt studio — frame + all engines</button></div>
         <div class="row"><button class="btn" id="specBtn">Export gmapz.capture.v2 (.json)</button></div>
-        <div class="row"><button class="btn vcs" id="vcsBtn">VCS-15 handoff (.md)</button><button class="btn vco" id="vcoBtn">VCO (.json)</button></div>
+        <div class="row"><button class="btn vcs" id="vcsBtn" title="VCS-15 continuity handoff (.md)">VCS-15 (.md)</button><button class="btn vco" id="vcoBtn" title="VCO / Director&rsquo;s Chair project (.json)">VCO (.json)</button></div>
         <div class="row"><button class="btn" id="scenePrompt">Sequence prompts &mdash; the whole cut</button></div>
         <div class="row"><button class="btn" id="continuityBtn">Check continuity</button></div>
         <div class="row"><button class="btn sm" id="sessionSave">Save session</button><button class="btn sm" id="sessionLoadBtn">Load session</button><button class="btn sm" id="sessionNew" title="Clear the autosaved session and start clean" style="flex:none;width:44px">New</button><input id="sessionFile" type="file" accept=".json" style="display:none"></div>
@@ -1744,7 +1755,7 @@ function syncPathPanelMode(){
   setup.style.display=show?'':'none';
   sum.style.display=has?'flex':'none';
   if(has){ const ct=CAMERA_TYPES[S.cameraType]||CAMERA_TYPES.drone;
-    $('pathSummaryTxt').textContent='New dots arrive as '+ct.label+' \u00b7 move runs '+S.pathDuration.toFixed(1)+'s';
+    $('pathSummaryTxt').textContent='New dots: '+plainType(S.cameraType)+' \u00b7 '+S.pathDuration.toFixed(1)+'s move';
     $('pathEdit').textContent=pathSetupOpen?'Done':'Edit'; }
 }
 function renderPathList(){
@@ -2772,6 +2783,18 @@ function renderKmlTargets(){
     L.appendChild(d);
   });
 }
+$('kmlZone').onclick=()=>$('kmlFile').click();
+['dragenter','dragover'].forEach(t=>$('kmlZone').addEventListener(t,e=>{
+  e.preventDefault(); e.stopPropagation(); $('kmlZone').classList.add('over'); }));
+['dragleave','drop'].forEach(t=>$('kmlZone').addEventListener(t,e=>{
+  e.preventDefault(); e.stopPropagation(); $('kmlZone').classList.remove('over'); }));
+$('kmlZone').addEventListener('drop',e=>{
+  const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+  if(!f)return;
+  if(!/\.km[lz]$/i.test(f.name)){ toast('That isn\u2019t a KML or KMZ'); return; }
+  const dt=new DataTransfer(); dt.items.add(f);
+  $('kmlFile').files=dt.files; $('kmlFile').dispatchEvent(new Event('change'));
+});
 $('kmlFile').onchange=async e=>{
   const f=e.target.files[0]; if(!f)return;
   try{
@@ -2904,8 +2927,6 @@ function renderFrameBin(){
 }
 $('capBarBtn').onclick=()=>capture(false);
 $('capBarHQ').onclick=()=>capture(true);
-$('captureBtn').onclick=()=>capture(false);
-$('captureHQ').onclick=()=>capture(true);
 $('shutter').onclick=e=>capture(e.shiftKey);
 
 function aspectRes(a){const map={'2.39:1':[2048,857],'1.85:1':[1998,1080],'16:9':[1920,1080],'4:3':[1440,1080],'1:1':[1080,1080],'9:16':[1080,1920]};return map[a]||[1920,1080];}
@@ -3125,7 +3146,7 @@ function renderShots(){
   if(!S.shots.length){L.innerHTML='<div class="mini">No shots yet \u2014 press S (or Save shot) to add your current framing to the sequence.</div>';renderTimeline();return;}
   S.shots.forEach((sh,i)=>{const d=document.createElement('div');d.className='item';
     d.draggable=true;
-    d.innerHTML='<div class="t"><span><span class="grip" title="Drag to reorder">⠿</span>'+(i+1)+'. '+escapeHtml(sh.name)+' <span class="tag">'+sh.spec.camera.shot_size+'</span></span>'+
+    d.innerHTML='<div class="t"><span><span class="grip" title="Drag to reorder">⠿</span>'+(i+1)+'. '+escapeHtml(sh.name)+'</span>'+
       '<span style="display:flex;align-items:center;gap:6px;flex:none">'+
       '<select class="beatsel" title="How long this shot holds in the take">'+
         '<option value="">beat</option>'+
