@@ -1656,7 +1656,7 @@ function lockStation(i){
   const cap=capture(false);
   S._quiet=wasQuiet;
   if(!cap.url)return;
-  const spec=buildSpec(cap.id,'path');
+  const spec=buildSpec(cap.id,'path',cap);
   spec.camera.camera_type=pointCamType(i);   // the spec says which rig shot this point
   spec.camera.rig_feel=ct.feel;
   // the frame is the truth: only list who was actually visible when the shutter fired
@@ -2128,20 +2128,28 @@ $('flyParams').onclick=()=>flyToParams();
 function saveLook(){
   getCurrent();
   const name=$('lookName').value.trim()||('Look '+(S.looks.length+1));
-  S.looks.push({name,target:{...S.target},head:S.head,tilt:S.tilt,range:S.range,fov:S.fov,sensor:S.sensor});
+  // A look has to carry everything that makes it that shot. Dropping the roll meant a
+  // deliberately canted frame came back level, and the size/angle labels went with it.
+  S.looks.push({name,target:{...S.target},head:S.head,tilt:S.tilt,range:S.range,fov:S.fov,sensor:S.sensor,
+    roll:S.roll||0, shotSize:S.shotSize, angle:S.angle});
   $('lookName').value=''; renderLooks(); toast('Saved look: '+name);
 }
 function loadLook(L){
-  Object.assign(S,{target:{...L.target},head:L.head,tilt:L.tilt,range:L.range,fov:L.fov,sensor:L.sensor||S.sensor});
-  flyToParams(); syncCamUI(); paintSensorChips();
-  toast('Loaded look: '+L.name);
+  // Older looks predate roll/size/angle — fall back rather than clobber what you have.
+  Object.assign(S,{target:{...L.target},head:L.head,tilt:L.tilt,range:L.range,fov:L.fov,
+    sensor:L.sensor||S.sensor, roll:L.roll||0,
+    shotSize:L.shotSize||S.shotSize, angle:L.angle||S.angle,
+    lensMm:fovToLens(L.fov,SENSORS[L.sensor||'full'].w)});   // one source of truth
+  flyToParams(); syncCamUI(); paintSensorChips(); repaintFramingChips();
+  toast('Loaded look: '+L.name+(L.roll?' \u00b7 '+(L.roll>0?'+':'')+L.roll+'\u00b0 cant':''));
 }
 function renderLooks(){
   autosaveSoon();
   const C=$('lookList'); C.innerHTML='';
   if(!S.looks.length){C.innerHTML='<div class="mini">Saved camera positions land here \u2014 frame something and hit Save look.</div>';return;}
   S.looks.forEach((L,i)=>{const d=document.createElement('div');d.className='item';
-    d.innerHTML='<div class="t"><span>'+escapeHtml(L.name)+' <span class="tag">'+L.range+'m '+fovToLens(L.fov,SENSORS[L.sensor||'full'].w)+'mm</span></span><span class="x" data-i="'+i+'">&times;</span></div>';
+    d.innerHTML='<div class="t"><span>'+escapeHtml(L.name)+' <span class="tag">'+L.range+'m '+fovToLens(L.fov,SENSORS[L.sensor||'full'].w)+'mm'+
+      (L.roll?' \u00b7 '+(L.roll>0?'+':'')+L.roll+'\u00b0':'')+'</span></span><span class="x" data-i="'+i+'">&times;</span></div>';
     d.onclick=ev=>{if(ev.target.dataset.i)return;loadLook(L);};
     d.querySelector('.x').onclick=()=>{S.looks.splice(i,1);renderLooks();};
     C.appendChild(d);});
@@ -2822,12 +2830,13 @@ function capture(hq){
   sceneUiVisible(true);
   if(hq&&prevScale!==undefined){ viewer.resolutionScale=prevScale; viewer.render(); }
   const id='cap'+Date.now();
-  S.captures.push({id,url,spec:buildSpec(id)});
+  S.captures.push({id,url,w:out.width,h:out.height,spec:buildSpec(id,undefined,{w:out.width,h:out.height})});
   renderThumbs();
   const fl=$('captureFlash');fl.style.transition='none';fl.style.opacity=.85;requestAnimationFrame(()=>{fl.style.transition='opacity .5s';fl.style.opacity=0;});
   if(!S._quiet) toast((hq?'HQ frame ':'Frame ')+'captured ('+out.width+'\u00d7'+out.height+')');
+  S._lastCapPx={w:out.width,h:out.height};
   if(!S._quiet&&!S._savingShot) coach('tip_prompt','Turn this frame into engine-ready i2v prompts \u2014 the start frame plus every engine.','Prompt Studio',()=>$('i2vBtn').click());
-  return {id,url};
+  return {id,url,w:out.width,h:out.height};
 }
 // The stage strip is the director's monitor: every frame you've taken, with the
 // ones that are in the cut numbered in sequence order and the current one lit.
@@ -2900,7 +2909,7 @@ $('captureHQ').onclick=()=>capture(true);
 $('shutter').onclick=e=>capture(e.shiftKey);
 
 function aspectRes(a){const map={'2.39:1':[2048,857],'1.85:1':[1998,1080],'16:9':[1920,1080],'4:3':[1440,1080],'1:1':[1080,1080],'9:16':[1080,1920]};return map[a]||[1920,1080];}
-function buildSpec(refId,move){
+function buildSpec(refId,move,px){
   const s=sunNow();
   return {
     spec:'gmapz.capture.v2', id:refId||('scout_'+Date.now()), captured_at:new Date().toISOString(),
@@ -2909,7 +2918,10 @@ function buildSpec(refId,move){
       lens_mm:fovToLens(S.fov),fov_deg:S.fov,sensor:SENSORS[S.sensor].name,sensor_width_mm:SENSORS[S.sensor].w,shot_size:S.shotSize,angle:S.angle,move:move||'static'},
     light:{date:$('lDate').value,time:$('lTime').value,tz:'UTC',sun_azimuth_deg:+s.az.toFixed(1),sun_elevation_deg:+s.el.toFixed(1),phase:phaseOf(s.el)},
     look:{style:S.style,grade:S.grade,atmosphere:S.atmos,terrain_exaggeration:S.exag},
-    delivery:{aspect:S.delivery,resolution:aspectRes(S.delivery)},
+    // resolution is the delivery TARGET. capture_px is what this PNG actually is —
+    // a consumer should never have to guess which of the two it is holding.
+    delivery:{aspect:S.delivery,resolution:aspectRes(S.delivery),
+      capture_px:(px&&px.w&&px.h)?[px.w,px.h]:null},
     subjects:S.markers.map(m=>({id:m.id,type:isPersonType(m.type)?'person':(m.type==='vehicle'?'prop':m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:Math.max(0,Math.round((m.height||0)*100)/100)})),
     scene_description:$('sceneDesc').value, reference_frame:(refId||'scout')+'.png'
   };
@@ -3047,7 +3059,7 @@ async function relightSequence(){
     applyFov(); flyToParams(0); await waitForTiles(2000);
     const cap=capture(false);
     if(cap.url){
-      const fresh=buildSpec(cap.id,c.move);
+      const fresh=buildSpec(cap.id,c.move,cap);
       // buildSpec can't see what the shot already knows: which rig shot it, and who
       // its station keeps in frame. Re-lighting moves the sun, not the blocking.
       if(c.camera_type){ fresh.camera.camera_type=c.camera_type; fresh.camera.rig_feel=c.rig_feel; }
@@ -3088,7 +3100,7 @@ $('saveShot').onclick=saveShot;
 function saveShot(){
   const name=$('shotName').value.trim()||('Shot '+(S.shots.length+1));
   S._savingShot=true; const cap=capture(); S._savingShot=false;
-  S.shots.push({name,spec:buildSpec(cap.id||undefined),thumb:cap.url}); $('shotName').value=''; renderShots(); toast('Saved: '+name);
+  S.shots.push({name,spec:buildSpec(cap.id||undefined,undefined,cap),thumb:cap.url}); $('shotName').value=''; renderShots(); toast('Saved: '+name);
   coach('tip_coverage','Block a whole scene at once — the Coverage director plans pro coverage around this framing.','Coverage',()=>openSectionByLabel('Coverage'));
 }
 function reorderShots(from,to){
@@ -3513,7 +3525,7 @@ function reportPage(entry,i,total){
 }
 function buildReport(){
   let entries=S.shots.slice();
-  if(!entries.length){ const cap=capture(false); entries=[{name:$('shotName').value.trim()||'Current setup',spec:buildSpec(cap.id||undefined),thumb:cap.url}]; }
+  if(!entries.length){ const cap=capture(false); entries=[{name:$('shotName').value.trim()||'Current setup',spec:buildSpec(cap.id||undefined,undefined,cap),thumb:cap.url}]; }
   const total=entries.length;
   const cover='<div class="reppage"><div class="rephead"><h2>GMAPz Scout — Blocking Report</h2><span class="sub">'+total+' shot'+(total>1?'s':'')+' · '+new Date().toLocaleDateString()+'</span></div>'+
     '<div class="repsec"><h4>Style</h4>'+STYLES[S.style].name+' — '+STYLES[S.style].desc+'</div>'+
@@ -3850,6 +3862,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,sequencePrompts,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
+  saveLook,loadLook,renderLooks,SENSORS,GRADES,ATMOS,applyMask,applyGrade,
   sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,stepRig,
   relight:relightSequence,buildReport,checkContinuity,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,

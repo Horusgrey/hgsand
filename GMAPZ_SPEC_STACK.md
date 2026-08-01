@@ -64,7 +64,7 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
   },
 
   "look":     { "style": "cinematic", "grade": "none", "atmosphere": "clear" },
-  "delivery": { "aspect": "2.39:1", "resolution": [2048, 857] },
+  "delivery": { "aspect": "2.39:1", "resolution": [2048, 857], "capture_px": [996, 417] },
 
   "subjects": [
     { "id": "m1719360000123", "type": "person", "label": "subject", "lng": -87.6346, "lat": 41.8884, "scale": 1, "height_m": 0 }
@@ -108,7 +108,8 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
 | `look.grade` | enum | Baked into the PNG at capture. |
 | `look.atmosphere` | enum | Fog density + capture tint. |
 | `delivery.aspect` | enum | The PNG is cropped to this. |
-| `delivery.resolution` | [w,h] | Nominal target res for the aspect. |
+| `delivery.resolution` | [w,h] | Nominal target res for the aspect — what you're delivering *to*, not what this file is. |
+| `delivery.capture_px` | [w,h] \| null | **What this PNG actually is.** Set whenever the spec belongs to a real capture; `null` for a spec built without one. Never guess which of the two you're holding — `resolution` is the intent, `capture_px` is the fact. |
 | `subjects[]` | array | One per marker **that was visible when the shutter fired**. A path dot with its own cast list emits only the stand-ins in that list — the frame is the truth, so the spec never claims someone who wasn't in it. |
 | `subjects[].id` | string | Stable marker id, so a consumer can follow the same stand-in across shots. |
 | `subjects[].type` | string | `person` / `prop` / `light` / `vfx` (normalized from sticker). |

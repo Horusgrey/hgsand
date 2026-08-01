@@ -74,6 +74,7 @@ Everything that could be built without real photoreal tiles is done.
 | Flow pass | ✅ station rows collapse, Lock walks you on, Path taught at the first dot, `file://` says so up front |
 | Second shakedown | ✅ four more defects, including a spec that recorded the wrong hemisphere's sun — see below |
 | Third shakedown (adversarial) | ✅ deleting and emptying things — ghost cast ids, no way to drop one dot, a player left on a dead frame |
+| Fourth shakedown (optical) | ✅ looks dropped the cant; the spec claimed a resolution its PNG didn't have |
 | **Contact-shadow tuning** | ⏳ **needs real tiles** — alpha, size and pool direction want a human eye |
 
 ---
@@ -238,6 +239,38 @@ Two things I *thought* were bugs and weren't: the FOV and lens readings looked w
 wrong until I checked — `lensToFov` returns **degrees**, `S.fov` is degrees throughout, and
 my harness had been injecting radians. And the autosave "regression" was my test racing an
 800ms debounce. Worth recording: two of six suspicions were mine, not the app's.
+
+## What the fourth shakedown found
+
+The optical and honesty surface: film backs, whether the PNG matches what the spec claims,
+saved looks, rolling twice, twenty dots, and whether a grade reaches the pixels.
+
+**A saved look dropped the cant.** It stored name, target, head, tilt, range, fov and
+sensor — and nothing else. So a deliberately Dutched close-up came back level, relabelled
+as whatever size and angle you happened to be on. Looks carry `roll`, `shotSize` and
+`angle` now, the row shows the cant before you load it, and looks saved before this still
+load (they just come back level, which is what they were).
+
+While fixing it I removed a second source of truth: the look briefly stored `lensMm`
+*and* `fov`, which promptly disagreed with each other in testing. The lens is fov plus
+film back; it's derived on load and stored once.
+
+**The spec claimed a resolution the file didn't have.** `delivery.resolution` read
+`[2048, 857]` for a PNG that was actually `996×417`. It's documented as the nominal
+delivery target, but nothing recorded the real thing, so a consumer had no way to tell
+intent from fact. Specs now carry `delivery.capture_px` — the actual pixel size of that
+frame — beside the nominal target. Every path that makes a spec from a capture passes it.
+
+Four things checked out clean and are worth recording as *not* bugs: changing the film
+back correctly keeps the lens and narrows the field (same lens, smaller sensor), and the
+spec records the right sensor width; every delivery aspect crops to the right ratio;
+rolling a path twice after adding dots produces no duplicates and keeps path order; and
+twenty dots render in ~11ms, all collapsed.
+
+**A false alarm worth logging:** the `warm` grade looked like a no-op. It isn't — it's
+only invisible on *pure blue*, which is exactly what a tile-less sandbox renders. On grey
+it goes `[143,138,126]` and on skin `[223,163,119]`, both correctly warmer. That is the
+third suspicion this session that turned out to be my test surface rather than the app.
 
 ## The studio spine (cross-engine)
 
