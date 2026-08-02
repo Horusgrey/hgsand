@@ -413,6 +413,9 @@ already been made.
   "characters":[ { "id": "<marker id>", "name": "Courier", "role": "subject",
                    "lookPrompt": "Courier · 1.80×0.72m, life-size · placed at … · lit from camera left at 8° · …",
                    "image": "<bare base64 JPEG of the stand-in>" } ],
+  "continuityStack": [ { "id": "stack_<spec id>", "sceneId": "<spec id>",
+                         "metadata": { "obs": "…", "forge": "…", "style": "…" },
+                         "enginePrompt": "<the same Veo prompt the scene carries>" } ],
   "script": [], "storyboard": {}, "postProduction": {}
 }
 ```
@@ -425,6 +428,23 @@ already been made.
 
 `script` / `storyboard` / `postProduction` ship empty because Scout has no dialogue — an empty
 array is the honest value, not a placeholder line.
+
+### `continuityStack[]` — authored, not inferred
+
+The newest Visual Co (`Visual-Co-main`) has a **ContinuityEngine** that ships each scene image
+to Gemini and asks it to infer OBS / FORGE / STYLE plus an engine prompt. For a Scout scene
+that's a vision model guessing at what Scout authored:
+
+| field | ContinuityEngine infers | Scout knows |
+|---|---|---|
+| `obs` | subjects, environment, lighting, from pixels | the cast list, the real coordinates, the computed sun azimuth/elevation, and the key **relative to the lens** |
+| `forge` | "implied motion or next logical action" | the rig's actual motion, and the exact continuity clause to the next dot |
+| `style` | "artistic style, lens, colour palette" | the style, grade, atmosphere, focal length, film back, aspect — and a palette sampled from the frame |
+| `enginePrompt` | a fresh generation | the same Veo prompt the scene already carries, so the two cannot disagree |
+
+`obs` opens with **"PLANNED, not observed."** so nothing downstream can mistake authored
+blocking for analysis of footage. The last entry says the frame holds rather than inventing a
+shot that follows it. Older builds ignore the key harmlessly.
 
 **Why this is the bridge worth having:** World Builder's compositing step asks a model to place
 a character "on the left" and "match lighting and style". Scout knows the stand-in's real height

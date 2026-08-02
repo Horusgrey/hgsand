@@ -499,3 +499,69 @@ happened to be parked rather than the cut it shipped with. It takes the spec now
 The four World Builder forks are one program and should be one program (trunk =
 `vcofullfeats1`, harvest WB2025's asset store and `mainwbakavc`'s PWA shell, retire
 `Visual-Co-WB-main`). That's real work in a different repo and wants its own session.
+
+---
+
+## Correction: `Visual-Co-main` is the trunk, not `vcofullfeats1`
+
+A fifth archive lands and supersedes the recommendation two sections up. `Visual-Co-main`
+(AI Studio name "VCO FULL FEATS") is a strict superset of everything reviewed before:
+
+| | vcofullfeats1 | **Visual-Co-main** |
+|---|---|---|
+| Gemini service fns | 16 | **26** |
+| `App.tsx` | 15,025 B | 18,343 B |
+| `types.ts` | 1,841 B | **4,299 B** |
+| Persistence | IndexedDB | IndexedDB **+ Firebase** (`firebase.ts`, `firestore.rules`, blueprint + applet config) |
+| Continuity | — | **`ContinuityEngine.tsx`** |
+| Grounding | text only | **`GroundingTool.tsx`**, `mapsGrounding`, `searchGrounding` |
+| Video | i2v | i2v **+ t2v** (`generateVideoFromPrompt`) |
+| Image | generate / edit | **+ `generateImagePro`, `editImagePro`, `analyzeImage`** |
+| Cineflow | — | **`generateCineflowForge`** + the whole `CF*` type family |
+
+So the consolidation target changes: **trunk = `Visual-Co-main`**, harvest WB2025's asset-store
+GC if it isn't already there, retire the rest. The earlier table's *method* stands; only the
+winner moved.
+
+### Two things this changes about the suite
+
+**VCS-15 is already inside World Builder.** `ContinuityEngine.tsx` is titled, in its own
+markup, "VCS-15 Continuity Engine", renders OBS / FORGE / STYLE badges, and generates
+**CINEFLOW CF-FORGE** JSON against a typed `CFForge` interface. The merge that was being
+debated has partly happened already — and it reaches Cineflow too. The three-band map
+(plan → generate → continuity as a separate app) needs redrawing: continuity now sits inside
+band 2, and the standalone VCS-15 is the *observation* half.
+
+**The JPEG decision turned out to be load-bearing.** `analyzeScene` sends
+`{ inlineData: { data: scene.image, mimeType: 'image/jpeg' } }` straight to Gemini. A PNG
+mislabelled as JPEG would have been a model-side failure, not just a rendering quirk — the
+re-encode was required, not cosmetic.
+
+### `continuityStack[]` — the fifth key
+
+That version's `handleImportProject` reads one key the others don't: `continuityStack`. Its
+ContinuityEngine fills it by shipping each frame to a vision model and asking it to infer OBS /
+FORGE / STYLE. For a Scout scene every one of those is already known for certain, so Scout
+writes them directly — no model call, and authored beats inferred:
+
+```
+OBS   PLANNED, not observed. A courier crosses the plaza at golden hour. In frame: a person
+      and a car. Real geography at 41.88820, -87.63500. Golden light, sun azimuth 265.7°
+      elevation 7.8° — key from camera left at 8°. Medium on 24mm, eye angle, heading 48°.
+FORGE Smooth aerial drone shot, gentle float, no jitter, cinematic stability. At the next cut:
+      same location, same subjects, same light; the lens tightens to 50mm, the camera has
+      moved about 67m along the route.
+STYLE A24 — naturalistic, restrained palette, available light… warm grade, golden atmosphere.
+      24mm on Full 36, 2.39:1. Palette sampled from the frame: #0b100b #13291c #1a3827 …
+```
+
+`enginePrompt` is the same string the scene carries, so the stack and the scene can't drift.
+The last entry says the frame holds rather than inventing a shot after it.
+
+### Repositories now reachable from this session
+
+`list_repos` shows the studio, and any of them can be pulled in with `add_repo`:
+`Visual-Co-WB` (public), `Visual-Co` (private), `VCS` and `VCS-2` (private), `Zips`,
+`HGplay` — and **`ZEarth`** (private), pushed within minutes of this session's own work,
+which is presumably Codex's Earth. When it's ready it goes into Scout's existing provider
+slot beside Google tiles and the ESRI fallback, and Scout becomes keyless end to end.

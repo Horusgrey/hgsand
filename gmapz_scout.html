@@ -3242,6 +3242,35 @@ $('wbBtn').onclick=exportWorldBuilder;
 // and postProduction off the ROOT of the file and saves them — it calls no model on
 // import. So handing it scenes that already have their images is a complete project
 // for zero API spend. That is the whole point of this export.
+// One entry per scene, in the shape ContinuityEngine would have produced — except a
+// vision model has to infer these from a picture, and Scout authored them.
+//   obs   what is in the frame: cast, place, light
+//   forge the implied motion, and what changes at the next cut
+//   style the look, the glass, the delivery
+// enginePrompt is the same Veo prompt the scene carries, so the two never disagree.
+function continuityEntry(sh,i,cut,palette){
+  const sp=sh.spec, ctx=ctxFromSpec(sp), nxt=cut[i+1];
+  const rig=sp.camera.camera_type||'locked';
+  const cast=(sp.subjects||[]).length
+    ? nounList((sp.subjects||[]).map(s=>SPEC_NOUN[s.type]||s.type)).text
+    : 'no figures placed';
+  const obs='PLANNED, not observed. '+(sp.scene_description?sp.scene_description.replace(/\.+$/,'')+'. ':'')+
+    'In frame: '+cast+'. '+(sp.location.name?(sp.location.name+', real geography at '):'Real geography at ')+
+    sp.location.lat.toFixed(5)+', '+sp.location.lng.toFixed(5)+'. '+
+    cap1(sp.light.phase)+' light, sun azimuth '+sp.light.sun_azimuth_deg+'\u00b0 elevation '+
+    sp.light.sun_elevation_deg+'\u00b0 \u2014 key '+sunSide(sp)+'. '+
+    cap1(SHOT_SIZES[sp.camera.shot_size]?SHOT_SIZES[sp.camera.shot_size].label:sp.camera.shot_size)+
+    ' on '+sp.camera.lens_mm+'mm, '+sp.camera.angle+' angle, heading '+Math.round(sp.camera.heading_deg)+'\u00b0.';
+  const forge=cap1((CAMERA_TYPES[rig]||CAMERA_TYPES.locked).feel)+'. '+
+    (nxt ? ('At the next cut: '+continuityClause(sp,nxt.spec,i+1).replace(/^CONTINUITY \u2014 continuing from shot \d+: /,''))
+         : 'Last setup in the cut \u2014 the frame holds.');
+  const style=STYLES[S.style].name+' \u2014 '+STYLES[S.style].desc+'. '+
+    sp.look.grade+' grade, '+sp.look.atmosphere+' atmosphere. '+
+    sp.camera.lens_mm+'mm on '+sp.camera.sensor+', '+sp.delivery.aspect+'.'+
+    (palette&&palette.length?(' Palette sampled from the frame: '+palette.join(' ')+'.'):'');
+  return {id:'stack_'+(sp.id||('scout_'+(i+1))), sceneId:sp.id||('scout_'+(i+1)),
+    metadata:{obs,forge,style}, enginePrompt:ENGINE_BUILDERS.veo(ctx,cameraSentence(ctx,sp))};
+}
 async function worldBuilderProject(){
   const cut=S.shots.filter(s=>s.thumb);
   const scenes=[];
@@ -3263,12 +3292,15 @@ async function worldBuilderProject(){
     characters.push(c);
   }
   const seed=scenes.length?scenes[0].image:null;
+  const palette=cut.length?await framePalette(cut[0].thumb,5):[];
   return {
     styleSeed: seed?{image:seed, mimeType:'image/jpeg',
       prompt:STYLES[S.style].name+' \u00b7 '+ref.look.grade+' grade \u00b7 '+ref.look.atmosphere+
         ' \u00b7 '+ref.delivery.aspect+' \u00b7 '+ref.light.phase+' light, sun el '+
         ref.light.sun_elevation_deg+'\u00b0 \u2014 '+STYLES[S.style].desc}:null,
     scenes, characters,
+    // The fifth key the newest Visual Co reads. Older builds ignore it harmlessly.
+    continuityStack: cut.map((sh,i)=>continuityEntry(sh,i,cut,palette)),
     script:[], storyboard:{}, postProduction:{}   // Scout has no dialogue; it says so
   };
 }
@@ -3279,7 +3311,8 @@ async function exportWorldBuilder(){
     if(!p.scenes.length&&!p.characters.length){ toast('Nothing to hand over yet \u2014 add frames to the cut first'); return; }
     downloadText(JSON.stringify(p,null,2), (buildSpec().id)+'_worldbuilder.json');
     toast('\u2713 World Builder project \u2014 '+p.scenes.length+' scene'+(p.scenes.length===1?'':'s')+
-      ', '+p.characters.length+' character'+(p.characters.length===1?'':'s')+' \u00b7 imports without an API key');
+      ', '+p.characters.length+' character'+(p.characters.length===1?'':'s')+
+      ', continuity already forged \u00b7 imports without an API key');
   }catch(err){ toast('World Builder export failed: '+err.message); }
   finally{ if(btn)btn.disabled=false; }
 }
@@ -4251,6 +4284,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   lookFilter,setViewLut,nounList,countNoun,plural,
   worldBuilderProject,exportWorldBuilder,toJpegBase64,framePalette,sunSide,castLookPrompt,
   dcCameraLine,dcLightLine,nextPrompt,ENGINE_BUILDERS,continuityClause,gifPalette,
+  continuityEntry,CAMERA_TYPES,SHOT_SIZES,
   sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,stepRig,
   exportBundle,makeZip,frameFileName,specFileName,slugify,crc32,
   relight:relightSequence,buildReport,checkContinuity,
