@@ -565,3 +565,56 @@ The last entry says the frame holds rather than inventing a shot after it.
 `HGplay` — and **`ZEarth`** (private), pushed within minutes of this session's own work,
 which is presumably Codex's Earth. When it's ready it goes into Scout's existing provider
 slot beside Google tiles and the ESRI fallback, and Scout becomes keyless end to end.
+
+---
+
+## The lab copy — `gmapz_scout_lab.html`
+
+A second file, so the shipped one can't be broken while an idea is being tried. Same
+single-file discipline; it starts as a byte copy of `gmapz_scout.html` and diverges only
+where the experiment lives. If an experiment earns its place, it gets ported back with its
+tests. If it doesn't, the file gets deleted and nothing was risked.
+
+### First experiment: the cut strip shows its holes
+
+Post used to show what you shot. Plot ten dots, lock eight, and it showed eight cards —
+nothing on that screen said two beats were missing. You'd have to go back to Path and
+count, which is the wrong place to find out, because Post is where you decide to render.
+
+The strip is now a list of **slots**, not shots:
+
+```
+10 points · 8 locked · 2 open — the take and the GIF render the 8 filled cells, left to right.
+
+ ┌────┐ ┌────┐ ┌╌╌╌╌┐ ┌────┐ ┌────┐ ┌────┐ ┌╌╌╌╌┐ ┌────┐ ┌────┐ ┌────┐
+ │ 1  │ │ 2  │ │ 3  │ │ 4  │ │ 5  │ │ 6  │ │ 7  │ │ 8  │ │ 9  │ │ 10 │
+ │thumb│ │thumb│ │ 🚶 │ │thumb│ │thumb│ │thumb│ │ ⚡ │ │thumb│ │thumb│ │thumb│
+ │24mm│ │28mm│ │OPEN│ │50mm│ │50mm│ │85mm│ │OPEN│ │100 │ │135 │ │135 │
+ └────┘ └────┘ └╌╌╌╌┘ └────┘ └────┘ └────┘ └╌╌╌╌┘ └────┘ └────┘ └────┘
+```
+
+- An **open** cell is an outline, not a card — a hole reads as a hole.
+- It sits in its **path position**, so a gap in the middle looks like a gap in the middle
+  rather than getting dumped at the end.
+- Clicking it **flies you to that dot** and hands you its blocking; Enter locks it and the
+  hole fills.
+- **Free-roam frames** — flown to and saved with `S`, belonging to no dot — ride along in
+  cut order marked `✦`. You can still shoot anywhere, with no path at all.
+
+Both ways of filling a slot already existed and both still work: `Roll every station`
+flies the whole path and locks each dot in turn, or you fly to one dot, block it your way
+with its own rig / lens / cast / light, and lock it alone. **The export did not change** —
+the GIF still renders `S.shots` with frames, in order. What changed is that you can see
+what isn't in it yet.
+
+### One defect the test found
+
+The first build numbered filled cells by **cut position** and open cells by **dot** — so a
+cell labelled `3` could sit next to another cell labelled `3` and neither number meant
+anything. The cell number is the dot now, always; a free-roam frame gets `✦` instead of a
+number it would have to share.
+
+29 assertions in `striptest.mjs`, zero page errors, including: ten dots plotted and none
+locked, eight locked deliberately out of order, the holes landing in path position, the
+GIF holding eight frames rather than ten, clicking a hole flying the camera to that dot,
+locking it closing the hole, and free roam still working with no path at all.
