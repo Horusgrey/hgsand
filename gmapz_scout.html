@@ -291,8 +291,10 @@ function loadCesiumFallback(){
   .out{font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:pre-wrap;background:var(--panel2);
     border:1px solid var(--line);border-radius:8px;padding:10px;color:var(--dim);max-height:200px;overflow:auto;margin-top:8px;}
   .closex{float:right;cursor:pointer;color:var(--faint);font-size:18px;line-height:1;}
-  /* the monitor carries the look, so the letterbox and the overlays must not */
-  #cesium{transition:filter .25s;}
+  /* The monitor carries the look; the letterbox and the overlays must not.
+     No transition on purpose: a view LUT is a truth device, and a quarter-second
+     fade is a quarter-second of showing you a frame you aren't going to get. */
+  #cesium{transition:none;}
   .kbd{position:absolute;bottom:14px;right:14px;z-index:5;font-size:10px;color:var(--faint);font-family:ui-monospace,monospace;
     background:rgba(10,10,13,.6);border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:5px 9px;letter-spacing:.02em;
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
