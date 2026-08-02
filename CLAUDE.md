@@ -106,15 +106,36 @@ UNKNOWN at pre-vis.
 ## CONTINUITY RISKS
 ```
 
-## Export 4 — VCO / Director's Chair (.json, button color #e8a23c)
+## Export 4 — Director's Chair (.json, button color #e8a23c)
+Shapes below are what the **shipped app actually reads** — verified by importing into it, not
+by matching this doc. Where the two disagreed, the app won.
 ```
-project { brief, bible, characters, shots[], script:null, storyboard:null, score:null, tags{} }
-shots[]  { id, scene, shot_type, duration, description, camera, lighting }
+{ brief{}, bible{}, characters[], shots[], script:null, storyboard:null, score:null, tags{} }
+   ^ no "project" wrapper — loadProject(d) does setProject(d) on the root
+brief{}  { title, logline, format, tone, duration, engine, worldContext, canon }
+         engine ∈ Sora | Kling | Runway | Veo 3 | Grok Aurora | Gemini Flow
+shots[]  { id, scene, shot_type, duration, description,
+           camera:"<string>", lighting:"<string>",   ← ShotsStage renders these as React
+           camera_spec{}, light_spec{}, reference_frame }   children; objects throw #31
 tags{}   @imageN/@location_/@prop_/@system → { type, displayName, description, vcsLocked, veoRef }
-bible.visual_language { palette, forbidden_drift, lighting_rules }
+bible.visual_language { palette[], forbidden_drift[], lighting_rules[] }   ← arrays
 ```
-Scout fills `shots`, `tags`, `bible.visual_language`, `brief`. Leaves `script/storyboard/score`
-null and `characters` as honest stubs.
+`palette` is sampled from the captured frame (median-cut), never invented. Characters carry
+only what Scout can know — what, how big, where, and how it's lit. `age`/`gender`/
+`personality`/`backstory` exist in that app and stay unwritten.
+
+## Export 5 — World Builder / Visual Co (.json, button color #e8a23c)
+The one handoff that **costs no API key**: its importer reads the root and calls no model, so
+scenes that arrive with their images are scenes already made.
+```
+{ styleSeed{image,mimeType,prompt}, scenes[], characters[], script:[], storyboard:{}, postProduction:{} }
+scenes[]     { id, prompt, image }
+characters[] { id, name, role, lookPrompt, image? }
+```
+Every `image` is **bare base64 JPEG** — no `data:` prefix (its `fileToBase64` keeps only what
+follows the comma) and genuinely JPEG (every `<img>` is hardcoded to `data:image/jpeg`).
+`lookPrompt` states the key **relative to the lens** ("lit from camera left at 8°"), which is
+the thing World Builder's compositing step otherwise has to guess.
 
 ## Definition of done (per feature)
 A feature is done when: it works in the core loop, it's reflected in `gmapz.capture.v1`, it

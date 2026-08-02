@@ -434,3 +434,68 @@ Director's Chair fix is an unwrap plus two field shapes.
 Prompt length was a suspicion, not a defect — measured per engine across five shots the
 bodies run 296–468 characters (longest 683, Sora). Nothing is over-long for any engine,
 Grok Imagine included.
+
+---
+
+## The studio bridges, aimed at the real loaders
+
+Reading the shipped code told us the shapes. Running the shipped code told us what actually
+happened — and the two were not the same story.
+
+### Three variants through the real Director's Chair
+
+The app itself (React vendored locally, its two cosmetic CDNs dropped) importing three files:
+
+| File | React errors | What you get |
+|---|---|---|
+| As Scout shipped it — `{project:{…}}`, `camera` an object | 0 | **"Project loaded successfully"** and an empty project. Blank brief, no bible, "GENERATE SHOT LIST". |
+| Unwrapped only — root keys, `camera` still an object | **1** — React error #31 | Blank stage. Fixing the wrapper alone would have traded silent data loss for a crash. |
+| This pass — root keys, `camera` a string | 0 | The shot list renders with the real lens, angle, rig and altitude. |
+
+That middle row is the reason to run things rather than reason about them. The wrapper bug
+was *masking* the camera bug: with no shots reaching `ShotsStage`, the object never rendered.
+Both had to be fixed in the same motion or the first fix would have made things worse.
+
+The full walk — all eight stages, Brief through Export — now runs with zero React errors, and
+no rendered field anywhere reads `[object Object]` or `undefined`.
+
+### World Builder: the keyless handoff
+
+`handleImportProject` reads `styleSeed` / `scenes` / `characters` off the root and saves them.
+It calls no model. So handing it scenes that already carry their images is a complete project
+for zero API spend — the only handoff in the studio that costs nothing to receive.
+
+Three details decided whether it landed, and all three are now asserted against the app's own
+code rather than against a guess: bare base64 (its `fileToBase64` keeps only what follows the
+comma), JPEG (every `<img>` is hardcoded to `data:image/jpeg`, and the compositing call
+declares that mimetype to the model), and no wrapper. Every image in the export is verified to
+begin `/9j/` — the base64 signature of a real JPEG — and to decode through World Builder's own
+`<img>` form.
+
+The character bridge is the part worth having. World Builder asks a model to place a character
+"on the left" and "match lighting and style". Scout hands it the stand-in's real height in
+metres, its exact position, and the key **relative to the lens** — "lit from camera left at 8°",
+not a compass bearing. Its weakest input is Scout's strongest output.
+
+Nothing is invented on the way across: `age`, `gender`, `personality` and `backstory` all exist
+in these apps and all stay unwritten. `script` and `storyboard` ship empty because Scout has no
+dialogue.
+
+### VCS-15: MATCH and NEXT are prompts
+
+VCS-15 titles those panes "Recreation Prompt" and "Next 15s Prompt", and its GEN-HANDOFF button
+exports NEXT's body **verbatim** as `prompt`. Scout was filling them with a continuity reference
+and a coverage note — so a coverage note would have shipped to a generator as if it were a
+prompt. MATCH is now a recreation prompt with the anchors beneath it; NEXT is the following
+shot's actual prompt, or, when nothing follows, recommended coverage labelled
+`NOT YET BLOCKED` so it can't be mistaken for one.
+
+While there: the cut bundle already called `vcs15(first)`, but `vcs15` took no arguments and
+rebuilt from the live camera — so the handoff inside the zip described wherever the camera
+happened to be parked rather than the cut it shipped with. It takes the spec now.
+
+### What's still the user's call
+
+The four World Builder forks are one program and should be one program (trunk =
+`vcofullfeats1`, harvest WB2025's asset store and `mainwbakavc`'s PWA shell, retire
+`Visual-Co-WB-main`). That's real work in a different repo and wants its own session.

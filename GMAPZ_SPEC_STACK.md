@@ -256,6 +256,14 @@ bundle concatenates all engines:
 Eight fixed sections. Continuity stays honest: planned previs is authoritative, speaker
 attribution is never invented.
 
+`vcs15(spec)` takes the spec it should describe; callers that own a shot pass it, and the
+Export panel button passes nothing and gets the current setup. The whole document always
+describes exactly one frame.
+
+VCS-15 titles two of these panes **"Recreation Prompt"** (MATCH) and **"Next 15s Prompt"**
+(NEXT), and its GEN-HANDOFF button exports NEXT's body verbatim as `prompt`. Both therefore
+hold prompts — a coverage note in NEXT would have shipped to a generator as if it were one.
+
 ```
 # VCS-15 HANDOFF — <id>
 
@@ -264,8 +272,9 @@ attribution is never invented.
 ## VCS-CPAS     camera: shot · angle · lens(fov) · heading · tilt
 ## VCS-STYLE    style · grade · atmosphere · delivery aspect
 ## VCS-FORGE    ```json … FORGE block (below) … ```
-## VCS-MATCH    reference frame · sun az/el · lens
-## VCS-NEXT     suggested coverage (reverse / insert / push|pull)
+## VCS-MATCH    a recreation prompt for this frame, then an ANCHORS line
+## VCS-NEXT     the next shot's prompt — or, if nothing follows, recommended
+                coverage clearly labelled NOT YET BLOCKED
 ## CONTINUITY RISKS   sun drifts with time-of-day; tile LOD varies by altitude
 ```
 
@@ -318,37 +327,109 @@ location, clock, weather and what is in frame — never a recording.
 
 ---
 
-## 5. Derived view — VCO project (`.json`)
+## 5. Derived view — Director's Chair project (`.json`)
 
-A `project{}` envelope with the pipeline stages stubbed and an `@tag` asset table.
+**No envelope.** Director's Chair's importer is `loadProject(d) → setProject(d)`, which reads
+the *root* of the file. An earlier version of this export wrapped everything in
+`{"project": {…}}`; the app reported "Project loaded successfully" and showed an empty
+project, because every field landed one level too deep.
 
 ```json
 {
-  "project": {
-    "brief": "<scene_description or auto summary>",
-    "bible": {
-      "visual_language": {
-        "palette": "Cinematic",
-        "forbidden_drift": "no neon cyberpunk, no glossy futurism",
-        "lighting_rules": "golden light, sun el 6.2°"
-      }
+  "brief": {
+    "title": "Marina City, Chicago — 5 shots",
+    "logline": "<scene_description, or an auto summary>",
+    "format": "Pre-vis sequence · 2.39:1",
+    "tone": "A24",
+    "duration": "7.1s across 5 setups",
+    "engine": "Veo 3",
+    "worldContext": "Real geography at … · <light line> · PLANNED, never observed",
+    "canon": "Hold the geography, the sun and the look constant across every shot. …"
+  },
+  "bible": {
+    "world_name": "…", "core_premise": "…", "time_period": "2026-09-18",
+    "setting": "…", "tone_contract": "A24: …",
+    "visual_language": {
+      "palette":         ["#0b100b", "#142e1f", "#1a3d2a", "#224e36", "#2e6245"],
+      "forbidden_drift": ["neon cyberpunk", "glossy futurism", "invented geography", "…"],
+      "lighting_rules":  ["golden light throughout", "sun azimuth 265.7°, elevation 7.8°", "…"]
     },
-    "characters": [ { "name": "subject", "stub": true } ],
-    "shots": [
-      { "id": "<id>", "scene": 1, "shot_type": "medium", "duration": 4,
-        "description": "<basePrompt>", "camera": { "...": "..." }, "lighting": { "...": "..." } }
-    ],
-    "script": null, "storyboard": null, "score": null,
-    "tags": {
-      "@image1":         { "type": "image",    "displayName": "subject", "description": "...", "vcsLocked": true, "veoRef": null },
-      "@location_scout": { "type": "location", "displayName": "scout",   "description": "...", "vcsLocked": true, "veoRef": "<id>.png" }
-    }
-  }
+    "canon_rules": ["…"], "global_veo_rule": "…", "continuity_locks": ["…"],
+    "sound_language": { "...gmapz.audio.v1..." }
+  },
+  "characters": [
+    { "name": "Courier", "role": "subject",
+      "visual_description": "Courier · 1.80×0.72m, life-size · placed at 41.88872, -87.63432 · lit from camera left at 8° · blocking reference — pose and wardrobe not specified by Scout",
+      "planned_stand_in": true }
+  ],
+  "shots": [
+    { "id": "<id>", "scene": "SCENE 1 — Marina City", "shot_type": "wide", "duration": "2s",
+      "description": "<name> — <engine prompt>",
+      "camera":   "24mm (73.7°) · ewide · aerial angle · heading 48° · tilt -35° · drone · 480m",
+      "lighting": "golden · sun az 265.7° el 7.8° · 2026-09-18 23:10 UTC · key from camera left at 8°",
+      "camera_spec": { "...": "..." }, "light_spec": { "...": "..." },
+      "reference_frame": "<id>.png" }
+  ],
+  "script": null, "storyboard": null, "score": null,
+  "tags": { "@image1": { "...": "..." }, "@location_scout": { "...": "..." } }
 }
 ```
 
+Three contracts this export exists to satisfy, all read off the app's own code:
+
+| Contract | Why |
+|---|---|
+| No `project` wrapper | `setProject(d)` takes the root. |
+| `brief` is an **object** | The Brief stage binds `d.title` / `d.logline` / `d.duration` / `d.engine` / `d.worldContext` / `d.canon`. `engine` must be one of `Sora · Kling · Runway · Veo 3 · Grok Aurora · Gemini Flow`. |
+| `shots[].camera` and `.lighting` are **strings** | `ShotsStage` renders `{shot.camera}` as a React child. An object there is React error #31 and a blank stage. The originals ride alongside as `camera_spec` / `light_spec`, so nothing is lost to a machine reader. |
+
+`visual_language.palette` is **sampled from the captured frame** via the median-cut palette
+the GIF encoder already uses — a flat frame honestly yields two colours rather than five
+invented ones. `forbidden_drift`, `lighting_rules` and `canon_rules` are arrays, matching
+the app's own bible.
+
 People markers map to `@image{n}` (type `image`); other stickers keep their type. The scouted
 location is always `@location_scout`, `veoRef` pointing at the captured frame.
+
+Characters carry only what Scout can know — what the stand-in is, how big it really is, where
+it stands, and how the light hits it. No age, gender, personality or backstory: those fields
+exist in Director's Chair and are deliberately left unwritten rather than invented.
+
+---
+
+## 5.1 Derived view — World Builder / Visual Co project (`.json`)
+
+The one handoff in the studio that **costs no API key**. World Builder's importer reads
+`styleSeed`, `scenes`, `characters`, `script`, `storyboard` and `postProduction` off the root
+and saves them — it calls no model. A scene that arrives *with* its image is a scene that has
+already been made.
+
+```json
+{
+  "styleSeed": { "image": "<bare base64 JPEG>", "mimeType": "image/jpeg",
+                 "prompt": "A24 · warm grade · golden · 2.39:1 · golden light, sun el 7.8° — …" },
+  "scenes":    [ { "id": "<spec id>", "prompt": "<Veo-flavoured shot prompt>",
+                   "image": "<bare base64 JPEG of the captured frame>" } ],
+  "characters":[ { "id": "<marker id>", "name": "Courier", "role": "subject",
+                   "lookPrompt": "Courier · 1.80×0.72m, life-size · placed at … · lit from camera left at 8° · …",
+                   "image": "<bare base64 JPEG of the stand-in>" } ],
+  "script": [], "storyboard": {}, "postProduction": {}
+}
+```
+
+| Contract | Why |
+|---|---|
+| **Bare base64** — no `data:` prefix | `fileToBase64` resolves `reader.result.split(',')[1]`, so that's what every stored image is. |
+| **JPEG** | Every `<img>` is written `data:image/jpeg;base64,${…}` and `mergeCharacterAndScene` declares `mimeType: 'image/jpeg'` to the model. Scout's frames are PNG, so this export re-encodes rather than mislabels. |
+| No wrapper | `handleImportProject` reads the root. |
+
+`script` / `storyboard` / `postProduction` ship empty because Scout has no dialogue — an empty
+array is the honest value, not a placeholder line.
+
+**Why this is the bridge worth having:** World Builder's compositing step asks a model to place
+a character "on the left" and "match lighting and style". Scout knows the stand-in's real height
+in metres, its exact position, and where the sun was — so `lookPrompt` states the key relative to
+the lens (`sunSide()`), not as a compass bearing.
 
 ---
 

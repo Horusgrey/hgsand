@@ -717,7 +717,9 @@ function loadCesiumFallback(){
         <div class="chips" id="engines"></div>
         <div class="row"><button class="btn" id="i2vBtn">Prompt studio &mdash; this frame, all engines</button></div>
         <div class="row"><button class="btn" id="specBtn">Export gmapz.capture.v2 (.json)</button></div>
-        <div class="row"><button class="btn vcs" id="vcsBtn" title="VCS-15 continuity handoff (.md)">VCS-15 (.md)</button><button class="btn vco" id="vcoBtn" title="VCO / Director&rsquo;s Chair project (.json)">VCO (.json)</button></div>
+        <label class="fld">Studio handoffs</label>
+        <div class="row"><button class="btn vcs" id="vcsBtn" title="VCS-15 continuity handoff (.md) &mdash; drops straight into the VCS-15 section parser">VCS-15 (.md)</button><button class="btn vco" id="vcoBtn" title="Director&rsquo;s Chair project (.json) &mdash; brief, world bible, shot list and tags">Director&rsquo;s Chair</button></div>
+        <div class="row"><button class="btn vco" id="wbBtn" title="World Builder / Visual Co project (.json) &mdash; your captured frames arrive as scenes with their images attached, so importing costs no API key">World Builder (.json)</button></div>
         <div class="row"><button class="btn" id="scenePrompt">Sequence prompts &mdash; the whole cut</button></div>
         <label class="fld">Hand off the whole cut</label>
         <div class="row"><button class="btn y" id="bundleBtn" title="Every frame, every prompt, every spec — one file, filenames already matching">Export the cut (.zip)</button></div>
@@ -3004,6 +3006,23 @@ $('i2vBtn').onclick=()=>{
 };
 $('specBtn').onclick=()=>{const sp=buildSpec();downloadText(JSON.stringify(sp,null,2),sp.id+'.json');};
 
+// The next 15 seconds, as something you could actually paste. If the cut already has
+// a following shot, that shot's prompt IS the answer; otherwise recommend coverage and
+// say plainly that it hasn't been blocked yet.
+function nextPrompt(sp,nxt){
+  if(nxt){
+    const c=ctxFromSpec(nxt.spec);
+    return 'CONTINUING from '+sp.id+' \u2014 hold the location, the sun and the look.\n'+
+      continuityClause(sp,nxt.spec,1)+'\n\n'+
+      ENGINE_BUILDERS.veo(c,cameraSentence(c,nxt.spec))+
+      (nxt.spec.reference_frame?('\nstart frame: '+nxt.spec.reference_frame):'');
+  }
+  const ctx=ctxFromSpec(sp);
+  return 'NOT YET BLOCKED \u2014 the following is recommended coverage, not an authored shot.\n'+
+    suggestNext()+'\n\nHold the world lock from '+sp.id+': same location, sun az '+
+    sp.light.sun_azimuth_deg+'\u00b0 el '+sp.light.sun_elevation_deg+'\u00b0, '+
+    ctx.style+' look, '+sp.delivery.aspect+'. Continue the action from where the frame leaves it.';
+}
 function suggestNext(){ // read the saved sequence and recommend what a cutting room would want next
   if(!S.shots.length)return 'Suggested coverage: establishing wide, then a medium and a close on the same axis.';
   const sizes=new Set(S.shots.map(s=>s.spec.camera.shot_size));
@@ -3016,8 +3035,69 @@ function suggestNext(){ // read the saved sequence and recommend what a cutting 
   return missing.length?('Shot so far: '+S.shots.length+' setup'+(S.shots.length===1?'':'s')+' ('+[...sizes].join(', ')+'). Missing: '+missing.slice(0,3).join(', ')+'.')
     :'Coverage ladder complete across '+S.shots.length+' setups — consider a reverse or a moving master.';
 }
-function vcs15(){
-  const sp=buildSpec(); const s=sp.light;
+// World Builder stores images as BARE base64 JPEG — fileToBase64 keeps only the part
+// after the comma, and every <img> in it is hardcoded to data:image/jpeg. Hand it a PNG
+// data URL and every frame renders blank, so re-encode rather than hope.
+function toJpegBase64(dataUrl,quality){
+  return new Promise(res=>{
+    if(!dataUrl)return res(null);
+    const im=new Image();
+    im.onload=()=>{
+      const c=document.createElement('canvas');
+      c.width=im.naturalWidth||im.width; c.height=im.naturalHeight||im.height;
+      const x=c.getContext('2d');
+      x.fillStyle='#000'; x.fillRect(0,0,c.width,c.height);   // JPEG has no alpha
+      x.drawImage(im,0,0);
+      let u; try{ u=c.toDataURL('image/jpeg',quality||0.92); }catch(_){ return res(null); }
+      res(u.slice(u.indexOf(',')+1));
+    };
+    im.onerror=()=>res(null);
+    im.src=dataUrl;
+  });
+}
+// A world bible asks for a palette. Sampling the frame we actually shot is the only
+// honest way to give one — the alternative is making up five hex codes.
+function framePalette(dataUrl,count){
+  return new Promise(res=>{
+    if(!dataUrl)return res([]);
+    const im=new Image();
+    im.onload=()=>{
+      const w=Math.max(1,Math.min(160,im.naturalWidth||im.width));
+      const h=Math.max(1,Math.round(w*((im.naturalHeight||im.height)/(im.naturalWidth||im.width))));
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      const x=c.getContext('2d'); x.drawImage(im,0,0,w,h);
+      let d; try{ d=x.getImageData(0,0,w,h).data; }catch(_){ return res([]); }
+      const hex=v=>('0'+Math.max(0,Math.min(255,v)).toString(16)).slice(-2);
+      res(gifPalette([d],count||5).map(p=>'#'+hex(p[0])+hex(p[1])+hex(p[2])));
+    };
+    im.onerror=()=>res([]);
+    im.src=dataUrl;
+  });
+}
+// Where the key is, relative to the lens. A compositor needs this, not a compass bearing.
+function sunSide(sp){
+  const s=sp.light; if(s.sun_elevation_deg<0)return 'below the horizon \u2014 no key';
+  const rel=((s.sun_azimuth_deg-sp.camera.heading_deg)%360+540)%360-180;
+  const a=Math.abs(rel);
+  if(a<30)return 'behind the subject, into the lens \u2014 backlit';
+  if(a>150)return 'behind the camera \u2014 flat frontal key';
+  return 'from camera '+(rel<0?'left':'right')+' at '+Math.round(s.sun_elevation_deg)+'\u00b0';
+}
+// What Scout honestly knows about a stand-in: what it is, how big it really is, and
+// how the light hits it. Nothing about who they are — that isn't Scout's to say.
+function castLookPrompt(m,sp){
+  const wp=WORLD_PROPS[m.type];
+  const bits=[standInName(m.type)];
+  if(wp)bits.push(wp.h.toFixed(2)+'\u00d7'+wp.w.toFixed(2)+'m, life-size');
+  bits.push('placed at '+m.lat.toFixed(5)+', '+m.lon.toFixed(5));
+  if(sp)bits.push('lit '+sunSide(sp));
+  bits.push('blocking reference \u2014 pose and wardrobe not specified by Scout');
+  return bits.join(' \u00b7 ');
+}
+function vcs15(spec){
+  // Callers that own a shot pass its spec; the panel button passes nothing and gets
+  // the current setup. Either way the whole document describes one frame.
+  const sp=spec||buildSpec(); const s=sp.light;
   // Field names match the VCS-15 app's FORGE schema so the handoff drops straight in.
   const idx=S.shots.findIndex(x=>x.spec&&x.spec.id===sp.id);
   const nxt=idx>=0&&S.shots[idx+1]?S.shots[idx+1]:null;
@@ -3055,28 +3135,154 @@ function vcs15(){
    '## VCS-CPAS','Shot '+sp.camera.shot_size+' · angle '+sp.camera.angle+' · '+sp.camera.lens_mm+'mm ('+sp.camera.fov_deg+'\u00b0) · heading '+sp.camera.heading_deg+'\u00b0 · tilt '+sp.camera.pitch_deg+'\u00b0','',
    '## VCS-STYLE','Style '+sp.look.style+' · grade '+sp.look.grade+' · atmosphere '+sp.look.atmosphere+' · delivery '+sp.delivery.aspect,'',
    '## VCS-FORGE','```json',JSON.stringify(forge,null,2),'```','',
-   '## VCS-MATCH','frame '+sp.reference_frame+' · sun az '+s.sun_azimuth_deg+'\u00b0 el '+s.sun_elevation_deg+'\u00b0 · lens '+sp.camera.lens_mm+'mm','',
-   '## VCS-NEXT',suggestNext(),'',
+   // VCS-15 titles this pane "Recreation Prompt" — give it a prompt that recreates
+   // the frame, with the anchors underneath so a human can check it.
+   '## VCS-MATCH',
+   ENGINE_BUILDERS.veo(ctxFromSpec(sp),cameraSentence(ctxFromSpec(sp),sp)),
+   '','ANCHORS \u2014 frame '+sp.reference_frame+' \u00b7 sun az '+s.sun_azimuth_deg+'\u00b0 el '+s.sun_elevation_deg+
+     '\u00b0 \u00b7 lens '+sp.camera.lens_mm+'mm on '+sp.camera.sensor+' \u00b7 heading '+Math.round(sp.camera.heading_deg)+
+     '\u00b0 \u00b7 '+sp.delivery.aspect,'',
+   // Its GEN-HANDOFF button exports this body verbatim as `prompt`, so a coverage
+   // note would have shipped to a generator as if it were one.
+   '## VCS-NEXT', nextPrompt(sp,nxt), '',
    '## CONTINUITY RISKS','Sun moves with time-of-day; lock the captured frame. Photoreal tile LOD varies by altitude.'
   ].join('\n');
 }
 $('vcsBtn').onclick=()=>{const sp=buildSpec();downloadText(vcs15(),sp.id+'_vcs15.md');};
 
-function vco(){
-  const sp=buildSpec();
+// Director's Chair does setProject(jsonData) on the ROOT — no wrapper — and its
+// ShotsStage renders {shot.camera} directly as a React child, so camera has to be a
+// string or the stage throws. The full objects ride alongside as camera_spec /
+// light_spec, so a machine reader loses nothing to a human-readable one.
+function dcCameraLine(sp){
+  const c=sp.camera;
+  return [c.lens_mm+'mm ('+c.fov_deg+'\u00b0)', c.shot_size, c.angle+' angle',
+    'heading '+Math.round(c.heading_deg)+'\u00b0', 'tilt '+Math.round(c.pitch_deg)+'\u00b0',
+    c.camera_type||c.move||'static', Math.round(c.altitude_m)+'m'].filter(Boolean).join(' \u00b7 ');
+}
+function dcLightLine(sp){
+  const l=sp.light;
+  return l.phase+' \u00b7 sun az '+l.sun_azimuth_deg+'\u00b0 el '+l.sun_elevation_deg+'\u00b0 \u00b7 '+
+    l.date+' '+l.time+' '+l.tz+' \u00b7 key '+sunSide(sp);
+}
+async function vco(){
+  const sp=buildSpec(), st=STYLES[S.style];
+  const cut=S.shots.filter(x=>x.thumb);
   const tags={}; S.markers.forEach((m,i)=>{const isP=isPersonType(m.type);tags['@'+(isP?'image':m.type)+(i+1)]={type:isP?'image':m.type,displayName:m.shotType,description:subjectNoun(m.type)+' at '+m.lat.toFixed(4)+','+m.lon.toFixed(4),vcsLocked:true,veoRef:null};});
   tags['@location_scout']={type:'location',displayName:sp.location.name||'scout',description:'Real geo '+sp.location.lat+','+sp.location.lng,vcsLocked:true,veoRef:sp.reference_frame};
-  return {project:{
-    brief:sp.scene_description||('Scouted '+sp.camera.shot_size+' at '+sp.location.lat.toFixed(3)+','+sp.location.lng.toFixed(3)),
-    bible:{visual_language:{palette:STYLES[S.style].name,forbidden_drift:'no neon cyberpunk, no glossy futurism',lighting_rules:sp.light.phase+' light, sun el '+sp.light.sun_elevation_deg+'\u00b0'},
-      sound_language:soundscape(sp)},
-    characters:S.markers.filter(m=>isPersonType(m.type)).map(m=>({name:m.shotType,stub:true})),
-    shots:[{id:sp.id,scene:1,shot_type:sp.camera.shot_size,duration:4,description:basePrompt(),camera:sp.camera,lighting:sp.light}],
+  const rows=cut.length?cut:[{name:'Current setup',spec:sp,beat:null}];
+  const total=rows.reduce((a,r)=>a+(r.beat||4),0);
+  // Measured off the frame we actually shot, not five hex codes I made up.
+  const palette=cut.length?await framePalette(cut[0].thumb,5):[];
+  return {
+    brief:{
+      title:(sp.location.name||'Scouted location')+' \u2014 '+rows.length+' shot'+(rows.length===1?'':'s'),
+      logline:sp.scene_description||('A '+sp.camera.shot_size+' at '+sp.location.lat.toFixed(3)+', '+sp.location.lng.toFixed(3)+' in '+sp.light.phase+' light.'),
+      format:'Pre-vis sequence \u00b7 '+sp.delivery.aspect,
+      tone:st.name,
+      duration:total.toFixed(1)+'s across '+rows.length+' setup'+(rows.length===1?'':'s'),
+      engine:'Veo 3',
+      worldContext:'Real geography at '+sp.location.lat.toFixed(5)+', '+sp.location.lng.toFixed(5)+
+        (sp.location.name?(' ('+sp.location.name+')'):'')+'. '+dcLightLine(sp)+
+        '. Everything here is PLANNED blocking authored in Scout \u2014 nothing was observed from footage.',
+      canon:'Hold the geography, the sun and the look constant across every shot. '+
+        st.name+': '+st.desc+'. No neon cyberpunk, no glossy futurism.'
+    },
+    bible:{
+      world_name:sp.location.name||('Scout '+sp.location.lat.toFixed(3)+', '+sp.location.lng.toFixed(3)),
+      core_premise:sp.scene_description||'',
+      time_period:sp.light.date,
+      setting:'Real location, photoreal 3D tiles. '+dcLightLine(sp),
+      tone_contract:st.name+': '+st.desc,
+      visual_language:{
+        palette,                                     // sampled from the captured frame
+        forbidden_drift:['neon cyberpunk','glossy futurism','invented geography',
+          'relit shadows that disagree with sun el '+sp.light.sun_elevation_deg+'\u00b0'],
+        lighting_rules:[sp.light.phase+' light throughout',
+          'sun azimuth '+sp.light.sun_azimuth_deg+'\u00b0, elevation '+sp.light.sun_elevation_deg+'\u00b0',
+          'key '+sunSide(sp),
+          'shadow direction is fixed by the clock \u2014 re-time rather than relight']
+      },
+      canon_rules:['Geography is real and must not be re-invented between shots',
+        'The sun does not move within a sequence unless a time jump is stated',
+        'Delivery is '+sp.delivery.aspect,
+        'Speaker attribution is UNKNOWN at pre-vis'],
+      global_veo_rule:st.name+' aesthetic: '+st.desc+'. '+sp.delivery.aspect+
+        ', photorealistic, temporally stable, true light transport.',
+      continuity_locks:['sun az '+sp.light.sun_azimuth_deg+'\u00b0 / el '+sp.light.sun_elevation_deg+'\u00b0',
+        'lens ladder '+rows.map(r=>r.spec.camera.lens_mm+'mm').join(' \u2192 '),
+        sp.delivery.aspect+' framing'],
+      sound_language:soundscape(sp)
+    },
+    // Scout knows what a stand-in is and how big it is. It does not know who they are,
+    // so age / personality / backstory stay unwritten rather than invented.
+    characters:S.markers.filter(m=>isPersonType(m.type)).map(m=>({
+      name:standInName(m.type), role:m.shotType,
+      visual_description:castLookPrompt(m,sp),
+      planned_stand_in:true
+    })),
+    shots:rows.map((r,i)=>({
+      id:r.spec.id, scene:'SCENE 1 \u2014 '+(sp.location.name||'scouted location'),
+      shot_type:r.spec.camera.shot_size,
+      duration:(r.beat||4)+'s',
+      description:r.name+' \u2014 '+ENGINE_BUILDERS.runway(ctxFromSpec(r.spec),cameraSentence(ctxFromSpec(r.spec),r.spec)),
+      camera:dcCameraLine(r.spec),        // string: ShotsStage renders this directly
+      lighting:dcLightLine(r.spec),       // string, same reason
+      camera_spec:r.spec.camera,          // the machine-readable originals, kept
+      light_spec:r.spec.light,
+      reference_frame:r.spec.reference_frame
+    })),
     script:null,storyboard:null,score:null,tags
-  }};
+  };
 }
-$('vcoBtn').onclick=()=>{const sp=buildSpec();downloadText(JSON.stringify(vco(),null,2),sp.id+'_vco.json');};
+$('vcoBtn').onclick=async()=>{const sp=buildSpec();downloadText(JSON.stringify(await vco(),null,2),sp.id+'_directors_chair.json');};
+$('wbBtn').onclick=exportWorldBuilder;
 
+// World Builder / Visual Co reads styleSeed, scenes, characters, script, storyboard
+// and postProduction off the ROOT of the file and saves them — it calls no model on
+// import. So handing it scenes that already have their images is a complete project
+// for zero API spend. That is the whole point of this export.
+async function worldBuilderProject(){
+  const cut=S.shots.filter(s=>s.thumb);
+  const scenes=[];
+  for(let i=0;i<cut.length;i++){
+    const sh=cut[i], ctx=ctxFromSpec(sh.spec);
+    scenes.push({
+      id:sh.spec.id||('scout_'+(i+1)),
+      prompt:ENGINE_BUILDERS.veo(ctx,cameraSentence(ctx,sh.spec)),
+      image:await toJpegBase64(sh.thumb)
+    });
+  }
+  const ref=cut.length?cut[0].spec:buildSpec();
+  const characters=[];
+  for(const m of S.markers.filter(x=>isPersonType(x.type))){
+    const c={id:m.id, name:standInName(m.type), role:m.shotType,
+      lookPrompt:castLookPrompt(m,ref)};
+    const img=AVATARS[m.type];
+    if(img){ const j=await toJpegBase64(img); if(j)c.image=j; }
+    characters.push(c);
+  }
+  const seed=scenes.length?scenes[0].image:null;
+  return {
+    styleSeed: seed?{image:seed, mimeType:'image/jpeg',
+      prompt:STYLES[S.style].name+' \u00b7 '+ref.look.grade+' grade \u00b7 '+ref.look.atmosphere+
+        ' \u00b7 '+ref.delivery.aspect+' \u00b7 '+ref.light.phase+' light, sun el '+
+        ref.light.sun_elevation_deg+'\u00b0 \u2014 '+STYLES[S.style].desc}:null,
+    scenes, characters,
+    script:[], storyboard:{}, postProduction:{}   // Scout has no dialogue; it says so
+  };
+}
+async function exportWorldBuilder(){
+  const btn=$('wbBtn'); if(btn)btn.disabled=true;
+  try{
+    const p=await worldBuilderProject();
+    if(!p.scenes.length&&!p.characters.length){ toast('Nothing to hand over yet \u2014 add frames to the cut first'); return; }
+    downloadText(JSON.stringify(p,null,2), (buildSpec().id)+'_worldbuilder.json');
+    toast('\u2713 World Builder project \u2014 '+p.scenes.length+' scene'+(p.scenes.length===1?'':'s')+
+      ', '+p.characters.length+' character'+(p.characters.length===1?'':'s')+' \u00b7 imports without an API key');
+  }catch(err){ toast('World Builder export failed: '+err.message); }
+  finally{ if(btn)btn.disabled=false; }
+}
 function checkContinuity(){
   if(S.shots.length<2){toast('Save at least two shots first');return;}
   let warn=0; const lines=['LIGHT CONTINUITY',''];
@@ -3640,7 +3846,9 @@ async function exportBundle(){
         shot_size:sh.spec.camera.shot_size, angle:sh.spec.camera.angle}))
     },null,2))});
     files.push({name:'vcs15.md', bytes:utf8(vcs15(first))});
-    files.push({name:'vco.json', bytes:utf8(JSON.stringify(vco(first),null,2))});
+    files.push({name:'directors_chair.json', bytes:utf8(JSON.stringify(await vco(),null,2))});
+    say('Building the World Builder project\u2026');
+    files.push({name:'worldbuilder.json', bytes:utf8(JSON.stringify(await worldBuilderProject(),null,2))});
     files.push({name:'README.txt', bytes:utf8(
       'GMAPz Scout \u2014 cut handoff\n'+
       '='.repeat(34)+'\n\n'+
@@ -3653,8 +3861,13 @@ async function exportBundle(){
       'specs/     gmapz.capture.v2, one per shot. resolution is the delivery target;\n'+
       '           capture_px is what the PNG actually is.\n'+
       'cut.json   the sequence itself: order, beats, and the shared world lock.\n'+
-      'vcs15.md   VCS-15 continuity handoff.\n'+
-      'vco.json   VCO / Director\u2019s Chair project.\n\n'+
+      'vcs15.md   VCS-15 continuity handoff. Its section headings match the\n'+
+      '           VCS-15 parser exactly \u2014 open it there as-is.\n'+
+      'directors_chair.json\n'+
+      '           Director\u2019s Chair project: brief, world bible, shot list, tags.\n'+
+      'worldbuilder.json\n'+
+      '           World Builder / Visual Co project. Every scene already carries its\n'+
+      '           image, so importing it calls no model and costs no API key.\n\n'+
       'Everything here is PLANNED and AUTHORITATIVE \u2014 blocking authored in Scout.\n'+
       'Nothing in it was observed from generated footage. Speaker attribution is\n'+
       'UNKNOWN at pre-vis and is not guessed at.\n')});
@@ -4036,6 +4249,8 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
   saveLook,loadLook,renderLooks,SENSORS,GRADES,ATMOS,applyMask,applyGrade,
   lookFilter,setViewLut,nounList,countNoun,plural,
+  worldBuilderProject,exportWorldBuilder,toJpegBase64,framePalette,sunSide,castLookPrompt,
+  dcCameraLine,dcLightLine,nextPrompt,ENGINE_BUILDERS,continuityClause,gifPalette,
   sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,stepRig,
   exportBundle,makeZip,frameFileName,specFileName,slugify,crc32,
   relight:relightSequence,buildReport,checkContinuity,
