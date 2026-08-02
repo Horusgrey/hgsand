@@ -236,7 +236,6 @@ function loadCesiumFallback(){
   #maskTop{top:0;}#maskBot{bottom:0;}
   #maskL{position:absolute;top:0;bottom:0;left:0;background:#000;z-index:3;pointer-events:none;}
   #maskR{position:absolute;top:0;bottom:0;right:0;background:#000;z-index:3;pointer-events:none;}
-  .gradelayer{position:absolute;inset:0;z-index:2;pointer-events:none;mix-blend-mode:overlay;opacity:0;transition:.3s;}
   #captureFlash{position:absolute;inset:0;z-index:8;background:#fff;opacity:0;pointer-events:none;}
   /* The frame bin: the panel-side view of everything the shutter has taken. */
   .bin{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;max-height:184px;overflow-y:auto;
@@ -292,6 +291,8 @@ function loadCesiumFallback(){
   .out{font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:pre-wrap;background:var(--panel2);
     border:1px solid var(--line);border-radius:8px;padding:10px;color:var(--dim);max-height:200px;overflow:auto;margin-top:8px;}
   .closex{float:right;cursor:pointer;color:var(--faint);font-size:18px;line-height:1;}
+  /* the monitor carries the look, so the letterbox and the overlays must not */
+  #cesium{transition:filter .25s;}
   .kbd{position:absolute;bottom:14px;right:14px;z-index:5;font-size:10px;color:var(--faint);font-family:ui-monospace,monospace;
     background:rgba(10,10,13,.6);border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:5px 9px;letter-spacing:.02em;
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
@@ -732,7 +733,6 @@ function loadCesiumFallback(){
     <div id="cesium"></div>
     <div id="maskTop" class="maskbar"></div><div id="maskBot" class="maskbar"></div>
     <div id="maskL"></div><div id="maskR"></div>
-    <div class="gradelayer" id="gradeLayer"></div>
     <div class="crosshair" id="crosshair"></div>
     <div id="take">
       <div id="takeTitle">Director's Take</div>
@@ -777,9 +777,10 @@ function loadCesiumFallback(){
       <button class="navbtn" id="tiltTog" title="Toggle top-down / oblique (T)">2D</button>
       <button class="navbtn" id="orbitTog" title="Orbit the framed subject — drag to circle, scroll to dolly (O)">&#8635;</button>
       <button class="navbtn" id="guidesTog" title="Framing guides — thirds, horizon level, sun-in-frame (V)">&#8862;</button>
+      <button class="navbtn on" id="lutTog" title="View LUT &mdash; show the grade and atmosphere on the monitor, exactly as the capture will bake them (L)">&#9681;</button>
     </div>
     <div class="thumbs" id="thumbs"></div>
-    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · [ ] roll · V guides · Enter lock · N next · ? help</div>
+    <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · [ ] roll · V guides · L LUT · Enter lock · N next · ? help</div>
   </main>
 </div>
 
@@ -801,7 +802,7 @@ const S={
   style:'cinematic',grade:'none',atmos:'clear',sceneDesc:'',
   delivery:'2.39:1',sticker:'person',placeMode:false,engine:'runway',exag:1,
   markers:[],shots:[],captures:[],looks:[],selMarker:null,_sun:null,
-  cameraType:'drone',pathMode:false,path:null,pathDuration:4,autoFrame:true
+  cameraType:'drone',pathMode:false,path:null,pathDuration:4,autoFrame:true,viewLut:true
 };
 const SENSORS={full:{name:'Full 36',w:36},s35:{name:'S35 24.9',w:24.9},apsc:{name:'APS-C 23.5',w:23.5},m43:{name:'M4/3 17.3',w:17.3}};
 const COVERAGE={
@@ -893,6 +894,20 @@ function promptCtx(){
     subjLine: subj.length? subj.map(x=>x.role+' ('+x.kind+')').join(', ') : ''};
 }
 const aan=w=>(/^[aeiou]/i.test(w)?'an ':'a ')+w;
+// Two cars are "two cars", not "a car and a car" — and they enter, they don't enters.
+const COUNT_WORD=['zero','a','two','three','four','five','six','seven','eight','nine','ten'];
+const plural=w=>w==='person'?'people':(/(s|x|ch|sh)$/.test(w)?w+'es':w+'s');
+function countNoun(word,k){ return k===1 ? aan(word)
+  : (k<=10?COUNT_WORD[k]:String(k))+' '+plural(word); }
+// Collapses a list of nouns into readable English and reports whether it's plural,
+// so the caller can agree the verb.
+function nounList(words){
+  const order=[], tally=new Map();
+  words.forEach(w=>{ if(!tally.has(w))order.push(w); tally.set(w,(tally.get(w)||0)+1); });
+  const bits=order.map(w=>countNoun(w,tally.get(w)));
+  const text=bits.length<=1?(bits[0]||''):bits.slice(0,-1).join(', ')+' and '+bits[bits.length-1];
+  return {text, many:words.length>1};
+}
 // A stand-in's raw type (person2, avatar1, vehicle…) is never shown — it maps to a human noun.
 const isPersonType=t=>/^(person|avatar)/.test(t);
 const SUBJECT_NOUN={person:'person',person2:'person',vehicle:'car',light:'light',marker:'figure'};
@@ -2171,7 +2186,26 @@ function renderLooks(){
 $('saveLook').onclick=saveLook;
 $('resetBtn').onclick=()=>{S.target={lat:41.8885,lon:-87.6345};S.head=30;S.tilt=ANGLES[S.angle];S.range=SHOT_SIZES[S.shotSize].r;flyToParams();syncCamUI();toast('View reset');};
 
-function applyGrade(){ const g=$('gradeLayer'); g.style.opacity=0; }
+// The one place that decides what the look looks like. The capture bakes this into
+// the PNG; the monitor shows the same string. They can't disagree.
+function lookFilter(){
+  const parts=[]; const g=GRADES[S.grade]; if(g)parts.push(g);
+  const a=ATMOS[S.atmos]&&ATMOS[S.atmos].hue; if(a)parts.push(a);
+  return parts.join(' ');
+}
+// A view LUT, not a baked change: the WebGL canvas keeps its raw pixels, so capture()
+// still reads them clean and applies the filter exactly once.
+function applyGrade(){
+  const c=$('cesium'); if(!c)return;
+  c.style.filter = S.viewLut===false ? '' : lookFilter();
+}
+function setViewLut(on){
+  S.viewLut=!!on; applyGrade();
+  const b=$('lutTog'); if(b)b.classList.toggle('on',S.viewLut);
+  const f=lookFilter();
+  toast(S.viewLut ? (f?'View LUT on \u2014 monitor matches the captured frame':'View LUT on \u2014 no grade set, so nothing to show')
+                  : 'View LUT off \u2014 monitor is clean, captures are still graded');
+}
 function applyAtmos(){ const a=ATMOS[S.atmos]; viewer.scene.fog.density=a.fog;
   if(viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.brightnessShift = S.atmos==='night'?-0.5:(S.atmos==='golden'?0.1:0);
 }
@@ -2221,6 +2255,7 @@ function updateViewfinder(){
   }
 }
 $('guidesTog').onclick=()=>setGuides(!S.guides);
+$('lutTog').onclick=()=>setViewLut(S.viewLut===false);
 
 function sunPos(lat,lon,date){
   const rad=Math.PI/180;
@@ -2828,8 +2863,7 @@ $('kmlFile').onchange=async e=>{
 };
 
 function applyCaptureFilter(ctx){
-  const parts=[]; const g=GRADES[S.grade]; if(g)parts.push(g); const a=ATMOS[S.atmos].hue; if(a)parts.push(a);
-  ctx.filter=parts.length?parts.join(' '):'none';
+  const f=lookFilter(); ctx.filter=f||'none';
 }
 function sceneUiVisible(v){ // labels, path viz and the ghost are UI, not scene — hide them in captures
   S.markers.forEach(m=>{const e=viewer.entities.getById(m.id); if(e&&e.label)e.label.show=v;});
@@ -3493,8 +3527,10 @@ function continuityClause(pa,pb,i){
   const gone=[...a].filter(x=>!b.has(x)), came=[...b].filter(x=>!a.has(x));
   const nameOf=(sp,id)=>{const s2=(sp.subjects||[]).find(x=>(x.id||x.label)===id);return s2?(SPEC_NOUN[s2.type]||s2.type):'figure';};
   const castBits=[];
-  if(came.length)castBits.push(came.map(id=>aan(nameOf(pb,id))).join(' and ')+' enters frame');
-  if(gone.length)castBits.push(gone.map(id=>aan(nameOf(pa,id))).join(' and ')+' is no longer in frame');
+  if(came.length){ const L=nounList(came.map(id=>nameOf(pb,id)));
+    castBits.push(L.text+(L.many?' enter frame':' enters frame')); }
+  if(gone.length){ const L=nounList(gone.map(id=>nameOf(pa,id)));
+    castBits.push(L.text+(L.many?' are no longer in frame':' is no longer in frame')); }
   const castSame=!castBits.length;
   const head='CONTINUITY \u2014 continuing from shot '+i+': same location'+
     (castSame?', same subjects':'')+(lightMoved?'':', same light')+
@@ -3505,11 +3541,17 @@ function continuityClause(pa,pb,i){
 // Cast can differ shot to shot, so the world lock names everyone the cut uses and
 // says so, rather than quietly reporting whoever happened to be in shot 1.
 function seqSubjectLine(){
-  const seen=new Map();
+  // Three identical cars used to read "car as vehicle, car as vehicle, car as vehicle".
+  // Group them by what they are and what they're doing, and count them instead.
+  const seen=new Map(), roles=[], tally=new Map();
   S.shots.forEach(sh=>(sh.spec.subjects||[]).forEach(s=>{
-    if(!seen.has(s.id||s.label))seen.set(s.id||s.label,(SPEC_NOUN[s.type]||s.type)+' as '+s.label); }));
+    const key=s.id||s.label; if(seen.has(key))return; seen.set(key,1);
+    const role=(SPEC_NOUN[s.type]||s.type)+'\u0000'+s.label;
+    if(!tally.has(role))roles.push(role);
+    tally.set(role,(tally.get(role)||0)+1); }));
   if(!seen.size)return 'none placed';
-  const all=[...seen.values()];
+  const all=roles.map(r=>{ const [noun,label]=r.split('\u0000');
+    return countNoun(noun,tally.get(r))+' as '+label; });
   const everyShot=S.shots.every(sh=>(sh.spec.subjects||[]).length===seen.size);
   return all.join(', ')+(everyShot?'':'  (not all in every shot — see each CONTINUITY line)');
 }
@@ -3677,7 +3719,7 @@ function sessionPayload(o){
   return {v:3,
     state:{shotSize:S.shotSize,angle:S.angle,fov:S.fov,sensor:S.sensor,target:S.target,head:S.head,tilt:S.tilt,
       range:S.range,roll:S.roll,style:S.style,grade:S.grade,atmos:S.atmos,delivery:S.delivery,exag:S.exag,
-      cameraType:S.cameraType,pathDuration:S.pathDuration,autoFrame:S.autoFrame,
+      cameraType:S.cameraType,pathDuration:S.pathDuration,autoFrame:S.autoFrame,viewLut:S.viewLut,
       sceneDesc:$('sceneDesc').value,date:$('lDate').value,time:$('lTime').value},
     markers:S.markers, looks:S.looks, path:S.path,
     uploads:uploadPayload(o.images!==false),
@@ -3706,6 +3748,7 @@ function applySessionData(d,label){
   if(st.cameraType)S.cameraType=st.cameraType;
   if(st.pathDuration)S.pathDuration=st.pathDuration;
   if(st.autoFrame!=null)S.autoFrame=st.autoFrame;
+  if(st.viewLut!=null){ S.viewLut=st.viewLut; const lb=$('lutTog'); if(lb)lb.classList.toggle('on',S.viewLut); }
   restoreUploads(d.uploads);          // before the markers, so uploaded stand-ins size in metres
   S.markers.forEach(m=>viewer.entities.removeById(m.id));S.markers=[];
   (d.markers||[]).forEach(m=>{
@@ -3827,6 +3870,7 @@ document.addEventListener('keydown',e=>{
   else if(e.key===']'){S.roll=Math.min(30,(S.roll||0)+2);$('pRoll').value=S.roll;$('pRollVal').textContent=S.roll+'°';applyRoll();}
   else if(e.key==='\\'){$('levelRoll').click();}
   else if(k==='v'){$('guidesTog').click();}
+  else if(k==='l'){$('lutTog').click();}
   else if(e.key==='Enter'&&S.path&&STN.active>=0){ e.preventDefault(); lockStation(STN.active); }
   else if(k==='n'&&S.path){ e.preventDefault(); nextStation(); }
   else if(e.key==='?'){showHelp();}
@@ -3991,6 +4035,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
   saveLook,loadLook,renderLooks,SENSORS,GRADES,ATMOS,applyMask,applyGrade,
+  lookFilter,setViewLut,nounList,countNoun,plural,
   sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,stepRig,
   exportBundle,makeZip,frameFileName,specFileName,slugify,crc32,
   relight:relightSequence,buildReport,checkContinuity,

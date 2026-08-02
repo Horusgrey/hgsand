@@ -104,9 +104,13 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
 | `light.sun_azimuth_deg` | number | 0 = north, clockwise. Computed for the spec's own `location` at its own `date`/`time` — the sun is re-derived whenever either changes, so a frame can never carry another place's light. |
 | `light.sun_elevation_deg` | number | Degrees above horizon; negative = below. |
 | `light.phase` | enum | `night` / `blue` / `golden` / `day` (from elevation). |
-| `look.style` | enum | See §2. |
-| `look.grade` | enum | Baked into the PNG at capture. |
-| `look.atmosphere` | enum | Fog density + capture tint. |
+| `look.style` | enum | See §2. **Words only** — a style is an instruction to the generator, never a pixel change. The PNG is untouched by it. |
+| `look.grade` | enum | **Pixels.** Baked into the PNG at capture. |
+| `look.atmosphere` | enum | **Pixels + scene.** Fog density in the render, plus a tint baked into the PNG. |
+
+`grade` and `atmosphere` are one filter string built by `lookFilter()`. The capture bakes
+it into the PNG and the monitor displays it as a view LUT (`L`), so what you frame is what
+you get. The LUT is a monitor control only — turning it off changes nothing about the file.
 | `delivery.aspect` | enum | The PNG is cropped to this. |
 | `delivery.resolution` | [w,h] | Nominal target res for the aspect — what you're delivering *to*, not what this file is. |
 | `delivery.capture_px` | [w,h] \| null | **What this PNG actually is.** Set whenever the spec belongs to a real capture; `null` for a spec built without one. Never guess which of the two you're holding — `resolution` is the intent, `capture_px` is the fact. |
@@ -350,23 +354,31 @@ location is always `@location_scout`, `veoRef` pointing at the captured frame.
 
 ## 6. Session file (`.json`)
 
-Round-trips the full working state. Versioned `v: 2` (adds `sensor` + `looks`).
+Round-trips the full working state. Versioned `v: 3` (adds the path, the uploaded stand-ins
+and the rig/monitor settings — before v3 a plotted sequence and a life-size upload did not
+survive a reload).
 
 ```json
 {
-  "v": 2,
+  "v": 3,
   "state": {
     "shotSize": "medium", "angle": "eye", "fov": 54, "sensor": "full",
     "target": { "lat": 41.8885, "lon": -87.6345 },
     "head": 30, "tilt": -12, "range": 650, "roll": 0,
     "style": "cinematic", "grade": "none", "atmos": "clear",
-    "delivery": "2.39:1", "sceneDesc": "", "date": "2026-06-26", "time": "23:30"
+    "delivery": "2.39:1", "sceneDesc": "", "date": "2026-06-26", "time": "23:30",
+    "cameraType": "drone", "pathDuration": 4, "autoFrame": true, "viewLut": true
   },
   "markers": [ { "id": "...", "lon": -87.6346, "lat": 41.8884, "height": 0, "type": "person", "shotType": "subject" } ],
-  "looks":   [ { "name": "Tower low", "target": {"lat": 0,"lon": 0}, "head": 30, "tilt": 6, "range": 240, "fov": 40, "sensor": "s35" } ],
-  "shots":   [ { "name": "01 — establish", "spec": { "...gmapz.capture.v2..." }, "thumb": "data:image/png;base64,…" } ]
+  "looks":   [ { "name": "Tower low", "target": {"lat": 0,"lon": 0}, "head": 30, "tilt": 6, "range": 240, "fov": 40, "sensor": "s35", "roll": -8, "shotSize": "close", "angle": "low" } ],
+  "path":    { "points": [ { "lon": 0, "lat": 0, "ct": "crane", "color": "#f472b6", "cam": { "lensMm": 35, "shotSize": "wide", "angle": "high" }, "cast": ["marker-id"] } ] },
+  "uploads": { "up1": { "name": "Courier", "kind": "person", "w": 0.72, "h": 1.8, "img": "data:image/png;base64,…" } },
+  "shots":   [ { "name": "01 — establish", "spec": { "...gmapz.capture.v2..." }, "beat": 2, "stationIdx": 0, "thumb": "data:image/png;base64,…" } ]
 }
 ```
+
+Marker ids are restored verbatim, because a path dot's `cast` list references them. A look
+carries its `roll` / `shotSize` / `angle` so a Dutched close-up comes back Dutched.
 
 > `state.sensor` stores the **key** (`full` / `s35` / `apsc` / `m43`), while `capture.camera.sensor`
 > stores the human **label** (`Full 36` …). Map via §2.
@@ -395,7 +407,7 @@ Round-trips the full working state. Versioned `v: 2` (adds `sensor` + `looks`).
 | `spec` | `gmapz.capture.v1` | `gmapz.capture.v2` |
 | `camera.sensor` | `"full-frame"` (fixed) | film-back label |
 | `camera.sensor_width_mm` | — | **added** |
-| session | `v:1`, no looks | `v:2`, `looks[]` + `state.sensor` |
+| session | `v:1`, no looks | `v:3`, `looks[]` + `state.sensor` + `path` + `uploads` + per-shot `beat`/`stationIdx` |
 
 Consumers keying on `spec` should accept `v1` and treat missing `sensor_width_mm` as `36`.
 

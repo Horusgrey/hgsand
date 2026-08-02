@@ -361,3 +361,76 @@ Scout sequence through Runway or Kling no longer requires assembling the handoff
    Whatever you see reorders this whole backlog.
 3. **Decisions that are yours** — the merge question (currently: not merging), and when the
    Phase-5 gate is proven enough to open.
+
+---
+
+## Shakedown 5 — measuring the aesthetic, and auditing the studio bridges
+
+Two questions were open: does the look you pick actually reach the frame, and does what
+Scout writes actually load into the other tools. Both were answered by measuring rather
+than asserting.
+
+### The look: half of it was invisible
+
+Same camera, same ground, same sun; only the look changed. Mean pixel values from the
+decoded PNGs:
+
+| look | mean RGB | warmth (R−B) | saturation | luminance |
+|---|---|---|---|---|
+| neutral (none / clear) | 19.2 / 29.8 / 24.9 | −5.7 | 0.358 | 27.2 |
+| A24 · warm · golden | 17.4 / 25.3 / 17.5 | −0.1 | 0.341 | 23.0 |
+| noir · storm | 4.8 / 4.8 / 4.8 | 0.0 | **0.000** | 4.8 |
+| Kodak · bleach · haze | 12.7 / 15.6 / 14.0 | −1.3 | 0.063 | 14.8 |
+
+The grade genuinely lands: noir returns R=G=B exactly, warm/golden moves warmth +5.6,
+bleach drops saturation by 0.295. **But `applyGrade()` was a stub** — it set an empty
+overlay's opacity to 0 and did nothing else, so the monitor showed an ungraded picture
+and you only discovered your frame was monochrome after the shutter fired. For a tool
+whose product *is* the captured frame, that is the wrong way round.
+
+Now `lookFilter()` builds the string once and there are two consumers: the capture bakes
+it into the PNG, the monitor shows it as a **view LUT** (`L`, or the button by the guides).
+They cannot drift because there is only one string. The LUT is a monitor control — turning
+it off never changes the file. A neutral look applies no filter at all, so it costs nothing.
+
+Worth stating plainly: **`style` is words, `grade`/`atmosphere` are pixels.** A24 vs Kodak
+never touches the PNG — it's an instruction to the generator. That's correct, but it should
+not be a surprise.
+
+Also fixed, on the surface a human actually reads: *"a car and a car enters frame"* is now
+*"two cars enter frame"*, with the verb agreed and the world-lock line counting too
+(`a person as subject, two cars as vehicle`).
+
+### The studio bridges: one works, one is aimed at the wrong target
+
+Read from the real archives, not from memory:
+
+- **VCS-15 parses what Scout writes.** Its section regex is
+  `/^##\s+(VCS-OBS|VCS-SAL|VCS-CPAS|VCS-STYLE|VCS-FORGE|VCS-MATCH|VCS-NEXT|CONTINUITY RISKS)/gm`
+  and Scout's `vcs15.md` headings match exactly. This integration is real today.
+  One mismatch of *intent*: VCS-15 titles MATCH "Recreation Prompt" and NEXT "Next 15s
+  Prompt"; Scout fills them with a continuity reference and a coverage note. It renders,
+  but those panes want prompts.
+- **There are two different VCOs, and `vco.json` fits neither exactly.**
+  - *Director's Chair* (`directorschair.html`) is the one that shares Scout's vocabulary —
+    `brief / bible / characters / shots / script / storyboard / score / tags`, with
+    `vcsLocked` and `veoRef` on every tag. But its loader is `setProject(jsonData)` on the
+    **top level**, and Scout emits `{ "project": { … } }` — one wrapper too deep, so every
+    field lands as `undefined`. Its `brief` is an object (`title`, `logline`, `format`,
+    `tone`), Scout's is a string; its `bible.visual_language` fields are arrays, Scout's
+    are strings.
+  - *VCO / Visual Copilot* (the React app) is a different program: its units are
+    `Scene {prompt, image}`, `Character {lookPrompt, image, voiceName}`, `ScriptLine`,
+    `StoryboardPanel`, `PostProductionTrack`, stored in IndexedDB and exported as
+    `{styleSeed, scenes, characters, script, storyboard}`. No camera, no geo, no sun.
+    Scout has nothing in that shape today — the honest bridge would be a `styleSeed`
+    plus `scenes[]`, where each scene's `image` is a captured frame.
+
+None of this is speculative; it's read off the loaders. It is also small work: the
+Director's Chair fix is an unwrap plus two field shapes.
+
+### Not a problem after all
+
+Prompt length was a suspicion, not a defect — measured per engine across five shots the
+bodies run 296–468 characters (longest 683, Sora). Nothing is over-long for any engine,
+Grok Imagine included.
