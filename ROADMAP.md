@@ -618,3 +618,32 @@ number it would have to share.
 locked, eight locked deliberately out of order, the holes landing in path position, the
 GIF holding eight frames rather than ten, clicking a hole flying the camera to that dot,
 locking it closing the hole, and free roam still working with no path at all.
+
+### Second lab pass — the strip leads, and the cells are readable
+
+Two changes only, both requested, both lab-only.
+
+**Higher.** The strip sat under the shot list at the bottom of a long panel, so on a
+laptop you scrolled past everything to reach the thing that tells you what the GIF will
+contain. It now sits directly under "The cut", above the list — `strip y=402, list y=622`,
+asserted rather than eyeballed.
+
+**Bigger.** 96px cells with 54px thumbs were chips; you couldn't judge a frame from one,
+and judging frames is the entire reason to look. Now 132px with an 84px thumb, and open
+cells grew to match (126px tall) so a hole reads as the same size as the thing missing
+from it.
+
+Explicitly **not** done: drag-reorder on the strip. Reorder stays in the list — one
+surface owns it, on purpose. Asserted: zero draggable nodes inside `#timeline`, and the
+list still has its handles.
+
+One thing caught on the way: with the extra room I added the rig to the cell caption, and
+it immediately truncated — because the shot *name* already ends in the rig. Cell 1 read
+"Start · Drone" above "24mm · medium · Dro…". Reverted; the caption is lens and size only.
+
+38 assertions, zero page errors. `gmapz_scout.html` is byte-identical to its last commit.
+
+**Still true, both invariants:** path order *is* cut order, and locking a dot fills that
+dot's slot. Nothing in either lab pass touched `lockStation`, `rollStations` or the export
+path — `cutCells()` only *reads* `S.path.points` and `S.shots[].stationIdx` to decide what
+to draw.

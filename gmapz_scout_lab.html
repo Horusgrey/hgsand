@@ -474,18 +474,21 @@ function loadCesiumFallback(){
   .tlwrap{position:relative;}
   .tlwrap::after{content:"";position:absolute;top:0;right:0;bottom:8px;width:26px;pointer-events:none;
     background:linear-gradient(90deg,transparent,#0a0a0c);}
-  /* A filled cell is a card. An open one is an outline — a hole, not a thing. */
-  .cellfull{flex:none;width:96px;border:1px solid var(--line2);border-radius:6px;overflow:hidden;
-    background:#000;cursor:pointer;position:relative;}
-  .cellopen{flex:none;width:96px;min-height:82px;border:1px dashed var(--line);border-radius:6px;
+  /* The strip is the first thing in Post, so it gets the room to be read at a
+     glance: a cell you can actually judge a frame from, not a chip. */
+  #timeline{display:flex;gap:7px;overflow-x:auto;padding:2px 0 7px;}
+  .cellfull{flex:none;width:132px;border:1px solid var(--line2);border-radius:7px;overflow:hidden;
+    background:#000;cursor:pointer;position:relative;transition:.12s;}
+  .cellfull:hover{border-color:var(--dim);}
+  .cellopen{flex:none;width:132px;min-height:126px;border:1px dashed var(--line);border-radius:7px;
     background:#0b0b0e;cursor:pointer;position:relative;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;padding:10px 4px 7px;transition:.12s;}
+    align-items:center;justify-content:center;padding:12px 6px 10px;transition:.12s;}
   .cellopen:hover{border-color:var(--yellow);background:#121016;}
   .cellopen.cur{border-color:var(--yellow);border-style:solid;}
-  .cellopen .oglyph{font-size:17px;line-height:1;opacity:.5;margin-bottom:4px;}
-  .cellopen .olab{font-size:9px;letter-spacing:.15em;color:var(--faint);font-weight:600;}
-  .cellopen .ometa{font-size:8.5px;color:var(--faint);text-align:center;line-height:1.35;margin-top:3px;
-    max-width:86px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cellopen .oglyph{font-size:24px;line-height:1;opacity:.5;margin-bottom:7px;}
+  .cellopen .olab{font-size:10px;letter-spacing:.16em;color:var(--faint);font-weight:600;}
+  .cellopen .ometa{font-size:9.5px;color:var(--faint);text-align:center;line-height:1.4;margin-top:4px;
+    max-width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .cellopen:hover .olab,.cellopen:hover .ometa,.cellopen:hover .oglyph{color:var(--yellow);opacity:1;}
   .cellopen .tnum.open{background:#1a1a20;color:var(--faint);}
   #timeline > div .tnum.free{background:#1a1a20;color:var(--emerald);font-size:9px;}
@@ -719,11 +722,11 @@ function loadCesiumFallback(){
         <label class="fld">Frame bin &mdash; every frame you&rsquo;ve shot</label>
         <div class="bin" id="frameBin"></div>
         <label class="fld">The cut</label>
-        <div class="row"><input id="shotName" type="text" placeholder="Name this shot — e.g. 01 Tower establish"><button class="btn" id="saveShot" style="flex:none;width:96px" title="Capture the current framing straight into the cut (S)">Save shot</button></div>
+        <div class="mini" id="cutTally" style="margin:0 0 5px"></div>
+        <div class="tlwrap"><div id="timeline"></div></div>
+        <div class="row" style="margin-top:9px"><input id="shotName" type="text" placeholder="Name this shot — e.g. 01 Tower establish"><button class="btn" id="saveShot" style="flex:none;width:96px" title="Capture the current framing straight into the cut (S)">Save shot</button></div>
         <div class="mini" style="margin:-2px 0 4px">Drag a row to reorder. <b>beat</b> sets how long that shot holds.</div>
         <div class="list" id="shotList"></div>
-        <div class="mini" id="cutTally" style="margin:7px 0 0"></div>
-        <div class="tlwrap"><div id="timeline" style="display:flex;gap:6px;overflow-x:auto;padding:6px 0;margin-top:4px"></div></div>
         <div class="row"><button class="btn g" id="playTake">&#9654; Play take</button><button class="btn sm" id="clearSeq" style="flex:none;width:60px" title="Clear the shot sequence">Clear</button></div>
         <label class="fld">Render the cut</label>
         <div class="row"><button class="btn y" id="postGif">Render GIF</button><button class="btn" id="postVid">Render video</button></div>
@@ -3513,8 +3516,8 @@ function cellFilled(sh,i){
   const card=document.createElement('div');
   card.className='cellfull';
   card.title='Recall '+sh.name;
-  const img=sh.thumb?'<img src="'+sh.thumb+'" style="width:100%;display:block;height:54px;object-fit:cover">'
-    :'<div style="height:54px;display:flex;align-items:center;justify-content:center;color:#52525b;font-size:10px">no frame</div>';
+  const img=sh.thumb?'<img src="'+sh.thumb+'" style="width:100%;display:block;height:84px;object-fit:cover">'
+    :'<div style="height:84px;display:flex;align-items:center;justify-content:center;color:#52525b;font-size:10px">no frame</div>';
   if(sh.stationIdx!==undefined&&sh.stationIdx===STN.active)card.classList.add('cur');
   // The number is the DOT, always — never the cut position. Otherwise an open slot
   // labelled 3 sits next to a filled one labelled 3 and neither means anything.
@@ -3522,7 +3525,7 @@ function cellFilled(sh,i){
   card.innerHTML='<span class="tnum'+(sh.stationIdx===undefined?' free':'')+'" title="'+
     (sh.stationIdx!==undefined?('Point '+(sh.stationIdx+1)):'Free roam \u2014 belongs to no point')+'">'+tag+'</span>'+img+
     (sh.beat?'<span class="tbeat">'+sh.beat.toFixed(1)+'s</span>':'')+
-    '<div style="font-size:9px;color:var(--dim);padding:3px 5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
+    '<div style="font-size:9.5px;color:var(--dim);padding:5px 7px 6px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+
     escapeHtml(sh.name.replace(/^Pt \d+ — /,''))+'<br><span style="color:var(--faint)">'+
     Math.round(c.lens_mm)+'mm \u00b7 '+c.shot_size+'</span></div>'+
     '<span class="tcardx" title="Remove from sequence">&times;</span>';
