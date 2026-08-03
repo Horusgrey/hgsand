@@ -647,3 +647,44 @@ it immediately truncated — because the shot *name* already ends in the rig. Ce
 dot's slot. Nothing in either lab pass touched `lockStation`, `rollStations` or the export
 path — `cutCells()` only *reads* `S.path.points` and `S.shots[].stationIdx` to decide what
 to draw.
+
+## QA pass — `gmapz_scout_lab.html`
+
+Parts 2 and 3 of the QA brief, run headlessly. 33 assertions, **1 failure**, zero page
+errors. Part 1A (real tiles) cannot be run here and is not claimed.
+
+| § | Result |
+|---|---|
+| A Globe / real tiles | **BLOCKED** — no Google key and the sandbox cannot reach tile servers |
+| B Path persistence | **PASS** — real `page.reload()`, 6 dots and 4 locks restored, strip repainted with the same two holes |
+| C Lock + cut strip | **PASS** — numbers 1–6 = dots, holes at the unlocked dots, in path position, click flies there |
+| D GIF | **PASS** on count (5 image blocks, parsed from the GIF block structure). **PARTIAL** on labelling |
+| E Export cut package | **FAIL** — `previs.gif` is not in the zip |
+| F CONTINUITY | **PASS** — enter/leave counted, no "a car and a car", rig and lens per shot |
+| G `file://` | **INCONCLUSIVE** — Cesium's CDN is proxy-blocked here, so this isn't the failure a real `file://` load would show |
+
+### Two findings, neither fixed (brief said report, then stop)
+
+**1. `previs.gif` missing from the cut zip.** The brief's manifest expects it. The zip
+carries `frames/ specs/ prompts/ cut.json vcs15.md directors_chair.json worldbuilder.json
+README.txt` — the GIF is a separate download. Counts otherwise match: 5 frames, 5 specs,
+5 `cut.json` entries for 4 locked dots plus 1 free-roam frame.
+
+**2. Duplicate subject labels.** Two cars both carry `label: "vehicle"`, so
+`subjects[].label` reads `subject, vehicle, vehicle`. Not currently breaking anything —
+every subject has a unique `id`, and the continuity language counts rather than names them
+("two cars are no longer in frame") — but a consumer keying on `label` would collide.
+
+### Labelling note (§D)
+
+`README.txt` is explicit: *"Everything here is PLANNED and AUTHORITATIVE — blocking
+authored in Scout. Nothing in it was observed from generated footage."* The GIF file itself
+downloads as `directors_take_<ts>.gif`, which doesn't claim to be final film but doesn't
+say previs either.
+
+### One harness bug found and fixed
+
+The reload test failed on first run — `page.addInitScript` re-runs on **every** navigation
+including reloads, so it was clearing `localStorage` immediately before the reload it was
+meant to verify. The autosave was fine. Fourth harness false-positive of the project; the
+fix is to clear storage once, guarded by `sessionStorage`.
