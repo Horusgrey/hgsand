@@ -688,3 +688,61 @@ The reload test failed on first run — `page.addInitScript` re-runs on **every*
 including reloads, so it was clearing `localStorage` immediately before the reload it was
 meant to verify. The autosave was fine. Fourth harness false-positive of the project; the
 fix is to clear storage once, guarded by `sessionStorage`.
+
+## Driving the app myself — Lake Rachel, Holmes City
+
+Not a scripted happy path: the app used the way a person would, with every friction point
+logged instead of scripted around. The brief was a white Mini Cooper with a black
+convertible top running the length of an island and out across a bridge, drone tracking.
+
+Sandbox truths stated rather than hidden: **no tile server and no geocoder reach this box**,
+so the lake, the island and the bridge are drawn as local Cesium entities and the
+coordinates for Holmes City are approximate and unverified. Everything else — the camera,
+the car at life size, the eight captures, the GIF, the zip — is real.
+
+### Two defects, both found by using it and neither by a test
+
+**1. "A figure."** The single worst kind of bug this product can have. I uploaded a car,
+named it, placed it, rolled eight drone shots — and every prompt called it *"A figure."*
+
+An upload is keyed `<kind>_upN`. The spec builder derived a subject's type by strict
+string match:
+
+```js
+type: isPersonType(m.type) ? 'person' : (m.type === 'vehicle' ? 'prop' : m.type)
+```
+
+`'vehicle_up1'` is not `'vehicle'`, so it fell through to `type:'vehicle_up1'`, missed
+`SPEC_NOUN`, and every consumer defaulted to `'figure'`. **Every uploaded vehicle and prop
+lost its identity** — in the spec, in all six prompt documents, in the continuity lines
+and in the world lock. Uploaded people escaped only by accident, because `isPersonType` is
+a `/^person|avatar/` prefix test that `person_up1` happens to satisfy.
+
+`specSubjectType()` now asks the upload what it is — `UPLOADS[key].kind` was there the
+whole time. One enum was added, `object`, because an uploaded prop is not a car and this
+vocabulary's `prop` already means vehicle. 10 assertions; "figure" can no longer appear
+anywhere in a document for a registered upload.
+
+**2. The beat dropdown lied.** The strip showed `1.6s` and `0.7s`; the list dropdowns next
+to them read `beat`. `BEATS` offers six presets and the `selected` test was exact
+equality, so any beat arriving from a session, an import or a preset outside that list
+displayed as unset while the cut really held it. The dropdown now carries the actual value
+as its own option. 4 assertions.
+
+### Friction worth naming, not yet fixed
+
+- **Upload sizing takes the image's aspect, not the kind.** A vehicle upload came out
+  2.73 m long; a Mini is 3.85 m. The height (1.50 m) is right and the width follows the
+  picture, which is defensible — but there is **no field to type a real-world size**, so
+  you take what the crop gives you. For a tool whose case is *life-size blocking*, that is
+  the gap I would close next.
+- **Search is unexercised here.** Both geocoders are proxy-blocked in this sandbox.
+
+### Health
+
+Zero page errors across the whole drive. The 17 console errors are all
+`ERR_CERT_AUTHORITY_INVALID` from the sandbox's TLS interception of ESRI tiles and Google
+Fonts — environmental, and incidentally proof the keyless imagery fallback is trying.
+
+Regression after both fixes: strip 38, LUT 29, beat 4, noun 10, QA 33 — all green, with
+the one known QA failure (duplicate subject labels) unchanged and still unfixed.

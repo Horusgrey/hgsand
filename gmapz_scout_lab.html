@@ -936,6 +936,18 @@ function nounList(words){
 }
 // A stand-in's raw type (person2, avatar1, vehicle…) is never shown — it maps to a human noun.
 const isPersonType=t=>/^(person|avatar)/.test(t);
+// A stand-in's spec type has to come from what it IS, not from a string match on its
+// key. Uploads are keyed "<kind>_upN" and register their kind in UPLOADS — ask that
+// first, or an uploaded car types as 'vehicle_up1', misses SPEC_NOUN, and every prompt
+// calls it "a figure".
+function specSubjectType(t){
+  if(isPersonType(t))return 'person';
+  const k=(typeof UPLOADS!=='undefined'&&UPLOADS[t])?UPLOADS[t].kind:null;
+  if(k==='person')return 'person';
+  if(k==='vehicle'||t==='vehicle')return 'prop';   // 'prop' is this vocabulary's word for a vehicle
+  if(k==='prop')return 'object';                   // an uploaded prop is an object, not a car
+  return t;
+}
 const SUBJECT_NOUN={person:'person',person2:'person',vehicle:'car',light:'light',marker:'figure'};
 const subjectNoun=t=>isPersonType(t)?'person':(SUBJECT_NOUN[t]||t);
 const NUMWORD=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve'];
@@ -3011,7 +3023,7 @@ function buildSpec(refId,move,px){
     // a consumer should never have to guess which of the two it is holding.
     delivery:{aspect:S.delivery,resolution:aspectRes(S.delivery),
       capture_px:(px&&px.w&&px.h)?[px.w,px.h]:null},
-    subjects:S.markers.map(m=>({id:m.id,type:isPersonType(m.type)?'person':(m.type==='vehicle'?'prop':m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:Math.max(0,Math.round((m.height||0)*100)/100)})),
+    subjects:S.markers.map(m=>({id:m.id,type:specSubjectType(m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:Math.max(0,Math.round((m.height||0)*100)/100)})),
     scene_description:$('sceneDesc').value, reference_frame:(refId||'scout')+'.png'
   };
 }
@@ -3455,6 +3467,10 @@ function renderShots(){
       '<span style="display:flex;align-items:center;gap:6px;flex:none">'+
       '<select class="beatsel" title="How long this shot holds in the take">'+
         '<option value="">beat</option>'+
+        // A beat can arrive from a session, an import or a preset and land outside the
+        // six offered here. The strip renders the real number, so the dropdown has to as
+        // well — otherwise the control says "beat" while the cut is holding 1.6s.
+        ((sh.beat&&BEATS.indexOf(sh.beat)<0)?('<option value="'+sh.beat+'" selected>'+sh.beat.toFixed(1)+'s</option>'):'')+
         BEATS.map(b=>'<option value="'+b+'"'+(sh.beat===b?' selected':'')+'>'+b.toFixed(1)+'s</option>').join('')+
       '</select><span class="x" data-i="'+i+'">&times;</span></span></div>';
     d.querySelector('.x').onclick=()=>{S.shots.splice(i,1);renderShots();};
@@ -3818,7 +3834,7 @@ function slugify(s){ return String(s||'').normalize('NFKD').replace(/[^\x20-\x7E
 function frameFileName(sh,i){ return String(i+1).padStart(2,'0')+'_'+slugify(sh.name)+'.png'; }
 function specFileName(sh,i){ return String(i+1).padStart(2,'0')+'_'+slugify(sh.name)+'.json'; }
 // ---- Sequence prompts: the cut as one document, not N unrelated prompts ----
-const SPEC_NOUN={person:'person',prop:'car',light:'light',vfx:'effect'};
+const SPEC_NOUN={person:'person',prop:'car',object:'object',light:'light',vfx:'effect'};
 // Rebuild a prompt context from a saved shot's spec, so a sequence describes what
 // was actually shot rather than whatever the camera happens to be doing now.
 function ctxFromSpec(sp){
@@ -4376,6 +4392,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
   saveLook,loadLook,renderLooks,SENSORS,GRADES,ATMOS,applyMask,applyGrade,
+  specSubjectType,SPEC_NOUN,UPLOAD_KINDS,
   lookFilter,setViewLut,nounList,countNoun,plural,
   worldBuilderProject,exportWorldBuilder,toJpegBase64,framePalette,sunSide,castLookPrompt,
   dcCameraLine,dcLightLine,nextPrompt,ENGINE_BUILDERS,continuityClause,gifPalette,
