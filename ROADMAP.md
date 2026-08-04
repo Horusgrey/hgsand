@@ -746,3 +746,71 @@ Fonts — environmental, and incidentally proof the keyless imagery fallback is 
 
 Regression after both fixes: strip 38, LUT 29, beat 4, noun 10, QA 33 — all green, with
 the one known QA failure (duplicate subject labels) unchanged and still unfixed.
+
+## Gaps closed in the lab
+
+All three gaps QA named, plus one the first fix exposed. **Lab only** — none of this is in
+the shipped spec yet, and `gmapz_scout.html` is untouched.
+
+### 1. An upload can be told how big it really is
+
+A Mini came out 2.73 m long. A Mini is 3.85 m. Height came from the kind and width from the
+image's aspect ratio, so a picture with generous margins produced a small car and there was
+no way to say otherwise. For a tool whose entire case is life-size blocking, that was the
+wrong thing to be guessing.
+
+Each kind now knows **which dimension a person actually knows**: you know a car is 3.9 m
+long and you have never once thought about how tall it is; you know someone is 1.8 m and
+have never thought about their width.
+
+```
+What is it?   [ Person ]  [ Vehicle ]  [ Prop ]
+Length (m)    [ 3.85 ]
+→ 3.85m long × 1.49m tall — the other dimension comes from the picture
+```
+
+The dimension you typed is never recomputed away; the aspect ratio decides the other one,
+live, before you commit.
+
+### 2. …and the aspect it uses is real
+
+The first version of that field reported a Mini as **2.12 m tall**. The number was honest
+arithmetic on a dishonest input: the PNG had transparent margin, and margin is not part of
+the car. Left in it lies twice — the aspect comes out wrong, and padding below the wheels
+**lifts the sprite off the ground in world space**.
+
+`trimAlpha()` crops every upload to its opaque bounding box before anything is measured.
+Same picture, same typed length: **3.85 m × 1.49 m**. A real Mini.
+
+### 3. Two of the same thing are distinguishable
+
+`subjects[].label` is the **role** — subject, vehicle, background — and the spec documents
+it that way, so two cars really are both `"vehicle"`. Suffixing it to `"vehicle 2"` would
+have corrupted a published field to satisfy a test.
+
+Subjects gained a `name` instead: what the stand-in is actually called, made unique within
+the scene. `["White Mini Cooper — black soft top", "Car 1", "Car 2", "Person"]`. The prompt
+still counts rather than listing ("two cars enter frame") — names are for the machines that
+need to follow one car across a cut.
+
+The QA assertion was rewritten to test the requirement (*two vehicles must be
+distinguishable*) rather than my earlier guess at which field would carry it.
+
+### 4. `previs.gif` rides in the cut zip
+
+The encoder was welded to a download, which is why the zip had no animatic in it. Split:
+`buildTakeGif()` returns bytes, `exportTakeGifFile()` downloads them, `exportBundle()`
+embeds them. One encoder, three callers, no duplicated body.
+
+The download is named `previs_take_*.gif` now, and the README says
+*"PREVIS ONLY — blocking playback, not generated motion."*
+
+### Where that leaves the QA brief
+
+**45 assertions, 0 failures.** The manifest check now reads the zip's own central directory
+rather than trusting the writer: `cut.json`, `README.txt`, `previs.gif`, `vcs15.md`,
+`frames/`, `specs/`, `prompts/`, five frames and five specs for five filled cells.
+
+Re-driving Lake Rachel end to end: friction log down from three items to one, and that one
+is environmental — both geocoders are proxy-blocked here, so search still cannot be
+exercised in this sandbox. Zero page errors.

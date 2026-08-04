@@ -940,6 +940,15 @@ const isPersonType=t=>/^(person|avatar)/.test(t);
 // key. Uploads are keyed "<kind>_upN" and register their kind in UPLOADS — ask that
 // first, or an uploaded car types as 'vehicle_up1', misses SPEC_NOUN, and every prompt
 // calls it "a figure".
+// label is the ROLE and stays that way — it is documented as the role and two cars
+// really are both "vehicle". What was missing is a way to tell them apart, so a subject
+// carries the name of the stand-in it came from, made unique within the scene.
+function subjectName(m){
+  const base=standInName(m.type);
+  const same=S.markers.filter(x=>standInName(x.type)===base);
+  if(same.length<2)return base;
+  return base+' '+(same.indexOf(m)+1);
+}
 function specSubjectType(t){
   if(isPersonType(t))return 'person';
   const k=(typeof UPLOADS!=='undefined'&&UPLOADS[t])?UPLOADS[t].kind:null;
@@ -2427,10 +2436,13 @@ function propSvg(kind){
   return _propCache[kind]='data:image/svg+xml;base64,'+btoa(svg);
 }
 // What an upload is standing in for — drives its real-world size.
+// Each kind knows which dimension a person actually knows off the top of their head.
+// You know a car is 3.9m long; you do not know how tall it is. You know someone is
+// 1.8m tall; you have never thought about how wide they are.
 const UPLOAD_KINDS={
-  person:  {label:'Person',  h:1.80, note:'1.80m tall'},
-  vehicle: {label:'Vehicle', h:1.50, note:'1.50m tall'},
-  prop:    {label:'Prop',    h:2.00, note:'2.00m tall'}
+  person:  {label:'Person',  h:1.80, note:'1.80m tall',  dim:'h', ask:'Height (m)', eg:'1.80'},
+  vehicle: {label:'Vehicle', h:1.50, note:'3.90m long',  dim:'w', ask:'Length (m)', eg:'3.90', def:3.90},
+  prop:    {label:'Prop',    h:2.00, note:'2.00m tall',  dim:'h', ask:'Height (m)', eg:'2.00'}
 };
 const UPLOADS={};        // key -> {name, kind}; what the user actually calls their pictures
 let UPLOAD_SEQ=0;
@@ -2471,18 +2483,48 @@ function flippedImage(key){
   return FLIPPED[key]=cv.toDataURL('image/png');
 }
 // Register an upload as a placeable, life-size stand-in.
-function registerUpload(img,kind,knock,name){
+// Transparent margin is not part of the thing. Left in, it lies twice: the aspect ratio
+// comes out wrong, so a car typed at 3.85m long stands 2.1m tall instead of 1.4m — and
+// padding below the wheels lifts the whole sprite off the ground in world space.
+// Trim to what is actually opaque and both problems go away.
+function trimAlpha(cv){
+  const w=cv.width,h=cv.height;
+  let d; try{ d=cv.getContext('2d').getImageData(0,0,w,h).data; }catch(_){ return cv; }
+  let x0=w,y0=h,x1=-1,y1=-1;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    if(d[(y*w+x)*4+3]>12){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  }
+  if(x1<0||(x1-x0+1===w&&y1-y0+1===h))return cv;      // fully opaque, or nothing to trim
+  const out=document.createElement('canvas');
+  out.width=x1-x0+1; out.height=y1-y0+1;
+  out.getContext('2d').drawImage(cv,x0,y0,out.width,out.height,0,0,out.width,out.height);
+  return out;
+}
+function registerUpload(img,kind,knock,name,size){
   let cv=imgToCanvas(img,512);
   if(knock)cv=knockoutBg(cv);
+  cv=trimAlpha(cv);
   const url=cv.toDataURL('image/png');
   const key=kind+'_up'+(++UPLOAD_SEQ);
   const spec=UPLOAD_KINDS[kind]||UPLOAD_KINDS.prop;
-  const h=spec.h, w=Math.max(0.15,+(h*(cv.width/cv.height)).toFixed(2));
+  // The aspect ratio decides the OTHER dimension. The one you typed is the one that's
+  // true, so it is never recomputed away.
+  const ar=cv.width/cv.height;
+  const typed=(size!=null&&isFinite(size)&&size>0)?+size:null;
+  let h,w;
+  if(spec.dim==='w'){                       // a vehicle: you know its length
+    w=typed||spec.def||+(spec.h*ar).toFixed(2);
+    h=Math.max(0.15,+(w/ar).toFixed(2));
+  } else {                                  // a person or a prop: you know its height
+    h=typed||spec.h;
+    w=Math.max(0.15,+(h*ar).toFixed(2));
+  }
+  h=Math.max(0.15,+h.toFixed(2));
   AVATARS[key]=url;
   WORLD_PROPS[key]={w,h};            // this is what makes it stand in the world
   UPLOADS[key]={name:(name||'').trim()||(spec.label+' '+UPLOAD_SEQ), kind};
   S.sticker=key; renderStickerChips();
-  toast('\u201c'+UPLOADS[key].name+'\u201d added \u2014 '+h.toFixed(2)+'m tall. Drag it onto the globe.');
+  toast('\u201c'+UPLOADS[key].name+'\u201d added \u2014 '+w.toFixed(2)+'m \u00d7 '+h.toFixed(2)+'m. Drag it onto the globe.');
 }
 // Remove an upload. Anything already placed keeps standing — deleting the source
 // picture shouldn't quietly empty your scene.
@@ -2510,6 +2552,9 @@ function askUploadKind(dataUrl){
                :'This picture already has transparency, so it will sit in the scene cleanly.')+'</div>'+
         '<label class="fld" style="margin-top:0">Call it</label>'+
         '<input id="upName" type="text" placeholder="e.g. Lead, Hero car, Streetlight">'+
+        '<label class="fld" id="upSizeLab">Height (m)</label>'+
+        '<input id="upSize" type="number" min="0.05" max="200" step="0.05" placeholder="1.80">'+
+        '<div class="mini" id="upSizeHint" style="margin-top:3px"></div>'+
         '<label class="chk" style="margin-top:9px"><input type="checkbox" id="upKnock"'+(knock?' checked':'')+'> Remove the background</label>'+
         '<div class="mini" id="upWarn" style="margin-top:4px"></div>'+
       '</div></div>'+
@@ -2519,16 +2564,34 @@ function askUploadKind(dataUrl){
       '</div>'+
       '<div class="row" style="margin-top:14px"><button class="btn y" id="upGo">Add to the picker</button>'+
       '<button class="btn sm" id="upCancel" style="flex:none;width:64px">Cancel</button></div>');
+    // measure the hint off the same trimmed pixels the register will use
+    const ar0=(()=>{ try{ const t=trimAlpha(knockoutBg(imgToCanvas(img,180)));
+      return t.width/t.height; }catch(_){ return img.width/img.height; } })();
+    const paintSize=()=>{
+      const sp=UPLOAD_KINDS[kind]||UPLOAD_KINDS.prop;
+      $('upSizeLab').textContent=sp.ask;
+      $('upSize').placeholder=sp.eg;
+      if(!$('upSize').value)$('upSize').value=(sp.dim==='w'?(sp.def||sp.h*ar0):sp.h).toFixed(2);
+      const v=+$('upSize').value||0;
+      const other=sp.dim==='w' ? (v/ar0) : (v*ar0);
+      $('upSizeHint').textContent=v>0
+        ? ('\u2192 '+(sp.dim==='w'?(v.toFixed(2)+'m long \u00d7 '+other.toFixed(2)+'m tall')
+                                   :(v.toFixed(2)+'m tall \u00d7 '+other.toFixed(2)+'m wide'))+
+           ' \u2014 the other dimension comes from the picture')
+        : 'Type the one you know; the picture gives the other.';
+    };
     const paint=()=>{ $('upPrev').src=knock?cutURL():plain;
       $('upWarn').textContent=knock?'Works on a flat, even background. If it eats the subject, switch it off.':''; };
-    paint();
+    paint(); paintSize();
+    $('upSize').oninput=paintSize;
     $('upKnock').onchange=e=>{ knock=e.target.checked; paint(); };
     [...document.querySelectorAll('#upKinds .chip')].forEach(c=>c.onclick=()=>{
       kind=c.dataset.kind;
-      [...document.querySelectorAll('#upKinds .chip')].forEach(x=>x.classList.toggle('on',x===c)); });
+      [...document.querySelectorAll('#upKinds .chip')].forEach(x=>x.classList.toggle('on',x===c));
+      $('upSize').value=''; paintSize(); });   // a new kind asks a different question
     $('upCancel').onclick=()=>$('modal').classList.remove('show');
-    $('upGo').onclick=()=>{ const nm=$('upName').value;
-      $('modal').classList.remove('show'); registerUpload(img,kind,knock,nm); };
+    $('upGo').onclick=()=>{ const nm=$('upName').value, sz=+$('upSize').value;
+      $('modal').classList.remove('show'); registerUpload(img,kind,knock,nm,sz); };
   };
   img.onerror=()=>toast('That image couldn\u2019t be read');
   img.src=dataUrl;
@@ -3023,7 +3086,7 @@ function buildSpec(refId,move,px){
     // a consumer should never have to guess which of the two it is holding.
     delivery:{aspect:S.delivery,resolution:aspectRes(S.delivery),
       capture_px:(px&&px.w&&px.h)?[px.w,px.h]:null},
-    subjects:S.markers.map(m=>({id:m.id,type:specSubjectType(m.type),label:m.shotType,lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:Math.max(0,Math.round((m.height||0)*100)/100)})),
+    subjects:S.markers.map(m=>({id:m.id,type:specSubjectType(m.type),label:m.shotType,name:subjectName(m),lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:Math.max(0,Math.round((m.height||0)*100)/100)})),
     scene_description:$('sceneDesc').value, reference_frame:(refId||'scout')+'.png'
   };
 }
@@ -3798,31 +3861,41 @@ function encodeGIF(frames,W,H,delayCs){ // delayCs: one value, or one per frame
   push(0x3B);
   return new Uint8Array(b);
 }
-async function exportTakeGifFile(){
-  const list=takeShots(); if(!list.length){toast('Save shots with captured frames first');return;}
-  takePause();
-  const cap=progSink(), old=cap.innerHTML, btn=btnPair('takeGif','postGif'); btn.disabled=true;
-  let imgs; try{ imgs=await Promise.all(list.map(s=>loadImg(s.thumb))); }
-  catch(_){ cap.innerHTML=old; btn.disabled=false; toast('Couldn\u2019t read the frames'); return; }
+// One encoder, three callers: the Post button, the take player, and the cut zip.
+// It used to be welded to a download, which is why the zip had no GIF in it.
+async function buildTakeGif(onProgress){
+  const list=takeShots(); if(!list.length)return null;
+  const say=onProgress||function(){};
+  let imgs; try{ imgs=await Promise.all(list.map(s=>loadImg(s.thumb))); }catch(_){ return null; }
   const ar=imgs[0].height/imgs[0].width;
   const W=480, H=Math.max(2,Math.round(W*ar));
   const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
   const ctx=cv.getContext('2d',{willReadFrequently:true});
   const frames=[];
   for(let i=0;i<imgs.length;i++){
-    cap.innerHTML='<b>Building GIF\u2026</b> frame '+(i+1)+' / '+imgs.length;
+    say('<b>Building GIF\u2026</b> frame '+(i+1)+' / '+imgs.length);
     await new Promise(r=>setTimeout(r,0));
     ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
     drawContain(ctx,imgs[i],W,H);
     frames.push(ctx.getImageData(0,0,W,H).data);
   }
-  cap.innerHTML='<b>Building GIF\u2026</b> encoding';
+  say('<b>Building GIF\u2026</b> encoding');
   await new Promise(r=>setTimeout(r,0));
-  let bytes; try{ bytes=encodeGIF(frames,W,H,list.map((_,i)=>Math.max(2,Math.round(holdMs(i)/10)))); }
+  return {bytes:encodeGIF(frames,W,H,list.map((_,i)=>Math.max(2,Math.round(holdMs(i)/10)))),
+          count:frames.length, w:W, h:H};
+}
+async function exportTakeGifFile(){
+  if(!takeShots().length){toast('Save shots with captured frames first');return;}
+  takePause();
+  const cap=progSink(), old=cap.innerHTML, btn=btnPair('takeGif','postGif'); btn.disabled=true;
+  let g;
+  try{ g=await buildTakeGif(t=>{cap.innerHTML=t;}); }
   catch(err){ cap.innerHTML=old; btn.disabled=false; toast('GIF encode failed: '+err.message); return; }
   cap.innerHTML=old; btn.disabled=false;
-  downloadBlob(new Blob([bytes],{type:'image/gif'}),'directors_take_'+Date.now()+'.gif');
-  toast('GIF exported \u2014 '+((bytes.length/1024)|0)+' KB, '+frames.length+' frames, loops forever');
+  if(!g||!g.bytes){ toast('Couldn\u2019t read the frames'); return; }
+  // "previs" in the name, because that is what it is — blocking playback, not motion.
+  downloadBlob(new Blob([g.bytes],{type:'image/gif'}),'previs_take_'+Date.now()+'.gif');
+  toast('Previs GIF exported \u2014 '+((g.bytes.length/1024)|0)+' KB, '+g.count+' frames, loops forever');
 }
 $('takeGif').onclick=exportTakeGifFile;
 $('postGif').onclick=exportTakeGifFile;
@@ -4005,6 +4078,8 @@ async function exportBundle(){
       'specs/     gmapz.capture.v2, one per shot. resolution is the delivery target;\n'+
       '           capture_px is what the PNG actually is.\n'+
       'cut.json   the sequence itself: order, beats, and the shared world lock.\n'+
+      'previs.gif the cut as a looping animatic, one frame per shot, at your beats.\n'+
+      '           PREVIS ONLY \u2014 blocking playback, not generated motion.\n'+
       'vcs15.md   VCS-15 continuity handoff. Its section headings match the\n'+
       '           VCS-15 parser exactly \u2014 open it there as-is.\n'+
       'directors_chair.json\n'+
@@ -4015,6 +4090,11 @@ async function exportBundle(){
       'Everything here is PLANNED and AUTHORITATIVE \u2014 blocking authored in Scout.\n'+
       'Nothing in it was observed from generated footage. Speaker attribution is\n'+
       'UNKNOWN at pre-vis and is not guessed at.\n')});
+    // The QA manifest expects the animatic in the package, not as a separate download.
+    say('Rendering previs.gif\u2026');
+    try{ const g=await buildTakeGif(t=>say(t.replace(/<[^>]+>/g,'')));
+      if(g&&g.bytes)files.push({name:'previs.gif', bytes:g.bytes}); }
+    catch(err){ /* a zip without the animatic still beats no zip */ }
     say('Zipping\u2026'); await new Promise(r=>setTimeout(r,0));
     const blob=makeZip(files);
     downloadBlob(blob,'gmapz_cut_'+Date.now()+'.zip');
@@ -4398,6 +4478,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   dcCameraLine,dcLightLine,nextPrompt,ENGINE_BUILDERS,continuityClause,gifPalette,
   continuityEntry,CAMERA_TYPES,SHOT_SIZES,
   cutCells,cutTally,renderCutTally,renderTimeline,cellOpen,cellFilled,
+  buildTakeGif,subjectName,registerUpload,trimAlpha,
   sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,stepRig,
   exportBundle,makeZip,frameFileName,specFileName,slugify,crc32,
   relight:relightSequence,buildReport,checkContinuity,
