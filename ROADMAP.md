@@ -814,3 +814,55 @@ rather than trusting the writer: `cut.json`, `README.txt`, `previs.gif`, `vcs15.
 Re-driving Lake Rachel end to end: friction log down from three items to one, and that one
 is environmental — both geocoders are proxy-blocked here, so search still cannot be
 exercised in this sandbox. Zero page errors.
+
+## Post-production shakedown — uploads, the bin, the GIF, the cut
+
+Adversarial pass over the four surfaces, doing what a person does by accident rather than
+what a script does on purpose. **Lab only.**
+
+### The find: deleting an upload orphaned everything already placed from it
+
+`removeUpload` was already trying to be careful. It keeps `WORLD_PROPS` so the survivor
+draws at the right size, and its own confirm text promises *"anything already placed keeps
+standing."* It does keep standing. It just forgets what it is:
+
+```
+before delete   name "White Mini Cooper"   type prop          → "A car."
+after delete    name "vehicle_up1"         type vehicle_up1   → "A figure."
+```
+
+`UPLOADS[key]` is the only record of an upload's name and kind, so deleting it leaked an
+internal key into `subjects[].name` and the marker list — and **re-opened the "A figure."
+bug through a side door**, one pass after it was fixed.
+
+An entry with something standing on it is **retired**, not deleted: gone from the picker,
+still able to say what it is. Nothing placed and it really goes. The flag survives a
+save/restore too, or a reload would put a deleted stand-in back in the picker while the
+thing it belongs to is still in the scene.
+
+### And a stand-in could be 99,999 metres long
+
+The size field added last pass took any number at all. A stray digit gave a car the length
+of a mountain range, silently. Clamped to 5 cm – 200 m — a doorknob to a container ship —
+on both the dimension you type and the one the aspect ratio implies. A real number is left
+exactly alone: 12 m stays 12 m.
+
+### What held up
+
+Everything else on those four surfaces survived: unnamed uploads still get names, two
+uploads of one picture stay distinct, size 0 and −5 fall back, a 600×8 image and a fully
+transparent one are both handled, bin cells match captures, deleting a bin entry doesn't
+blank the shot using it, HQ genuinely captures 4× the pixels and records them, a one-frame
+cut still makes a GIF, mixed aspect ratios letterbox into one canvas, an empty cut renders
+nothing rather than throwing, 99 s and 0.01 s beats both encode, a reordered cut carries
+through to the strip and the GIF, and emptying the cut closes the take player.
+
+### Harness note
+
+`capture()` **returns** `{id,url,w,h}` and **stores** `{…,spec}`. Reading the spec off the
+return value gives `undefined`, which I misread as a null `capture_px` — twice. The
+shakedown now reads the stored record and carries a comment saying why, so the file doesn't
+hand the next person a false finding.
+
+Suites: strip 38 · LUT 29 · beat 4 · noun 10 · gaps 15 · orphan 15 · QA 45 — all green,
+zero page errors, shakedown findings back to zero.
