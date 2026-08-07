@@ -2191,7 +2191,9 @@ function deleteSeqPreset(id){
 function renderSeqPresets(){
   const L=$('seqList'); if(!L)return; L.innerHTML='';
   const all=loadSeqPresets();
-  if(!all.length){ L.innerHTML='<div class="mini">Plot a sequence, then save it here. A preset keeps the shape and every dot\u2019s shot \u2014 load it at any place and it re-lays facing your heading.</div>'; return; }
+  // "preset" is the director's five recipes. This is your own run, and calling both by
+  // the same word is half of why this corner of the app read as confusing.
+  if(!all.length){ L.innerHTML='<div class="mini">Plot the dots, then save the run here. A saved run keeps the shape and every dot\u2019s shot \u2014 load it at any place and it re-lays facing your heading.</div>'; return; }
   all.forEach(p=>{
     const rigs=[...new Set(p.points.map(x=>x.ct))].map(t=>(CAMERA_TYPES[t]||{glyph:'\u2022'}).glyph).join('');
     const d=document.createElement('div'); d.className='item';
