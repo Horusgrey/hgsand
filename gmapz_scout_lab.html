@@ -219,9 +219,11 @@ function loadCesiumFallback(){
   .stage{position:relative;overflow:hidden;}
   #cesium{position:absolute;inset:0;background:#05070d;}
   .cesium-widget-credits,.cesium-credit-lightbox-overlay{display:none !important;}
+  /* No ellipsis. The one time this pill had something urgent to say it got cut off at
+     "…add a Google key for photorea…" and a whole session was shot on flat satellite. */
   #loadstat{position:absolute;top:14px;left:14px;z-index:6;background:rgba(10,10,13,.72);border:1px solid rgba(255,255,255,.09);
     border-radius:9px;padding:7px 12px;font-size:11px;color:var(--dim);font-family:ui-monospace,Menlo,monospace;
-    max-width:24vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    max-width:min(460px,46vw);line-height:1.5;
     backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);
     box-shadow:0 4px 18px rgba(0,0,0,.5);}
   .hud{position:absolute;top:14px;right:14px;z-index:6;display:flex;gap:8px;}
@@ -539,6 +541,18 @@ function loadCesiumFallback(){
   #loadstat{transition:opacity .6s;}
   #loadstat.settle{opacity:.3;}
   #loadstat.settle:hover{opacity:1;}
+  #loadstat.bad{border-color:rgba(248,113,113,.55);background:rgba(38,10,10,.82);}
+  /* A rejected key is not a status, it is a wrong belief about what you are shooting.
+     It gets the stage, not a corner, and it does not fade. */
+  #earthWarn{display:none;position:absolute;top:56px;left:14px;z-index:8;max-width:min(520px,54vw);
+    background:rgba(28,8,8,.94);border:1px solid #7f1d1d;border-left:3px solid #f87171;border-radius:10px;
+    padding:12px 14px;font-size:11.5px;line-height:1.62;color:#fecaca;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 10px 34px rgba(0,0,0,.6);}
+  #earthWarn b{color:#fff;}
+  #earthWarn span{display:block;margin-top:6px;color:#fca5a5;}
+  #earthWarn .ew-why{margin-top:7px;font-family:ui-monospace,Menlo,monospace;font-size:10px;color:#f87171;
+    opacity:.85;word-break:break-word;}
+  #earthWarn .btn{margin-top:10px;width:auto;padding:0 12px;}
   .grip{cursor:grab;color:var(--faint);margin-right:7px;font-size:11px;user-select:none;}
   .item.dragover{border-color:var(--yellow);box-shadow:0 0 0 2px rgba(250,204,21,.15);}
   /* ---- print: blocking report ---- */
@@ -615,7 +629,10 @@ function loadCesiumFallback(){
         <div class="row"><button class="btn" id="applyKeys">Apply keys &amp; reload Earth</button></div>
         <label class="fld">Terrain exaggeration <span id="exagVal" style="color:var(--dim);float:right">1.0&times;</span></label>
         <input id="exagSlider" type="range" min="1" max="5" step="0.5" value="1">
-        <div class="mini">No keys? Runs on keyless ESRI satellite. Google key = photorealistic 3D Earth. Keys are remembered on this device.</div>
+        <div class="mini">Google&rsquo;s key list runs to hundreds of entries and only one of them works here: enable
+          <b>Map Tiles API</b> (console.cloud.google.com &rarr; APIs &amp; Services), with billing on. A key that works for
+          Maps JavaScript, Static Maps or Geocoding is still rejected by this one. No key at all is fine &mdash; you get
+          keyless ESRI satellite, which is flat 2D drape with no building geometry. Keys are remembered on this device.</div>
       </div>
     </details>
 
@@ -790,6 +807,7 @@ function loadCesiumFallback(){
     </div>
     <div id="captureFlash"></div>
     <div id="loadstat">&#9676; booting engine…</div>
+    <div id="earthWarn"></div>
     <div id="filewarn"><b>Opened as a file.</b> Everything works except saving a frame &mdash; <u>the 30-second fix</u></div>
     <div class="hud"><button class="btn sm" id="resetBtn">Reset</button><button class="btn sm" id="helpBtn">? Keys</button></div>
     <div id="slate"></div>
@@ -1137,7 +1155,45 @@ viewer.scene.globe.enableLighting=true;
 viewer.scene.skyAtmosphere.show=true;
 viewer.scene.fog.enabled=true; viewer.scene.fog.density=0.0001;
 viewer.clock.shouldAnimate=false;
-setStat('&#10003; ESRI satellite (add a Google key for photoreal)','#fbbf24');
+
+// ---- What Earth am I actually shooting? -------------------------------------------
+// Three states, and they must never be confusable:
+//   photoreal  real 3D geometry from Google. The only one that earns a tick.
+//   terrain    Cesium ion elevation + OSM building boxes. Real height, blocky detail.
+//   flat       keyless ESRI drape. 2D imagery painted on a sphere. No geometry at all.
+//   rejected   flat, but you supplied a key and believed otherwise. This is the dangerous
+//              one and it is the one the old build painted green.
+const EARTH={mode:'flat',detail:''};
+let GROUND_CACHE={};                    // declared here because setEarthMode clears it at boot
+const EARTH_SOURCE={photoreal:'google_photoreal_3d',terrain:'cesium_terrain_osm',
+                    flat:'esri_flat_imagery',rejected:'esri_flat_imagery'};
+const earthSource=()=>EARTH_SOURCE[EARTH.mode]||'esri_flat_imagery';
+const earthIsFlat=()=>EARTH.mode==='flat'||EARTH.mode==='rejected';
+function setEarthMode(mode,detail){
+  EARTH.mode=mode; EARTH.detail=detail||'';
+  GROUND_CACHE={};                      // a different Earth has a different surface
+  const warn=$('earthWarn'), pill=$('loadstat');
+  if(pill)pill.classList.toggle('bad',mode==='rejected');
+  if(warn)warn.style.display='none';
+  if(mode==='photoreal'){ setStat('\u2713 Photoreal 3D Earth \u2014 real building geometry','#34d399'); return; }
+  if(mode==='terrain'){ setStat('\u2713 Cesium terrain + OSM buildings','#34d399'); return; }
+  if(mode==='rejected'){
+    setStat('\u2715 Google key rejected \u2014 you are on FLAT 2D satellite','#f87171');
+    if(!warn)return;
+    warn.innerHTML='<b>Your Google key didn\u2019t work. You are shooting flat 2D satellite, not 3D.</b>'+
+      '<span>Frames will have painted-on roofs, no building sides and no real elevation. Fix: open '+
+      'console.cloud.google.com \u2192 APIs &amp; Services and enable <b>Map Tiles API</b> on this key, with billing on.</span>'+
+      '<span>It is a different API from Maps JavaScript, Static Maps, Places or Geocoding \u2014 a key that works '+
+      'for any of those is still rejected here. That is the one Google\u2019s console makes hardest to find.</span>'+
+      (detail?'<span class="ew-why">'+escapeHtml(String(detail).slice(0,220))+'</span>':'')+
+      '<button class="btn sm" id="earthWarnX">Shoot flat anyway</button>';
+    warn.style.display='block';
+    const x=$('earthWarnX'); if(x)x.onclick=()=>{warn.style.display='none';};
+    return;
+  }
+  setStat('\u25c7 Flat 2D satellite \u2014 no Google key, so no building geometry','#fbbf24');
+}
+setEarthMode('flat');
 
 // ---- Google-Earth feel: render quality + camera controller tuning ----
 viewer.scene.postProcessStages.fxaa.enabled=true;
@@ -1263,6 +1319,7 @@ async function reloadEarth(){
   if(googleTileset){viewer.scene.primitives.remove(googleTileset);googleTileset=null;}
   if(osm){viewer.scene.primitives.remove(osm);osm=null;}
   viewer.scene.globe.show=true;
+  let rejected='';
   if(S.google){
     try{ setStat('&#9676; loading photoreal tiles…');
       Cesium.GoogleMaps.defaultApiKey=S.google;
@@ -1273,28 +1330,50 @@ async function reloadEarth(){
       try{ // live tile streaming count, like Earth's loading dots
         googleTileset.loadProgress.addEventListener((req,proc)=>{
           const n=req+proc;
+          if(EARTH.mode!=='photoreal')return;             // never overwrite a failure
           if(n>0)setStat('&#9676; streaming photoreal tiles\u2026 '+n);
-          else setStat('&#10003; photoreal Earth','#34d399');
+          else setStat('\u2713 Photoreal 3D Earth \u2014 real building geometry','#34d399');
         });
       }catch(_){}
-      setStat('&#10003; photoreal Earth','#34d399'); toast('Photoreal 3D tiles loaded'); return;
-    }catch(e){ console.warn('google tiles failed',e); toast('Google tiles failed — check key/billing'); }
+      // createGooglePhotorealistic3DTileset only fetches the root manifest. A key that is
+      // authorised for the root and rejected for the tiles themselves would otherwise sit
+      // there looking green while nothing streamed, so watch the tiles too.
+      try{ let fails=0;
+        googleTileset.tileFailed.addEventListener(ev=>{
+          if(EARTH.mode!=='photoreal')return;
+          if(++fails<4)return;
+          try{viewer.scene.primitives.remove(googleTileset);}catch(_){}
+          googleTileset=null; viewer.scene.globe.show=true;
+          setEarthMode('rejected',(ev&&ev.message)||'tile requests refused after the manifest loaded');
+        });
+      }catch(_){}
+      setEarthMode('photoreal'); toast('Photoreal 3D tiles loaded'); return;
+    }catch(e){ console.warn('google tiles failed',e);
+      rejected=(e&&e.message)||String(e);
+      if(googleTileset){try{viewer.scene.primitives.remove(googleTileset);}catch(_){} googleTileset=null;}
+      viewer.scene.globe.show=true;
+    }
   }
   if(S.ion){
     try{ setStat('&#9676; loading terrain…');
       Cesium.Ion.defaultAccessToken=S.ion;
       viewer.terrainProvider=await Cesium.createWorldTerrainAsync();
       try{osm=await Cesium.createOsmBuildingsAsync();viewer.scene.primitives.add(osm);}catch(_){}
-      setStat('&#10003; ion terrain + buildings','#34d399'); toast('Terrain loaded'); return;
+      setEarthMode('terrain');
+      toast(rejected?'Google key failed — running on Cesium terrain instead':'Terrain loaded');
+      return;
     }catch(e){ console.warn('ion failed',e); toast('Cesium ion token didn\u2019t work \u2014 check it copied fully (no spaces)'); }
   }
-  setStat('&#10003; ESRI satellite (keyless)','#fbbf24');
+  setEarthMode(rejected?'rejected':'flat',rejected);
 }
 $('applyKeys').onclick=reloadEarth;
 $('exagSlider').oninput=e=>{const v=+e.target.value;S.exag=v;$('exagVal').textContent=v.toFixed(1)+'\u00d7';try{viewer.scene.verticalExaggeration=v;}catch(_){}};
 
 function flyToParams(dur){
-  const center=Cesium.Cartesian3.fromDegrees(S.target.lon,S.target.lat);
+  // The look-at point is on the SURFACE, not on the ellipsoid. fromDegrees with no third
+  // argument means sea level, which at Lake Rachel (~425 m ASL) aimed the camera a
+  // quarter-kilometre underground and dragged the camera down with it at low tilt.
+  const center=Cesium.Cartesian3.fromDegrees(S.target.lon,S.target.lat,targetGround());
   const d=Cesium.Cartesian3.distance(viewer.camera.positionWC,center);
   if(dur===undefined){ // swoop: flight time scales with distance, like Google Earth
     dur=d>2e6?4.2:d>2e5?3.2:d>2e4?2.2:1.2;
@@ -1306,16 +1385,84 @@ function flyToParams(dur){
   // On a real relocation (not a small blocking nudge) arc up and let the camera pitch
   // toward the destination before it settles — an establishing move, not a reposition.
   if(dur>0&&d>1.5e4) opt.pitchAdjustHeight=Math.min(9000,Math.max(700,S.range*3));
-  if(S.roll&&dur>0) opt.complete=applyRoll; // re-cant the horizon once the move settles
+  // re-cant the horizon and un-bury the camera once the move settles
+  if(dur>0) opt.complete=()=>{ if(S.roll)applyRoll(); enforceEyeFloor(); };
   viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(center,1),opt);
   applyFov();
-  if(S.roll&&dur===0) applyRoll();
+  if(dur===0){ if(S.roll)applyRoll(); enforceEyeFloor(); }
 }
 function applyRoll(){ // Dutch angle: rotate around the view axis, keeping the framed point centered
   const cam=viewer.camera;
   cam.setView({orientation:{heading:cam.heading,pitch:cam.pitch,roll:toRad(S.roll||0)}});
 }
 function applyFov(){ const f=viewer.camera.frustum; if(f&&f.fov!==undefined) f.fov=toRad(S.fov); }
+// ---- Ground truth ------------------------------------------------------------------
+// sampleHeight reads the depth of what is actually rendered, so it sees photoreal 3D tile
+// geometry; globe.getHeight only knows the terrain provider, which on the keyless build is
+// the bare ellipsoid — correctly 0, because flat drape really is at sea level. A miss
+// returns null and is NOT cached: the tiles may simply not have streamed in yet.
+function groundSampleExclude(){
+  const out=[];
+  try{ S.markers.forEach(m=>{const e=viewer.entities.getById(m.id); if(e)out.push(e);}); }catch(_){}
+  return out;                             // never measure the ground off a cast member's head
+}
+// Dead Sea to Everest, with room. Anything outside this is not a place on Earth, it is
+// the depth buffer or a coarse tile chord, and it must never be aimed at.
+const plausibleGround=h=>h!=null&&isFinite(h)&&h>-450&&h<9000;
+function groundAt(lon,lat){
+  if(!isFinite(lon)||!isFinite(lat))return null;
+  // Flat drape IS the ellipsoid — the imagery is painted at height 0 and there is no
+  // geometry under it. Sampling anyway returns the chord of whatever coarse tile is
+  // loaded (Chicago came back as -5483 m) and it moves as tiles refine. 0 is both the
+  // honest answer and a stable one.
+  if(earthIsFlat())return 0;
+  const k=lon.toFixed(5)+'|'+lat.toFixed(5);
+  if(GROUND_CACHE[k]!==undefined)return GROUND_CACHE[k];
+  const carto=Cesium.Cartographic.fromDegrees(lon,lat);
+  let h=null;
+  try{ if(viewer.scene.sampleHeightSupported){
+    const s=viewer.scene.sampleHeight(carto,groundSampleExclude());
+    if(plausibleGround(s))h=s;
+  }}catch(_){}
+  if(h===null){ try{ const g=viewer.scene.globe.getHeight(carto); if(plausibleGround(g))h=g; }catch(_){} }
+  if(h===null)return null;              // not cached: the tiles may simply not be in yet
+  GROUND_CACHE[k]=+h.toFixed(1);
+  if(Object.keys(GROUND_CACHE).length>4000)GROUND_CACHE={};
+  return GROUND_CACHE[k];
+}
+// The elevation of the point the camera is aimed at. Picking the rendered world gives a
+// real measurement of real geometry — better than any resample — so "look here" records
+// its own height and this prefers it. Everything else falls back to a sample, and to the
+// ellipsoid when even that is unknowable.
+function targetGround(){
+  const t=S.target;
+  if(t&&t.h!=null&&isFinite(t.h))return t.h;
+  const g=groundAt(t.lon,t.lat);
+  return g===null?0:g;
+}
+// A camera cannot stand inside the hill it is looking at. 1.6 m is a person's eye height;
+// below that you are not shooting low, you are buried — which is exactly what "eye level"
+// did before the look-at point learned where the ground was.
+const EYE_FLOOR_M=1.6;
+function enforceEyeFloor(){
+  try{
+    const cam=viewer.camera, c=cam.positionCartographic;
+    const g=groundAt(+toDeg(c.longitude).toFixed(5),+toDeg(c.latitude).toFixed(5));
+    if(g===null||c.height>=g+EYE_FLOOR_M)return false;
+    cam.setView({destination:Cesium.Cartesian3.fromRadians(c.longitude,c.latitude,g+EYE_FLOOR_M),
+      orientation:{heading:cam.heading,pitch:cam.pitch,roll:cam.roll}});
+    if(!S._quiet)toast('Lifted to eye height \u2014 that framing had the camera underground');
+    return true;
+  }catch(_){ return false; }
+}
+// Where the camera actually IS, as opposed to where it is pointed.
+function cameraTruth(){
+  const c=viewer.camera.positionCartographic;
+  const lng=+toDeg(c.longitude).toFixed(6), lat=+toDeg(c.latitude).toFixed(6);
+  const g=groundAt(+lng.toFixed(5),+lat.toFixed(5));
+  return {lng,lat,altitude_m:+c.height.toFixed(1),
+    height_above_ground_m:(g===null)?null:+(c.height-g).toFixed(1)};
+}
 function screenCenterGround(){
   const c=new Cesium.Cartesian2(viewer.canvas.clientWidth/2,viewer.canvas.clientHeight/2);
   let p=viewer.scene.pickPosition?viewer.scene.pickPosition(c):undefined;
@@ -1329,8 +1476,9 @@ function getCurrent(){
   const g=screenCenterGround();
   if(Cesium.defined(g)){ const gc=Cesium.Cartographic.fromCartesian(g);
     S.target.lat=+toDeg(gc.latitude).toFixed(5); S.target.lon=+toDeg(gc.longitude).toFixed(5);
+    S.target.h=plausibleGround(gc.height)?+gc.height.toFixed(1):null;   // measured, not guessed
     S.range=Math.round(Cesium.Cartesian3.distance(cam.positionWC,g));
-  } else { S.target.lat=+toDeg(carto.latitude).toFixed(5); S.target.lon=+toDeg(carto.longitude).toFixed(5); S.range=Math.round(carto.height); }
+  } else { S.target.lat=+toDeg(carto.latitude).toFixed(5); S.target.lon=+toDeg(carto.longitude).toFixed(5); S.target.h=null; S.range=Math.round(carto.height); }
   if(cam.frustum.fov!==undefined) S.fov=Math.round(toDeg(cam.frustum.fov));
   syncCamUI(); if(!S._quiet)toast('Captured current camera');
 }
@@ -2013,6 +2161,24 @@ function waitForTiles(maxMs){
     tick();
   });
 }
+// What the path IS, independent of shooting it. p.alt is metres above the ground the dot
+// sits on — never an altitude, which is the confusion this whole pass exists to end.
+function buildPathSpec(headStart,headEnd,startFrame,endFrame){
+  const ct=CAMERA_TYPES[S.path.cameraType]||CAMERA_TYPES.drone;
+  return {
+    spec:'gmapz.path.v1',
+    camera_type:S.path.cameraType,
+    camera_feel:ct.feel,
+    duration_seconds:S.pathDuration,
+    length_m:Math.round(pathLengthMeters(S.path)),
+    points:S.path.points.map(p=>({lng:p.lon,lat:p.lat,height_above_ground_m:p.alt,
+      ground_elevation_m:groundAt(p.lon,p.lat)})),
+    bearing_start_deg:Math.round(headStart),
+    bearing_end_deg:Math.round(headEnd),
+    start_frame:startFrame||null,
+    end_frame:endFrame||null
+  };
+}
 // ---- Path-based shot build: fly to start, capture, fly to end, capture, pack ----
 function haversineMeters(a,b){
   const R=6371000, toR=Math.PI/180;
@@ -2051,18 +2217,7 @@ async function buildShot(){
   S._quiet=false;
   const specA=buildSpec(capA.id,'path'), specB=buildSpec(capB.id,'path');
   const len=pathLengthMeters(S.path);
-  const pathSpec={
-    spec:'gmapz.path.v1',
-    camera_type:S.path.cameraType,
-    camera_feel:ct.feel,
-    duration_seconds:S.pathDuration,
-    length_m:Math.round(len),
-    points:S.path.points.map(p=>({lng:p.lon,lat:p.lat,altitude_m:p.alt})),
-    bearing_start_deg:Math.round(headStart),
-    bearing_end_deg:Math.round(headEnd),
-    start_frame:specA.reference_frame,
-    end_frame:specB.reference_frame
-  };
+  const pathSpec=buildPathSpec(headStart,headEnd,specA.reference_frame,specB.reference_frame);
   const bundle={spec:'gmapz.shot.v1', id:'shot_'+Date.now(), created:new Date().toISOString(),
     start:specA, end:specB, path:pathSpec, scene_description:$('sceneDesc').value};
   // One bundle of prompts, every engine speaking this path's motion
@@ -2201,7 +2356,8 @@ $('fovSlider').oninput=e=>{S.fov=+e.target.value;$('fovVal').textContent=S.fov+'
 $('pRoll').oninput=e=>{S.roll=+e.target.value;$('pRollVal').textContent=S.roll+'\u00b0';applyRoll();};
 $('levelRoll').onclick=()=>{S.roll=0;$('pRoll').value=0;$('pRollVal').textContent='0\u00b0';applyRoll();toast('Horizon leveled');};
 ['pLat','pLon','pHead','pTilt','pRange'].forEach(id=>$(id).onchange=()=>{
-  S.target.lat=+$('pLat').value;S.target.lon=+$('pLon').value;S.head=+$('pHead').value;S.tilt=+$('pTilt').value;S.range=+$('pRange').value;
+  S.target.lat=+$('pLat').value;S.target.lon=+$('pLon').value;S.target.h=null;  // typed coords: resample, don't reuse the last pick
+  S.head=+$('pHead').value;S.tilt=+$('pTilt').value;S.range=+$('pRange').value;
 });
 $('getCurrent').onclick=getCurrent;
 $('flyParams').onclick=()=>flyToParams();
@@ -2802,7 +2958,7 @@ handler.setInputAction(click=>{
 handler.setInputAction(click=>{
   let p=screenPick(click.position); if(!Cesium.defined(p))return;
   const c=Cesium.Cartographic.fromCartesian(p);
-  S.target={lat:toDeg(c.latitude),lon:toDeg(c.longitude)};
+  S.target={lat:toDeg(c.latitude),lon:toDeg(c.longitude),h:plausibleGround(c.height)?+c.height.toFixed(1):null};
   flyToParams(0.8); syncCamUI(); toast('Look here \u2192 '+S.target.lat.toFixed(4)+', '+S.target.lon.toFixed(4));
 },Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 handler.setInputAction(click=>{
@@ -2824,7 +2980,7 @@ handler.setInputAction(click=>{
   else if(!S.placeMode&&!S.orbit){
     const g=screenPick(click.position); if(!Cesium.defined(g))return;
     const c=Cesium.Cartographic.fromCartesian(g);
-    S.target={lat:toDeg(c.latitude),lon:toDeg(c.longitude)};
+    S.target={lat:toDeg(c.latitude),lon:toDeg(c.longitude),h:plausibleGround(c.height)?+c.height.toFixed(1):null};
     S.range=Math.max(30,Math.round(S.range*0.72)); // pull in toward the clicked subject
     flyToParams(0.8); syncCamUI(); toast('Focusing here — double-click to push in further');
   }
@@ -3039,9 +3195,7 @@ function renderThumbs(){
     acts[0].onclick=e=>{e.stopPropagation();openPromptStudio({id:c.id,url:c.url},motionFromPath(),null);};
     acts[1].onclick=e=>{e.stopPropagation();downloadURI(c.url,c.id+'.png');};
     t.onclick=()=>{
-      if(inCut){ const cam=inCut.sh.spec.camera;
-        Object.assign(S,{target:{lat:cam.lat,lon:cam.lng},head:cam.heading_deg,tilt:cam.pitch_deg,
-          range:cam.altitude_m,fov:cam.fov_deg,roll:cam.roll_deg||0});
+      if(inCut){ recallCamera(inCut.sh.spec);
         flyToParams(); syncCamUI(); toast('Recalled shot '+(inCut.i+1)+' — '+inCut.sh.name);
       } else downloadURI(c.url,c.id+'.png');
     };
@@ -3085,12 +3239,37 @@ $('capBarHQ').onclick=()=>capture(true);
 $('shutter').onclick=e=>capture(e.shiftKey);
 
 function aspectRes(a){const map={'2.39:1':[2048,857],'1.85:1':[1998,1080],'16:9':[1920,1080],'4:3':[1440,1080],'1:1':[1080,1080],'9:16':[1080,1920]};return map[a]||[1920,1080];}
+// Reading a spec's camera back onto the controls. Pre-2.1 files put the aim point in
+// camera.lat/lng and the orbit distance in altitude_m, so they are detected and read the
+// old way — an existing project must not jump when it is reopened.
+function recallCamera(sp){
+  const c=(sp&&sp.camera)||{}, loc=(sp&&sp.location)||{};
+  const legacy=(c.target_distance_m===undefined);
+  const lat=legacy?c.lat:(c.aim_lat!==undefined?c.aim_lat:loc.lat);
+  const lon=legacy?c.lng:(c.aim_lng!==undefined?c.aim_lng:loc.lng);
+  const rng=legacy?c.altitude_m:c.target_distance_m;
+  Object.assign(S,{target:{lat,lon},head:c.heading_deg,tilt:c.pitch_deg,
+    range:rng,fov:c.fov_deg,roll:c.roll_deg||0});
+}
+// The orbit distance, whichever revision wrote the spec.
+const camDistance=c=>(c&&c.target_distance_m!==undefined)?c.target_distance_m:(c?c.altitude_m:0);
 function buildSpec(refId,move,px){
-  const s=sunNow();
+  const s=sunNow(), cam0=cameraTruth();
   return {
-    spec:'gmapz.capture.v2', id:refId||('scout_'+Date.now()), captured_at:new Date().toISOString(),
-    location:{name:$('search').value||'',lng:S.target.lon,lat:S.target.lat,ground_elevation_m:0},
-    camera:{lng:S.target.lon,lat:S.target.lat,altitude_m:S.range,heading_deg:S.head,pitch_deg:S.tilt,roll_deg:Math.round(S.roll||0),
+    // v2.1 — camera{} is where the camera IS; location{} is what it aims at. Until this
+    // revision camera.lng/lat held the LOOK-AT point and camera.altitude_m held the orbit
+    // distance, so every altitude ever exported was wrong by a factor of sin(tilt).
+    spec:'gmapz.capture.v2.1', id:refId||('scout_'+Date.now()), captured_at:new Date().toISOString(),
+    location:{name:$('search').value||'',lng:S.target.lon,lat:S.target.lat,
+      // On flat imagery this is honestly 0 — the drape really is at sea level. The
+      // frame is not lying about its own elevation, it is telling you which Earth it is.
+      ground_elevation_m:targetGround(),
+      // Never let an export claim photoreal geometry it did not have.
+      earth_source:earthSource(),geometry:earthIsFlat()?'flat_2d_imagery':'3d'},
+    camera:{lng:cam0.lng,lat:cam0.lat,altitude_m:cam0.altitude_m,
+      height_above_ground_m:cam0.height_above_ground_m,
+      aim_lng:S.target.lon,aim_lat:S.target.lat,target_distance_m:S.range,
+      heading_deg:S.head,pitch_deg:S.tilt,roll_deg:Math.round(S.roll||0),
       lens_mm:fovToLens(S.fov),fov_deg:S.fov,sensor:SENSORS[S.sensor].name,sensor_width_mm:SENSORS[S.sensor].w,shot_size:S.shotSize,angle:S.angle,move:move||'static'},
     light:{date:$('lDate').value,time:$('lTime').value,tz:'UTC',sun_azimuth_deg:+s.az.toFixed(1),sun_elevation_deg:+s.el.toFixed(1),phase:phaseOf(s.el)},
     look:{style:S.style,grade:S.grade,atmosphere:S.atmos,terrain_exaggeration:S.exag},
@@ -3098,7 +3277,18 @@ function buildSpec(refId,move,px){
     // a consumer should never have to guess which of the two it is holding.
     delivery:{aspect:S.delivery,resolution:aspectRes(S.delivery),
       capture_px:(px&&px.w&&px.h)?[px.w,px.h]:null},
-    subjects:S.markers.map(m=>({id:m.id,type:specSubjectType(m.type),label:m.shotType,name:subjectName(m),lng:m.lon,lat:m.lat,scale:m.scale||1,height_m:Math.max(0,Math.round((m.height||0)*100)/100)})),
+    subjects:S.markers.map(m=>{
+      const wp=worldProp(m.type), sc=m.scale||1;
+      return {id:m.id,type:specSubjectType(m.type),label:m.shotType,name:subjectName(m),
+        lng:m.lon,lat:m.lat,scale:sc,
+        // How big the thing IS. This used to read m.height — the raise-above-ground
+        // offset — so every subject in every export came out at height_m: 0.
+        height_m:wp?+(wp.h*sc).toFixed(2):null,
+        width_m:wp?+(wp.w*sc).toFixed(2):null,
+        // ...and the raise finally gets its own name. A pin is not life-size and says so
+        // by having no dimensions at all rather than by claiming zero.
+        elevation_offset_m:+Math.max(0,m.height||0).toFixed(2)};
+    }),
     scene_description:$('sceneDesc').value, reference_frame:(refId||'scout')+'.png'
   };
 }
@@ -3202,9 +3392,11 @@ function sunSide(sp){
 // What Scout honestly knows about a stand-in: what it is, how big it really is, and
 // how the light hits it. Nothing about who they are — that isn't Scout's to say.
 function castLookPrompt(m,sp){
-  const wp=WORLD_PROPS[m.type];
+  const wp=WORLD_PROPS[m.type], sc=m.scale||1;
   const bits=[standInName(m.type)];
-  if(wp)bits.push(wp.h.toFixed(2)+'\u00d7'+wp.w.toFixed(2)+'m, life-size');
+  // Say which number is which, and report the size after the scale you set — not the
+  // factory dimensions of something you already resized.
+  if(wp)bits.push((wp.h*sc).toFixed(2)+'m tall \u00d7 '+(wp.w*sc).toFixed(2)+'m across, life-size');
   bits.push('placed at '+m.lat.toFixed(5)+', '+m.lon.toFixed(5));
   if(sp)bits.push('lit '+sunSide(sp));
   bits.push('blocking reference \u2014 pose and wardrobe not specified by Scout');
@@ -3274,7 +3466,8 @@ function dcCameraLine(sp){
   const c=sp.camera;
   return [c.lens_mm+'mm ('+c.fov_deg+'\u00b0)', c.shot_size, c.angle+' angle',
     'heading '+Math.round(c.heading_deg)+'\u00b0', 'tilt '+Math.round(c.pitch_deg)+'\u00b0',
-    c.camera_type||c.move||'static', Math.round(c.altitude_m)+'m'].filter(Boolean).join(' \u00b7 ');
+    c.camera_type||c.move||'static', Math.round(camDistance(c))+'m to subject',
+    (c.altitude_m!=null?Math.round(c.altitude_m)+'m ASL':null)].filter(Boolean).join(' \u00b7 ');
 }
 function dcLightLine(sp){
   const l=sp.light;
@@ -3467,8 +3660,7 @@ async function relightSequence(){
     // the station's own cast has to be back in place before the shutter fires, or the
     // re-lit frame quietly shows whoever was visible last
     if(sh.stationIdx!==undefined){ travelCast(sh.stationIdx); applyStationCast(sh.stationIdx); }
-    Object.assign(S,{target:{lat:c.lat,lon:c.lng},head:c.heading_deg,tilt:c.pitch_deg,
-      range:c.altitude_m,fov:c.fov_deg,roll:c.roll_deg||0});
+    recallCamera(sh.spec);
     applyFov(); flyToParams(0); await waitForTiles(2000);
     const cap=capture(false);
     if(cap.url){
@@ -3620,8 +3812,7 @@ function cellFilled(sh,i){
     escapeHtml(sh.name.replace(/^Pt \d+ — /,''))+'<br><span style="color:var(--faint)">'+
     Math.round(c.lens_mm)+'mm \u00b7 '+c.shot_size+'</span></div>'+
     '<span class="tcardx" title="Remove from sequence">&times;</span>';
-  card.onclick=()=>{ Object.assign(S,{target:{lat:c.lat,lon:c.lng},head:c.heading_deg,tilt:c.pitch_deg,
-    range:c.altitude_m,fov:c.fov_deg,roll:c.roll_deg||0}); flyToParams(); syncCamUI(); toast('Recalled: '+sh.name); };
+  card.onclick=()=>{ recallCamera(sh.spec); flyToParams(); syncCamUI(); toast('Recalled: '+sh.name); };
   card.querySelector('.tcardx').onclick=e=>{e.stopPropagation();S.shots.splice(i,1);renderShots();toast('Removed shot '+(i+1));};
   return card;
 }
@@ -4087,7 +4278,9 @@ async function exportBundle(){
       '           rendered frames, not previews \u2014 use them as start frames.\n'+
       'prompts/   one document per engine. Each names its start frame by the exact\n'+
       '           filename in frames/, so nothing needs matching up by hand.\n'+
-      'specs/     gmapz.capture.v2, one per shot. resolution is the delivery target;\n'+
+      'specs/     gmapz.capture.v2.1, one per shot. camera{} is where the camera is\n'+
+      '           (altitude_m is real metres ASL, target_distance_m is the orbit\n'+
+      '           distance); location{} is what it aims at. resolution is the target;\n'+
       '           capture_px is what the PNG actually is.\n'+
       'cut.json   the sequence itself: order, beats, and the shared world lock.\n'+
       'previs.gif the cut as a looping animatic, one frame per shot, at your beats.\n'+
@@ -4126,12 +4319,14 @@ function reportPage(entry,i,total){
     '<div class="rephead"><h2>'+escapeHtml(entry.name||('Shot '+(i+1)))+'</h2><span class="sub">'+(i+1)+' / '+total+' · '+sp.id+'</span></div>'+
     frame+
     '<div class="repgrid">'+
-      g('Location',(sp.location.name||(c.lat.toFixed(4)+', '+c.lng.toFixed(4))))+
-      g('Lat / Lon',c.lat.toFixed(5)+' , '+c.lng.toFixed(5))+
+      g('Location',(sp.location.name||(sp.location.lat.toFixed(4)+', '+sp.location.lng.toFixed(4))))+
+      g('Camera lat / lon',c.lat.toFixed(5)+' , '+c.lng.toFixed(5))+
+      g('Camera altitude',(c.altitude_m!=null?Math.round(c.altitude_m)+' m ASL':'—')+
+        (c.height_above_ground_m!=null?' · '+Math.round(c.height_above_ground_m)+' m above ground':''))+
       g('Shot / Angle',c.shot_size+' · '+c.angle)+
       g('Lens / Sensor',c.lens_mm+'mm · '+lensFeel(c.lens_mm)+' · '+(c.sensor||'full'))+
       g('Heading / Tilt',c.heading_deg+'\u00b0 / '+c.pitch_deg+'\u00b0')+
-      g('Range / Move',Math.round(c.altitude_m)+' m · '+(c.move||'static'))+
+      g('Subject distance / Move',Math.round(camDistance(c))+' m · '+(c.move||'static'))+
       g('Date / Time',(lt.date||'—')+' '+(lt.time||'')+' '+(lt.tz||''))+
       g('Sun',('az '+lt.sun_azimuth_deg+'\u00b0 · el '+lt.sun_elevation_deg+'\u00b0 · '+lt.phase))+
       g('Style / Grade',lk.style+' · '+lk.grade)+
@@ -4498,7 +4693,9 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   relight:relightSequence,buildReport,checkContinuity,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
-  setStationOpt,saveStationFraming,captureFraming};
+  setStationOpt,saveStationFraming,captureFraming,
+  groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
+  buildPathSpec,flyToParams,syncCamUI,getCurrent};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
 </script>
