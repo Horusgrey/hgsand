@@ -340,6 +340,22 @@ function loadCesiumFallback(){
     color:var(--txt);font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
   .thumb .ta:hover{border-color:var(--yellow);color:var(--yellow);}
   /* ---- coverage shot plan ---- */
+  /* A fold inside a panel. It reads as part of what is above it, not as another way in. */
+  .fold{border:1px solid var(--line);border-radius:10px;background:var(--panel2);margin:10px 0 2px;}
+  .fold>summary{list-style:none;cursor:pointer;padding:8px 11px;font-size:9.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--dim);display:flex;justify-content:space-between;
+    align-items:center;gap:8px;transition:.12s;}
+  .fold>summary::-webkit-details-marker{display:none;}
+  .fold>summary:hover{color:var(--yellow);}
+  .fold>summary .fchev{flex:none;font-size:8px;transition:.15s;}
+  .fold[open]>summary{border-bottom:1px solid var(--line);color:var(--txt);}
+  .fold[open]>summary .fchev{transform:rotate(90deg);}
+  .foldbody{padding:10px 11px 11px;}
+  .foldbody .covplan{margin-top:8px;}
+  .mini .lnk{color:var(--yellow);cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+  .mini .lnk:hover{color:#fde047;}
+  #pathCast{margin:8px 0 2px;}
+  #pathCast.warn{color:var(--dim);}
   .covplan{margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel2);}
   .covhead{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;font-size:9.5px;
     letter-spacing:.1em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line);}
@@ -701,7 +717,7 @@ function loadCesiumFallback(){
       </div>
     </details>
 
-    <details class="sec" open><summary>Cameras &amp; path <span class="ico">&#9656;</span></summary>
+    <details class="sec" open><summary>Path &amp; coverage <span class="ico">&#9656;</span></summary>
       <div class="body">
         <div id="pathSetup">
           <label class="fld">Camera type &mdash; drag onto the globe</label>
@@ -713,24 +729,29 @@ function loadCesiumFallback(){
         </div>
         <div id="pathSummary"><span id="pathSummaryTxt"></span><button class="btn sm" id="pathEdit" style="flex:none;width:44px">Edit</button></div>
         <div class="list" id="pathList"></div>
-        <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every station</button></div>
-        <div class="subrow">
-          <button class="btn sm on" id="autoFrameBtn" title="Give a dot a sensible setup when it has none of its own. Turn it off to keep your framing everywhere.">Auto-frame: ON</button>
-          <button class="btn sm" id="buildShotBtn" title="Export this path as a single start-and-end move with one spec">Start+end move</button>
-        </div>
-        <label class="fld">Sequence presets</label>
-        <div class="row"><input id="seqName" type="text" placeholder="Name it — e.g. Marina drone run"><button class="btn sm" id="saveSeqBtn" style="flex:none;width:50px">Save</button></div>
-        <div class="list" id="seqList"></div>
-      </div>
-    </details>
+        <div class="mini" id="pathCast" style="display:none"></div>
 
-    <details class="sec"><summary>Director — auto-coverage <span class="ico">&#9656;</span></summary>
-      <div class="body">
-        <label class="fld">Recipes</label>
-        <div class="chips" id="coverage"></div>
-        <div class="mini" id="covIntent"></div>
-        <div id="covPlan"></div>
-        <div class="mini" id="covHint">A recipe is a head start, not a rule. Pick one, preview any setup, toggle off what you don&rsquo;t want &mdash; then plot it as dots on the path. With a path already down it only fills points you haven&rsquo;t set. Rolling always happens on the path.</div>
+        <!-- The director fills dots. It belongs under them, not in a tab of its own. -->
+        <details class="fold" id="covFold">
+          <summary><span id="covFoldLabel">Let the director plot the dots for you</span><span class="fchev">&#9656;</span></summary>
+          <div class="foldbody">
+            <div class="chips" id="coverage"></div>
+            <div class="mini" id="covIntent"></div>
+            <div id="covPlan"></div>
+            <div class="mini" id="covHint">A recipe is a head start, not a rule. Pick one, preview any setup, toggle off what you don&rsquo;t want. With dots already down it only fills the ones you haven&rsquo;t set &mdash; nothing you chose is overwritten.</div>
+          </div>
+        </details>
+
+        <div id="pathShoot" style="display:none">
+          <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every dot</button></div>
+          <div class="subrow">
+            <button class="btn sm on" id="autoFrameBtn" title="Give a dot a sensible setup when it has none of its own. Turn it off to keep your framing everywhere.">Auto-frame: ON</button>
+            <button class="btn sm" id="buildShotBtn" title="Export this path as a single start-and-end move with one spec">Start+end move</button>
+          </div>
+          <label class="fld">Saved runs</label>
+          <div class="row"><input id="seqName" type="text" placeholder="Name this run &mdash; e.g. Marina drone run"><button class="btn sm" id="saveSeqBtn" style="flex:none;width:50px">Save</button></div>
+          <div class="list" id="seqList"></div>
+        </div>
       </div>
     </details>
 
@@ -1961,15 +1982,59 @@ $('autoFrameBtn').onclick=function(){
 };
 // Setup controls are set-and-forget once a path exists — give the stations the room.
 let pathSetupOpen=false;
+// Roll, Auto-frame, Start+end and the saved runs cannot do anything until dots exist.
+// Showing them anyway is how a panel of nine controls reads as clutter instead of a
+// sequence. They arrive when there is something to shoot.
 function syncPathPanelMode(){
   const setup=$('pathSetup'), sum=$('pathSummary'); if(!setup||!sum)return;
-  const has=!!S.path;
+  const has=!!S.path, pts=has?S.path.points:[];
   const show=!has||pathSetupOpen;
   setup.style.display=show?'':'none';
   sum.style.display=has?'flex':'none';
   if(has){ const ct=CAMERA_TYPES[S.cameraType]||CAMERA_TYPES.drone;
     $('pathSummaryTxt').textContent='New dots: '+plainType(S.cameraType)+' \u00b7 '+S.pathDuration.toFixed(1)+'s move';
     $('pathEdit').textContent=pathSetupOpen?'Done':'Edit'; }
+  const shoot=$('pathShoot'); if(shoot)shoot.style.display=pts.length?'':'none';
+
+  // The Roll button says what it is about to do to the dots that are actually there.
+  const rb=$('rollStationsBtn');
+  if(rb&&pts.length){
+    const done=pts.filter(p=>p.locked).length;
+    rb.textContent=(done>=pts.length)?'\u21bb Re-shoot all '+pts.length+' dots'
+      :'\u25b6 Roll all '+pts.length+' dot'+(pts.length===1?'':'s');
+  }
+
+  // The fold's label is the offer, and the offer changes with what you have.
+  const fl=$('covFoldLabel');
+  if(fl){
+    const open=pts.filter(p=>!p.locked&&!p.cam).length;
+    fl.textContent=!pts.length ? 'Or let the director plot the dots for you'
+      : open ? ('Let the director set up '+open+' open dot'+(open===1?'':'s'))
+             : 'Every dot has a shot \u2014 the director has nothing left to fill';
+  }
+
+  // The gesture the user reached for by clicking a stand-in four times along a road.
+  const PC=$('pathCast');
+  if(PC){
+    const tv=travellerCount(), nm=S.markers.length;
+    if(!pts.length||!nm){ PC.style.display='none'; }
+    else {
+      PC.style.display='';
+      PC.className='mini'+(tv?'':' warn');
+      PC.innerHTML=tv
+        ? tv+' of '+nm+' stand-in'+(nm===1?'':'s')+' ride'+(tv===1?'s':'')+' this path \u2014 they move with the camera between dots.'
+        : nm+' stand-in'+(nm===1?' is':'s are')+' placed, but none ride this path. Cast can travel with '+
+          'the camera between dots \u2014 <span class="lnk" id="pathCastGo">send '+(nm===1?'it':'them')+' along</span>.';
+      const go=$('pathCastGo');
+      if(go)go.onclick=()=>{
+        S.markers.forEach(m=>{m.travels=true;});
+        travelCast(STN.active>=0?STN.active:0);
+        renderMarkerList(); renderPathList();
+        toast(nm===1?'\u201c'+S.markers[0].shotType+'\u201d now travels the path'
+                    :'All '+nm+' stand-ins now travel the path');
+      };
+    }
+  }
 }
 // Plotting or removing a dot changes the shape of the cut, so the strip has to know.
 function renderPathList(){
@@ -2241,6 +2306,8 @@ $('buildShotBtn').onclick=buildShot;
 const COV={plan:null,base:null,els:[]};
 function getCurrentQuiet(){const q=S._quiet;S._quiet=true;try{getCurrent();}finally{S._quiet=q;}}
 function openSectionByLabel(lbl){const i=RAIL.findIndex(o=>o.meta&&o.meta.label===lbl);if(i>=0)activateSection(i);}
+// The director lives inside Path now, so "go to coverage" means open Path and unfold it.
+function openCoverageFold(){ openSectionByLabel('Path'); const f=$('covFold'); if(f)f.open=true; }
 function covStepSummary(st){return SHOT_SIZES[st.size].label+' · '+st.lens+'mm · '+st.angle;}
 function planCoverage(key){
   const cov=COVERAGE[key]; if(!cov)return;
@@ -3706,7 +3773,7 @@ function saveShot(){
   const name=$('shotName').value.trim()||('Shot '+(S.shots.length+1));
   S._savingShot=true; const cap=capture(); S._savingShot=false;
   S.shots.push({name,spec:buildSpec(cap.id||undefined,undefined,cap),thumb:cap.url}); $('shotName').value=''; renderShots(); toast('Saved: '+name);
-  coach('tip_coverage','Block a whole scene at once — the Coverage director plans pro coverage around this framing.','Coverage',()=>openSectionByLabel('Coverage'));
+  coach('tip_coverage','Block a whole scene at once \u2014 the director in Path plots pro coverage around this framing.','Path',()=>openCoverageFold());
 }
 function reorderShots(from,to){
   if(from===to||from<0||to<0||from>=S.shots.length||to>=S.shots.length)return;
@@ -4622,16 +4689,17 @@ const ICONS={
   export: '<path d="M12 15.8V4.2M8.4 7.8 12 4.2l3.6 3.6"/><path d="M4.4 15.4v3.4a1.2 1.2 0 0 0 1.2 1.2h12.8a1.2 1.2 0 0 0 1.2-1.2v-3.4"/>'
 };
 // The rail is the order you actually work in: find the place, choose the shot, put
-// people in it, lay the path they're shot along, then light, look, coverage, cut, out.
+// people in it, lay the path they're shot along and the coverage across it, then light,
+// look, cut, out. Coverage lost its own stop because it never had its own output — every
+// recipe it runs ends as dots on the path, so it lives under them.
 // Dividers only — no headings. A heading in a column of buttons reads as a dead button.
 const SECTION_META=[
   {match:'scout',         icon:svgIcon(ICONS.scout),  label:'Scout'},
   {match:'block the shot',icon:svgIcon(ICONS.camera), label:'Camera', div:true},
   {match:'cast &',        icon:svgIcon(ICONS.cast),   label:'Cast'},
-  {match:'cameras &',     icon:svgIcon(ICONS.path),   label:'Path'},
+  {match:'path &',        icon:svgIcon(ICONS.path),   label:'Path'},
   {match:'light',         icon:svgIcon(ICONS.light),  label:'Light', div:true},
   {match:'style &',       icon:svgIcon(ICONS.look),   label:'Style'},
-  {match:'director',      icon:svgIcon(ICONS.cover),  label:'Coverage'},
   {match:'post',          icon:svgIcon(ICONS.shots),  label:'Post', div:true},
   {match:'capture &',     icon:svgIcon(ICONS.export), label:'Export'}
 ];
@@ -4695,7 +4763,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming,
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
-  buildPathSpec,flyToParams,syncCamUI,getCurrent};
+  buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
 </script>
