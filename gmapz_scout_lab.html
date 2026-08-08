@@ -511,6 +511,7 @@ function loadCesiumFallback(){
   .cellopen .tnum.open{background:#1a1a20;color:var(--faint);}
   #timeline > div .tnum.free{background:#1a1a20;color:var(--emerald);font-size:9px;}
   .cutopen{color:var(--yellow);font-weight:600;}
+  .cutwarn{display:block;margin-top:4px;color:#fbbf24;font-weight:600;}
   #timeline > div .tbeat{position:absolute;top:3px;right:3px;z-index:2;font-size:8px;padding:1px 4px;
     border-radius:99px;background:rgba(0,0,0,.66);color:var(--dim);letter-spacing:.04em;}
   #timeline > div .tnum{position:absolute;top:3px;left:3px;z-index:2;min-width:15px;height:15px;padding:0 3px;
@@ -775,18 +776,30 @@ function loadCesiumFallback(){
 
     <details class="sec"><summary>Capture &amp; export <span class="ico">&#9656;</span></summary>
       <div class="body">
+        <label class="fld">The export</label>
+        <div class="row"><button class="btn y" id="bundleBtn" title="The frames, the animatic, the specs and the prompts &mdash; one file, filenames already matching">Export the cut (.zip)</button></div>
+        <div class="mini" id="bundleWhat"></div>
+        <div class="mini" id="bundleProg"></div>
+        <div class="row"><button class="btn" id="continuityBtn" title="Light, repeated framings and delivery drift across the whole cut">Check the cut</button></div>
+
+        <label class="fld">This frame on its own</label>
+        <div class="row"><button class="btn" id="specBtn">Spec only &mdash; gmapz.capture.v2.1 (.json)</button></div>
+        <div class="row"><button class="btn" id="i2vBtn">Prompt studio &mdash; this frame, all engines</button></div>
+        <div class="row"><button class="btn" id="scenePrompt">Sequence prompts &mdash; the whole cut</button></div>
         <label class="fld">Default engine tab</label>
         <div class="chips" id="engines"></div>
-        <div class="row"><button class="btn" id="i2vBtn">Prompt studio &mdash; this frame, all engines</button></div>
-        <div class="row"><button class="btn" id="specBtn">Export gmapz.capture.v2 (.json)</button></div>
-        <label class="fld">Studio handoffs</label>
-        <div class="row"><button class="btn vcs" id="vcsBtn" title="VCS-15 continuity handoff (.md) &mdash; drops straight into the VCS-15 section parser">VCS-15 (.md)</button><button class="btn vco" id="vcoBtn" title="Director&rsquo;s Chair project (.json) &mdash; brief, world bible, shot list and tags">Director&rsquo;s Chair</button></div>
-        <div class="row"><button class="btn vco" id="wbBtn" title="World Builder / Visual Co project (.json) &mdash; your captured frames arrive as scenes with their images attached, so importing costs no API key">World Builder (.json)</button></div>
-        <div class="row"><button class="btn" id="scenePrompt">Sequence prompts &mdash; the whole cut</button></div>
-        <label class="fld">Hand off the whole cut</label>
-        <div class="row"><button class="btn y" id="bundleBtn" title="Every frame, every prompt, every spec — one file, filenames already matching">Export the cut (.zip)</button></div>
-        <div class="mini" id="bundleProg"></div>
-        <div class="row"><button class="btn" id="continuityBtn">Check continuity</button></div>
+
+        <details class="fold" id="handoffFold">
+          <summary><span>Studio handoffs &mdash; VCS-15, Director&rsquo;s Chair, World Builder</span><span class="fchev">&#9656;</span></summary>
+          <div class="foldbody">
+            <div class="mini">Built, tested against the real loaders, and parked while the frames and the animatic get finished. Nothing here is gone &mdash; it is just not what this tool is for today.</div>
+            <div class="row" style="margin-top:8px"><button class="btn vcs" id="vcsBtn" title="VCS-15 continuity handoff (.md) &mdash; drops straight into the VCS-15 section parser">VCS-15 (.md)</button><button class="btn vco" id="vcoBtn" title="Director&rsquo;s Chair project (.json) &mdash; brief, world bible, shot list and tags">Director&rsquo;s Chair</button></div>
+            <div class="row"><button class="btn vco" id="wbBtn" title="World Builder / Visual Co project (.json) &mdash; your captured frames arrive as scenes with their images attached, so importing costs no API key">World Builder (.json)</button></div>
+            <div class="subrow"><button class="btn sm" id="handoffZip" title="Add all three to the cut zip. Off by default &mdash; the World Builder project re-encodes every frame, which is most of the zip time.">In the zip: OFF</button></div>
+          </div>
+        </details>
+
+        <label class="fld">Session</label>
         <div class="row"><button class="btn sm" id="sessionSave">Save session</button><button class="btn sm" id="sessionLoadBtn">Load session</button><button class="btn sm" id="sessionNew" title="Clear the autosaved session and start clean" style="flex:none;width:44px">New</button><input id="sessionFile" type="file" accept=".json" style="display:none"></div>
       </div>
     </details>
@@ -1013,27 +1026,50 @@ function subjectPhrase(c){
 const cap1=t=>t.charAt(0).toUpperCase()+t.slice(1);
 function atmosPhrase(a){return {clear:'crisp clear air',haze:'soft atmospheric haze',golden:'warm golden atmosphere',blue:'cool blue-hour atmosphere',storm:'heavy storm light, dense air',night:'deep night atmosphere'}[a]||'';}
 // What this place, at this hour, in this weather would actually sound like.
+// Everything here is derived from the clock, the weather and the geometry. Scout has no
+// idea whether a place is urban or rural, so it never says. The previous version opened
+// every bed with "steady city ambience, traffic a few streets away" and said it over a
+// rural lake, because it was written against a Chicago demo.
 function soundscape(sp){
   const lt=sp.light, look=sp.look, subj=sp.subjects||[];
   const beds=[];
   const night=lt.phase==='night', quiet=night||lt.phase==='blue';
-  beds.push(quiet?'low city hum, distant and sparse':'steady city ambience, traffic a few streets away');
+  // How far the camera is from what it is pointed at. Pre-2.1 specs kept it in altitude_m.
+  const dist=(sp.camera.target_distance_m!==undefined)?sp.camera.target_distance_m:(sp.camera.altitude_m||0);
+  // Above the ground, which is a different question from how far away the subject is.
+  const agl=(sp.camera.height_above_ground_m!=null)?sp.camera.height_above_ground_m:null;
+  const aloft=(agl!=null)?agl>60:Math.abs(sp.camera.pitch_deg)>55;
+  const close=dist>0&&dist<=25;                 // near enough to hear detail, not just presence
+
+  beds.push(quiet?'open air after dark, sparse and low':'open-air ambience, wind and distance');
   if(look.atmosphere==='storm')beds.push('wind gusting in the open, low thunder rolling under it, rain hiss on hard surfaces');
   else if(look.atmosphere==='haze')beds.push('air thick and muffled, sound carrying short');
   else if(look.atmosphere==='golden')beds.push('warm evening air, birds settling');
-  else if(night)beds.push('night insects, an occasional far-off siren');
-  if(subj.some(s=>s.type==='prop'))beds.push('a vehicle passing close, tyre noise on the surface');
-  if(subj.some(s=>s.type==='person'))beds.push('footsteps and clothing movement near the camera');
-  if(Math.abs(sp.camera.pitch_deg)>55)beds.push('height ambience — wind aloft, ground sound thinned and distant');
+  else if(night)beds.push('night insects, sparse and far apart');
+  // A subject 2.5 km away does not make footsteps you can hear.
+  if(subj.some(s=>s.type==='prop'||s.type==='vehicle'))
+    beds.push(close?'a vehicle passing close, tyre noise on the surface'
+                   :'vehicle movement at distance, no close detail');
+  if(subj.some(s=>s.type==='person'))
+    beds.push(close?'footsteps and clothing movement near the camera'
+                   :'human presence in the distance, no close detail');
+  if(aloft)beds.push('height ambience \u2014 wind aloft, ground sound thinned and distant');
   return {
     spec:'gmapz.audio.v1',
     location:{lat:sp.location.lat,lng:sp.location.lng,name:sp.location.name||''},
     time:{date:lt.date,time:lt.time,tz:lt.tz,phase:lt.phase},
     weather:look.atmosphere,
     bed:beds,
-    perspective:Math.abs(sp.camera.pitch_deg)>55?'aerial — sound distant and wind-dominated':'ground level — close detail present',
+    camera_distance_m:dist||null,
+    height_above_ground_m:agl,
+    perspective:aloft?'aerial \u2014 sound distant and wind-dominated'
+      :close?'ground level, close to the subject \u2014 close detail present'
+            :'ground level at distance \u2014 presence without close detail',
     exclude:['music','score','narration','dialogue'],
-    note:'PLANNED from location, clock and weather — not a recording of this place.'
+    // Say what this WAS derived from, so a reader knows what it is not.
+    derived_from:['date/time','sun phase','atmosphere','camera distance','camera height','subjects placed'],
+    note:'PLANNED from clock, weather and camera geometry \u2014 not a recording of this place, '+
+         'and Scout does not know whether this location is urban or rural.'
   };
 }
 function audioLine(sp){ return soundscape(sp).bed.join('; ')+'.'; }
@@ -3531,6 +3567,14 @@ $('vcsBtn').onclick=()=>{const sp=buildSpec();downloadText(vcs15(),sp.id+'_vcs15
 // ShotsStage renders {shot.camera} directly as a React child, so camera has to be a
 // string or the stage throws. The full objects ride alongside as camera_spec /
 // light_spec, so a machine reader loses nothing to a human-readable one.
+// With no scene written, say so in English instead of pasting a raw enum next to raw
+// coordinates. The old one produced: "A medium at 45.799, -95.557 in day light."
+function autoLogline(sp){
+  const size=((SHOT_SIZES[sp.camera.shot_size]||{}).label||sp.camera.shot_size||'shot').toLowerCase();
+  const where=sp.location.name||(sp.location.lat.toFixed(3)+', '+sp.location.lng.toFixed(3));
+  const light={day:'daylight',golden:'golden hour',blue:'blue hour',night:'night'}[sp.light.phase]||sp.light.phase;
+  return 'Location scout \u2014 '+size+' on '+where+' in '+light+'. No scene written yet.';
+}
 function dcCameraLine(sp){
   const c=sp.camera;
   return [c.lens_mm+'mm ('+c.fov_deg+'\u00b0)', c.shot_size, c.angle+' angle',
@@ -3555,7 +3599,7 @@ async function vco(){
   return {
     brief:{
       title:(sp.location.name||'Scouted location')+' \u2014 '+rows.length+' shot'+(rows.length===1?'':'s'),
-      logline:sp.scene_description||('A '+sp.camera.shot_size+' at '+sp.location.lat.toFixed(3)+', '+sp.location.lng.toFixed(3)+' in '+sp.light.phase+' light.'),
+      logline:sp.scene_description||autoLogline(sp),
       format:'Pre-vis sequence \u00b7 '+sp.delivery.aspect,
       tone:st.name,
       duration:total.toFixed(1)+'s across '+rows.length+' setup'+(rows.length===1?'':'s'),
@@ -3697,6 +3741,7 @@ async function exportWorldBuilder(){
 function checkContinuity(){
   if(S.shots.length<2){toast('Save at least two shots first');return;}
   let warn=0; const lines=['LIGHT CONTINUITY',''];
+  const iss=cutIssues();
   S.shots.forEach((sh,i)=>{const lt=sh.spec.light;lines.push('Shot '+(i+1)+' \u2014 '+sh.name+': '+lt.phase+' (el '+lt.sun_elevation_deg+'\u00b0 / az '+lt.sun_azimuth_deg+'\u00b0 @ '+lt.time+')');});
   lines.push('');
   for(let i=1;i<S.shots.length;i++){
@@ -3707,8 +3752,25 @@ function checkContinuity(){
     else if(de>15||da>45){lines.push('\u26a0 Shot '+i+'\u2192'+(i+1)+': sun shifts '+de.toFixed(0)+'\u00b0 elev / '+da.toFixed(0)+'\u00b0 az \u2014 reads as a time jump');warn++;}
     if(a.date!==b.date){lines.push('\u26a0 Shot '+i+'\u2192'+(i+1)+': different date ('+a.date+' vs '+b.date+')');warn++;}
   }
-  lines.push(''); lines.push(warn?(warn+' continuity flag(s). Re-time the flagged shots or note it as an intentional time jump.'):'No flags \u2014 light is consistent across the sequence.');
-  showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span><h3>Continuity check</h3>'+
+  // Light was never the only thing that can be wrong with a sequence.
+  lines.push(''); lines.push('FRAMING', '');
+  lines.push(iss.n+' shot'+(iss.n===1?'':'s')+' \u00b7 '+iss.distinct+' distinct camera setup'+(iss.distinct===1?'':'s'));
+  if(iss.dupes.length){
+    iss.dupes.forEach(g=>{
+      lines.push('\u26a0 Shot '+(g.of+1)+' is repeated by '+g.also.map(i=>'shot '+(i+1)).join(', ')+
+        ' \u2014 same place, heading, tilt, lens and size');
+      warn++;
+    });
+    lines.push('  Coverage cuts on change. Repeats hold the same picture twice in the animatic.');
+  } else lines.push('No repeated framings \u2014 every shot is its own setup.');
+  lines.push(''); lines.push('DELIVERY', '');
+  if(iss.aspects.length>1){
+    lines.push('\u26a0 The cut changes aspect: '+iss.aspects.join(' \u2192 ')+
+      '. cut.json locks the first one, so the rest disagree with their own world lock.');
+    warn++;
+  } else lines.push('One delivery across the cut: '+(iss.aspects[0]||'\u2014')+'.');
+  lines.push(''); lines.push(warn?(warn+' flag(s) across light, framing and delivery.'):'No flags \u2014 light, framing and delivery are consistent across the sequence.');
+  showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span><h3>Cut check</h3>'+
     '<div class="out">'+escapeHtml(lines.join('\n'))+'</div>'+
     (warn?'<div class="row" style="margin-top:10px"><button class="btn y" id="relightBtn">Re-shoot every shot under shot 1\u2019s light</button></div>'+
           '<div class="mini">Frames are genuinely re-captured, so the pictures and the specs stay honest \u2014 nothing is relabelled.</div>':''));
@@ -3844,6 +3906,35 @@ function cutCells(){
   pts.forEach((p,i)=>{ if(!done.has(i)&&!locked.has(i))out.push({open:true,station:i}); });
   return out;
 }
+// Two shots that put the camera in the same place with the same lens are one shot and a
+// duplicate. The user's real cut had eleven shots and four distinct cameras — one of them
+// used five times — and nothing anywhere mentioned it. It simply made an animatic that
+// stuttered on the same picture.
+function sameFraming(a,b){
+  if(!a||!b||!a.camera||!b.camera)return false;
+  const A=a.camera, B=b.camera;
+  const near=(x,y,t)=>Math.abs((x||0)-(y||0))<=t;
+  const arc =(x,y,t)=>Math.abs(((x||0)-(y||0)+540)%360-180)<=t;   // 359° and 1° are 2° apart
+  return A.shot_size===B.shot_size && arc(A.heading_deg,B.heading_deg,3) &&
+         near(A.pitch_deg,B.pitch_deg,3) && near(A.lens_mm,B.lens_mm,2) &&
+         near(a.location.lat,b.location.lat,0.0002) &&
+         near(a.location.lng,b.location.lng,0.0002);
+}
+// What is wrong with this cut, as opposed to what is wrong with one frame in it.
+function cutIssues(){
+  const cut=S.shots.filter(s=>s.spec);
+  const groups=[];
+  cut.forEach((sh,i)=>{
+    const hit=groups.find(g=>sameFraming(cut[g.of].spec,sh.spec));
+    if(hit)hit.also.push(i); else groups.push({of:i,also:[]});
+  });
+  const dupes=groups.filter(g=>g.also.length);
+  return {n:cut.length,
+          dupes,
+          repeats:dupes.reduce((a,g)=>a+g.also.length,0),
+          distinct:groups.length,
+          aspects:[...new Set(cut.map(s=>s.spec.delivery&&s.spec.delivery.aspect).filter(Boolean))]};
+}
 function cutTally(){
   const pts=(S.path&&S.path.points)||[];
   const locked=new Set(S.shots.map(s=>s.stationIdx).filter(i=>i!==undefined));
@@ -3860,8 +3951,14 @@ function renderCutTally(){
   if(t.points)bits.push(t.points+' point'+(t.points===1?'':'s')+' \u00b7 '+t.locked+' locked');
   if(t.open)bits.push('<b class="cutopen">'+t.open+' open</b>');
   if(t.free)bits.push(t.free+' free-roam');
+  const iss=cutIssues(), warns=[];
+  if(iss.repeats)warns.push(iss.repeats+' shot'+(iss.repeats===1?'':'s')+' repeat'+(iss.repeats===1?'s':'')+
+    ' a framing you already have \u2014 '+iss.n+' shots, '+iss.distinct+' distinct camera'+(iss.distinct===1?'':'s'));
+  if(iss.aspects.length>1)warns.push('delivery changes mid-cut ('+iss.aspects.join(' \u2192 ')+
+    ') \u2014 the animatic will letterbox differently shot to shot');
   el.innerHTML=bits.join(' \u00b7 ')+' \u2014 the take and the GIF render the '+
-    t.frames+' filled cell'+(t.frames===1?'':'s')+', left to right.';
+    t.frames+' filled cell'+(t.frames===1?'':'s')+', left to right.'+
+    (warns.length?'<b class="cutwarn">\u26a0 '+warns.join('<br>\u26a0 ')+'</b>':'');
 }
 function cellFilled(sh,i){
   const c=sh.spec.camera, lt=sh.spec.light;
@@ -4334,10 +4431,12 @@ async function exportBundle(){
         camera_type:sh.spec.camera.camera_type||null, lens_mm:sh.spec.camera.lens_mm,
         shot_size:sh.spec.camera.shot_size, angle:sh.spec.camera.angle}))
     },null,2))});
-    files.push({name:'vcs15.md', bytes:utf8(vcs15(first))});
-    files.push({name:'directors_chair.json', bytes:utf8(JSON.stringify(await vco(),null,2))});
-    say('Building the World Builder project\u2026');
-    files.push({name:'worldbuilder.json', bytes:utf8(JSON.stringify(await worldBuilderProject(),null,2))});
+    if(S.handoffs){
+      files.push({name:'vcs15.md', bytes:utf8(vcs15(first))});
+      files.push({name:'directors_chair.json', bytes:utf8(JSON.stringify(await vco(),null,2))});
+      say('Building the World Builder project\u2026');
+      files.push({name:'worldbuilder.json', bytes:utf8(JSON.stringify(await worldBuilderProject(),null,2))});
+    }
     files.push({name:'README.txt', bytes:utf8(
       'GMAPz Scout \u2014 cut handoff\n'+
       '='.repeat(34)+'\n\n'+
@@ -4354,13 +4453,15 @@ async function exportBundle(){
       'cut.json   the sequence itself: order, beats, and the shared world lock.\n'+
       'previs.gif the cut as a looping animatic, one frame per shot, at your beats.\n'+
       '           PREVIS ONLY \u2014 blocking playback, not generated motion.\n'+
+      (S.handoffs?
       'vcs15.md   VCS-15 continuity handoff. Its section headings match the\n'+
       '           VCS-15 parser exactly \u2014 open it there as-is.\n'+
       'directors_chair.json\n'+
       '           Director\u2019s Chair project: brief, world bible, shot list, tags.\n'+
       'worldbuilder.json\n'+
       '           World Builder / Visual Co project. Every scene already carries its\n'+
-      '           image, so importing it calls no model and costs no API key.\n\n'+
+      '           image, so importing it calls no model and costs no API key.\n'
+      :'')+'\n'+
       'Everything here is PLANNED and AUTHORITATIVE \u2014 blocking authored in Scout.\n'+
       'Nothing in it was observed from generated footage. Speaker attribution is\n'+
       'UNKNOWN at pre-vis and is not guessed at.\n')});
@@ -4378,6 +4479,24 @@ async function exportBundle(){
   finally{ btn.disabled=false; }
 }
 $('bundleBtn').onclick=exportBundle;
+// The handoffs cost real time in the zip — World Builder re-encodes every frame as JPEG —
+// and they are parked, so they are opt-in and the choice is remembered.
+try{ S.handoffs=localStorage.getItem('gmapz_handoffs')==='1'; }catch(_){ S.handoffs=false; }
+function syncHandoffBtn(){
+  const b=$('handoffZip'); if(!b)return;
+  b.textContent='In the zip: '+(S.handoffs?'ON':'OFF');
+  b.classList.toggle('on',!!S.handoffs);
+  const w=$('bundleWhat');
+  if(w)w.textContent='Frames \u00b7 previs.gif \u00b7 specs \u00b7 prompts \u00b7 cut.json'+
+    (S.handoffs?' \u00b7 VCS-15 \u00b7 Director\u2019s Chair \u00b7 World Builder':'');
+}
+$('handoffZip').onclick=()=>{
+  S.handoffs=!S.handoffs;
+  try{localStorage.setItem('gmapz_handoffs',S.handoffs?'1':'0');}catch(_){}
+  syncHandoffBtn();
+  toast(S.handoffs?'Studio handoffs will ride along in the zip':'Zip is frames, animatic, specs and prompts');
+};
+syncHandoffBtn();
 
 function reportPage(entry,i,total){
   const sp=entry.spec, c=sp.camera, lt=sp.light, lk=sp.look, dl=sp.delivery;
@@ -4755,11 +4874,11 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   lookFilter,setViewLut,nounList,countNoun,plural,
   worldBuilderProject,exportWorldBuilder,toJpegBase64,framePalette,sunSide,castLookPrompt,
   dcCameraLine,dcLightLine,nextPrompt,ENGINE_BUILDERS,continuityClause,gifPalette,
-  continuityEntry,CAMERA_TYPES,SHOT_SIZES,
+  continuityEntry,CAMERA_TYPES,SHOT_SIZES,autoLogline,
   cutCells,cutTally,renderCutTally,renderTimeline,cellOpen,cellFilled,
   buildTakeGif,subjectName,registerUpload,trimAlpha,removeUpload,UPLOADS,
   sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,stepRig,
-  exportBundle,makeZip,frameFileName,specFileName,slugify,crc32,
+  exportBundle,makeZip,frameFileName,specFileName,slugify,crc32,cutIssues,sameFraming,syncHandoffBtn,
   relight:relightSequence,buildReport,checkContinuity,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
