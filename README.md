@@ -2,8 +2,9 @@
 
 Photorealistic **location-scouting + shot-blocking** for AI filmmaking. Fly a virtual camera
 over real Earth, block a shot like a DP, lock the real sun, drop in cast/prop stand-ins,
-capture the actual rendered frame, and export a structured shot spec that i2v engines and
-the rest of the Mobile Hollywood pipeline (VCS-15, VCO) can read.
+capture the actual rendered frame, assemble the frames into a cut, and export that cut —
+frames, animatic and machine-readable specs — for i2v engines and the rest of the Mobile
+Hollywood pipeline (VCS-15, VCO, World Builder).
 
 **The map is not the product. The captured reference frame + the shot spec are the product.**
 
@@ -22,11 +23,17 @@ explains the one-time fix if you forget).
 
 ### Keys (optional, pasted into the Scout panel)
 
-| Key | Gets you |
-|---|---|
-| Google Map Tiles API key | Photorealistic 3D Earth |
-| Cesium ion token | World terrain + OSM buildings (fallback) |
-| *no keys* | Keyless ESRI satellite imagery — everything still works |
+| Key | Gets you | Status pill |
+|---|---|---|
+| Google **Map Tiles API** key | Photorealistic 3D Earth, real building geometry | green ✓ |
+| Cesium ion token | World terrain + OSM buildings (fallback) | green ✓ |
+| *no keys* | Keyless ESRI satellite — flat 2D drape, no geometry | amber ◇ |
+| a key that doesn't work | flat 2D drape, and a **red banner** saying so | red ✕ |
+
+Only photoreal gets a tick. If a key you supplied is rejected the app says it in red, on the
+stage, and names the API to enable — it will never quietly fall back and look like success.
+Google's console lists hundreds of APIs and **Map Tiles API** is the only one that works here;
+a key that's valid for Maps JavaScript, Static Maps, Places or Geocoding is still rejected.
 
 Paste a key into the **Google Map Tiles API key** field in the Scout panel and hit
 **Apply keys & reload Earth**. It's remembered on that device and auto-loads next time.
@@ -68,18 +75,28 @@ rendered frame** → open the Prompt Studio / export the spec.
   lat/lon/heading/tilt/range params, saved camera looks, live director's slate HUD.
 - **Real light** — physically accurate sun from date + time, golden/blue-hour finder,
   light-continuity checker across a shot sequence.
-- **Director auto-coverage** — pick a recipe (Classic, Fincher, Handheld, Documentary,
-  Aerial Epic), get an editable shot plan around your framing: preview each setup, toggle
-  any off, re-anchor, then roll. Shots land in the sequence with your locked light.
+- **Path & coverage** — drag a camera type (drone, dolly, crane, FPV…) onto the globe and
+  plot dots; each dot owns its own rig, framing and cast. Underneath them, the director
+  will fill any dots you haven't set from a recipe (Classic, Fincher, Handheld,
+  Documentary, Aerial Epic) — preview each setup, toggle any off, then roll them all.
+  Nothing you set is ever overwritten. Cast can ride the path with the camera.
 - **Cast & props** — ghost-cursor placement, drag / scale / rotate / raise, photo-avatar
   stickers, everything renders into the captured frame.
-- **Camera paths** — drag a camera type (drone, dolly, crane, FPV…) onto the globe, draw a
-  move, and build a shot: start frame + end frame + path bundle + all-engine prompts.
+- **Start+end move** — export a path as a single move: start frame + end frame + path
+  bundle + all-engine prompts.
 - **Prompt Studio** — one capture feeds engine-native prompts for Runway Gen-4, Kling,
   Veo 3 (with audio line), Sora, Luma, and Grok Imagine. Tabbed, editable, per-engine
   tips, copy / copy-all / download bundle.
-- **Exports** — `gmapz.capture.v2` spec (JSON), VCS-15 handoff (.md), VCO / Director's
-  Chair project (.json), contact sheet PNG, PDF blocking report, full session save/load.
+- **The export** — one `.zip` of the cut: the real captured frames, a looping `previs.gif`
+  animatic at your beats, a `gmapz.capture.v2.1` spec per frame, engine-native prompt
+  documents naming their start frames, and `cut.json`. Plus contact sheet PNG, PDF
+  blocking report, full session save/load.
+- **Check the cut** — catches repeated framings (same place, heading, tilt, lens and size),
+  delivery drift mid-cut, and light-continuity jumps, with a genuine re-shoot offered as
+  the fix rather than a relabel.
+- **Studio handoffs** (folded away, opt-in) — VCS-15 (.md), VCO / Director's Chair (.json),
+  World Builder / Visual Co (.json). Built and verified against the real loaders; parked
+  while the frames and the animatic get finished.
 
 Schemas and controlled vocabularies live in [`GMAPZ_SPEC_STACK.md`](GMAPZ_SPEC_STACK.md).
 Project rules live in [`CLAUDE.md`](CLAUDE.md). The phased build playbook that produced
@@ -91,7 +108,8 @@ this tool is [`prompts.md`](prompts.md).
 `O` orbit the framed subject (drag to circle, scroll to dolly) · `T` top-down / oblique ·
 `[` `]` Dutch roll · `\` level horizon · `V` framing guides (thirds, level, sun-in-frame) ·
 double-click to recenter and ease in ·
-`Arrows` pan · `+ −` zoom (wheel dives at the cursor) · `R` reset · `L` load KML · `?` help ·
+`Arrows` pan · `+ −` zoom (wheel dives at the cursor) · `R` reset · `L` view LUT ·
+`K` load KML · `?` help ·
 `Alt+scroll` raise/lower selected prop · on-stage shutter (Shift-click = HQ) ·
 `Cmd/Ctrl+Z` undo · `Esc` exits any mode
 

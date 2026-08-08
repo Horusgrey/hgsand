@@ -866,3 +866,152 @@ hand the next person a false finding.
 
 Suites: strip 38 · LUT 29 · beat 4 · noun 10 · gaps 15 · orphan 15 · QA 45 — all green,
 zero page errors, shakedown findings back to zero.
+
+---
+
+# The port — the lab lands, and the constitution catches up
+
+Three passes ran in the lab and all three are now in `gmapz_scout.html`. The lab copy is
+gone: it existed so an unproven idea couldn't break the shipped file, and keeping a
+byte-identical duplicate afterwards is worse than deleting it — two files that must be
+edited in lockstep silently diverge the first time somebody forgets. The next experiment
+forks again with one command:
+
+```bash
+cp gmapz_scout.html gmapz_scout_lab.html
+```
+
+Everything below is in the shipped file, verified against it, not against the lab.
+
+## Pass A — the app stops lying about where it is
+
+**A rejected Google key wore a green tick.** `reloadEarth` caught the failure, fired a toast
+that vanished in four seconds, then set the persistent pill to `✓ ESRI satellite (keyless)` —
+which, at `max-width:24vw` with `text-overflow:ellipsis`, the user actually read as
+
+    ✓ ESRI satellite (add a Google key for photorea…
+
+A tick, and the half of the sentence that mattered cut off. Eleven shots were made on flat 2D
+drape by someone who believed they had photoreal 3D. There are now four earth states that
+cannot be confused, only photoreal wears a tick, the pill cannot truncate, and a rejected key
+puts a red banner on the stage naming **Map Tiles API** and explaining that a key valid for
+Maps JavaScript or Geocoding is still refused here. Tile failures *after* the manifest loads
+flip it too, so a half-authorised key can't sit there looking green while nothing streams.
+
+**The look-at point was on the ellipsoid.** `flyToParams` used
+`Cartesian3.fromDegrees(lon,lat)` — no third argument, so sea level. Lake Rachel is ~425 m
+ASL, which means every "look here" aimed a quarter-kilometre underground and at low tilt
+dragged the camera down after it. That is "the ground level places u in the ground". The
+surface is sampled now, "look here" remembers the elevation it measured, and a camera that
+would stand below eye height is lifted to it.
+
+That fix immediately produced its own finding: asked for Chicago on the keyless build,
+Cesium answers **−5483 m**. With no terrain provider the globe mesh is a coarse
+triangulation of a sphere, and a coarse triangle's chord sits hundreds of metres below the
+surface it approximates — `globe.getHeight` said −449 m, `sampleHeight` read −5483 m off the
+depth buffer, and both move as tiles refine. Aiming at those would have made the keyless
+build worse than it started. So flat drape short-circuits to 0, where the imagery genuinely
+is painted, and samples outside −450…9000 m are discarded as not-places-on-Earth.
+
+**`camera.altitude_m` was not an altitude.** It was `S.range`, the orbit distance from the
+camera to the look-at point, so a recorded `60` was a camera 5.2 m off the ground and `4500`
+was 2581 m. Every altitude in every spec, prompt and handoff was wrong by sin(tilt). The
+camera block also carried the *target's* lat/lng under the heading "camera". Now `camera{}`
+is where the camera is, `location{}` is what it aims at, and the orbit distance is
+`target_distance_m`. Spec revision 2.1, with `recallCamera()` detecting pre-2.1 files and
+reading them the old way so nothing reopens in the wrong place.
+
+**`subjects[].height_m` was the raise-above-ground offset**, which nobody sets, so every
+subject in every export read 0. It is the stand-in's actual stature now, `width_m` beside
+it, and the raise under its own name.
+
+Also: `ground_elevation_m` sampled instead of hardcoded 0, and `location.earth_source` so an
+export can never again imply geometry it did not have.
+
+## Pass B — Coverage moves inside Path
+
+Coverage was never a sibling of Path. Every recipe it runs ends as dots on the path — its own
+hint text said so, and `plotRecipe` finished with `openSectionByLabel('Path')`, the app
+admitting in code that completing the thought means going to the other tab. Meanwhile Roll
+lived in Path and the thing that fills the dots Roll shoots lived somewhere else.
+
+The director is a fold under the dots now, labelled with what it will actually do to the dots
+that exist: *"Or let the director plot the dots for you"* → *"Let the director set up 2 open
+dots"* → *"Every dot has a shot — nothing left to fill"*. Nothing was removed; the five
+recipes are still the only place a shot-size progression is written down and they still plot
+a fresh sequence from cold. The rail went from nine stops to eight.
+
+Three more things that panel was doing to people. It showed all nine controls at once, when
+Roll, Auto-frame, Start+end and the saved runs can do nothing before a path exists — they
+arrive with the dots now, and Roll says what it is about to do. "Sequence presets" sat feet
+from "Recipes" meaning something else entirely; it is **Saved runs**. And the reason a
+stand-in got clicked four more times along a road: the user wanted the character to travel,
+that feature exists as a Travel toggle buried in a selected marker's expanded controls in a
+different panel, and the app never mentioned it. The path now says out loud when cast is
+placed and none of it is riding, with one click to send them along.
+
+## Pass C — the cut is the export
+
+The constitution has said it since the first commit — *the map is not the product* — and the
+Export panel had it upside down: three studio handoffs above the fold, the cut zip beneath
+them, and every zip paying to base64-encode every frame into a World Builder project whether
+anyone wanted one. The panel leads with the cut now: frames, `previs.gif`, specs, prompts,
+`cut.json`, README. VCS-15, Director's Chair and World Builder are folded away and off by
+default, with one toggle to put all three back, and a README that describes only the files
+actually present.
+
+Because the animatic is the product, the cut's integrity is the product's integrity — and the
+real Lake Rachel cut had eleven shots and four distinct cameras, one repeated five times,
+with nothing anywhere saying so. It just stuttered on the same picture. It also flipped 16:9
+to 2.39:1 halfway through while `cut.json` declared 16:9 as the world lock. Both are caught
+live above the strip now. Two setups within 3° of heading and tilt, 2 mm of lens and ~20 m of
+ground are the same shot; a 1° nudge is not new coverage. **Check continuity** grew FRAMING
+and DELIVERY sections and is **Check the cut**, because light was never the only thing that
+can be wrong with a sequence.
+
+And the prose that was confidently wrong about a rural lake. The soundscape opened every bed
+with *"steady city ambience, traffic a few streets away"* — Scout has never known whether a
+location is urban; it was written against a Chicago demo. It emitted *"footsteps and clothing
+movement near the camera"* because a person existed somewhere in the scene, with the camera
+2.5 km away. It called the perspective *"ground level"* from 1.4 km up, keyed on tilt alone.
+And with no scene written the logline read *"A medium at 45.799, -95.557 in day light."* All
+four now derive from what Scout knows — clock, weather, camera distance, camera height — and
+the bed carries a `derived_from` list so a reader can see what it was and wasn't built on.
+
+## One more, found while writing the docs
+
+`L` was bound twice in the same `else if` chain: KML first, LUT second and therefore
+unreachable. The on-stage hint bar said `L LUT`, the button's tooltip said `(L)`, and
+pressing `L` opened a file picker. The view LUT is the monitor-truth device — the thing that
+shows the grade you are about to bake in — and it had no working shortcut at all. `L` is the
+LUT now, KML moved to `K`, and both the hint bar and the help table say so.
+
+## What the port cost
+
+Nothing failed. All four suites were re-run against `gmapz_scout.html` itself, not the lab:
+
+| suite | assertions | covers |
+|---|---|---|
+| `core` | 44 | the whole loop, end to end |
+| `truthtest` | 57 | earth state, ground truth, spec honesty |
+| `pathtest` | 35 | the merged Path panel |
+| `exporttest` | 52 | the zip, cut integrity, prose |
+| `keytest` | 6 | shortcuts do what the hints promise |
+
+194 assertions, zero failures, zero page errors. The zip suite walks the real central
+directory of the real `.zip` rather than spying on an internal — the first version spied on
+`gmapz.makeZip` and never fired, because `exportBundle` calls the closure directly.
+
+`CLAUDE.md`, `README.md` and `TESTING.md` are current with all of it. The constitution's
+stack line claimed Vite + Tailwind, which has never been true of the shipped product; it now
+describes the single file that actually exists, and carries the ground-truth rules, the
+earth-state table and the parked-work order.
+
+## Still parked, by the user's decision
+
+1. **Avatar / cast overhaul.**
+2. **Frame-by-frame motion capture** — capturing *during* the fly rather than only at locked
+   dots, so the GIF is the shot moving rather than a slideshow of its beats. A real build:
+   deterministic camera stepping instead of animated flight, waiting for tiles per frame,
+   cast interpolating on the same clock, and a size story, since GIF caps out fast.
+3. **Unparking the studio handoffs.**
