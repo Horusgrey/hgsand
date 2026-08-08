@@ -1,31 +1,44 @@
 # GMAPz Scout — Spec Stack
 
 The data contracts GMAPz Scout emits. One capture produces a frame plus a structured
-record; everything else is a **view** of that record for a downstream tool. The frame +
-`gmapz.capture.v2` are the product — the prompt, the VCS-15 handoff, and the VCO project
-are derived from it.
+record; everything else is a **view** of that record for a downstream tool. The frames and
+`gmapz.capture.v2.1` are the product; the cut zip is how they leave the building.
 
 ```
-                          ┌──────────────────────────┐
-   block the shot  ─────► │  gmapz.capture.v2 (core) │ ─────► reference_frame.png
-                          └────────────┬─────────────┘
-                                       │  derived views
-              ┌────────────────────────┼────────────────────────┐
-              ▼                        ▼                         ▼
-        i2v prompt (txt)        VCS-15 handoff (.md)        VCO project (.json)
-              │                        │                         │
-              └──────────── session.json wraps state + markers + looks + shots ┘
+                          ┌────────────────────────────┐
+   block the shot  ─────► │  gmapz.capture.v2.1 (core) │ ─────► reference_frame.png
+                          └─────────────┬──────────────┘
+                                        │  derived views
+        ┌───────────────────────────────┼───────────────────────────────┐
+        ▼                               ▼                               ▼
+  the cut (.zip)                 i2v prompt (txt)              studio handoffs
+  frames · previs.gif                                     VCS-15 · Director's Chair
+  specs · prompts · cut.json                              World Builder  (PARKED,
+        │                               │                  opt-in — see §5)
+        └──────────── session.json wraps state + markers + looks + shots ┘
 ```
+
+The zip is the primary deliverable. The three studio handoffs are built and verified against
+their real loaders but are **off by default**, both as buttons (folded away) and in the zip
+(`In the zip: OFF`). Their contracts in §4–5.1 are still current; they are simply not what
+the tool leads with today.
 
 ---
 
-## 1. Core contract — `gmapz.capture.v2`
+## 1. Core contract — `gmapz.capture.v2.1`
 
-Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved shot.
+Emitted by **Spec only — gmapz.capture.v2.1 (.json)** and embedded inside every saved shot.
+
+> **2.1 is a semantic correction, not an addition.** Up to v2, `camera.lng/lat` held the
+> *look-at* point and `camera.altitude_m` held the *orbit distance* — so a recorded
+> `altitude_m: 60` was a camera 5.2 m off the ground and `4500` was 2581 m, wrong by
+> sin(tilt) every time. In 2.1 **`camera{}` is where the camera is** and **`location{}` is
+> what it aims at**, and the orbit distance has its own name. Read the migration note under
+> the field table before consuming either revision.
 
 ```json
 {
-  "spec": "gmapz.capture.v2",
+  "spec": "gmapz.capture.v2.1",
   "id": "cap1719360000000",
   "captured_at": "2026-06-26T17:00:00.000Z",
 
@@ -33,13 +46,19 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
     "name": "Marina City Chicago",
     "lng": -87.6345,
     "lat": 41.8885,
-    "ground_elevation_m": 0
+    "ground_elevation_m": 181.4,
+    "earth_source": "google_photoreal_3d",
+    "geometry": "3d"
   },
 
   "camera": {
-    "lng": -87.6345,
-    "lat": 41.8885,
-    "altitude_m": 650,
+    "lng": -87.6398,
+    "lat": 41.8832,
+    "altitude_m": 316.5,
+    "height_above_ground_m": 135.1,
+    "aim_lng": -87.6345,
+    "aim_lat": 41.8885,
+    "target_distance_m": 650,
     "heading_deg": 30,
     "pitch_deg": -12,
     "roll_deg": 0,
@@ -63,11 +82,13 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
     "phase": "golden"
   },
 
-  "look":     { "style": "cinematic", "grade": "none", "atmosphere": "clear" },
+  "look":     { "style": "cinematic", "grade": "none", "atmosphere": "clear", "terrain_exaggeration": 1 },
   "delivery": { "aspect": "2.39:1", "resolution": [2048, 857], "capture_px": [996, 417] },
 
   "subjects": [
-    { "id": "m1719360000123", "type": "person", "label": "subject", "lng": -87.6346, "lat": 41.8884, "scale": 1, "height_m": 0 }
+    { "id": "m1719360000123", "type": "person", "label": "subject", "name": "Person 1",
+      "lng": -87.6346, "lat": 41.8884, "scale": 1,
+      "height_m": 1.8, "width_m": 0.66, "elevation_offset_m": 0 }
   ],
 
   "scene_description": "",
@@ -79,14 +100,19 @@ Emitted by **Export gmapz.capture.v2 (.json)** and embedded inside every saved s
 
 | Path | Type | Notes |
 |---|---|---|
-| `spec` | string | Always `gmapz.capture.v2`. Version gate for consumers. |
+| `spec` | string | `gmapz.capture.v2.1`. Version gate for consumers — see the migration note below. |
 | `id` | string | Stable per capture; also the PNG basename. |
 | `captured_at` | ISO 8601 | UTC timestamp. |
 | `location.name` | string | From the search field; may be empty. |
-| `location.lng/lat` | number | The look-at target (not the camera eye). |
-| `location.ground_elevation_m` | number | Reserved; `0` unless terrain-sampled. |
-| `camera.lng/lat` | number | Target the camera is framed on. |
-| `camera.altitude_m` | number | `range` — eye-to-target distance, not AGL height. |
+| `location.lng/lat` | number | The look-at target — the point on the ground the camera is aimed at. |
+| `location.ground_elevation_m` | number | **Real, sampled.** Metres above sea level at the aim point. Honestly `0` on flat imagery, where the drape genuinely is painted at sea level. |
+| `location.earth_source` | enum | **New in 2.1.** `google_photoreal_3d` / `cesium_terrain_osm` / `esri_flat_imagery`. Which Earth this frame was actually shot on. |
+| `location.geometry` | enum | **New in 2.1.** `3d` or `flat_2d_imagery`. A frame can never imply geometry it did not have. |
+| `camera.lng/lat` | number | **Changed in 2.1.** Where the camera *is*. Up to v2 this was the aim point. |
+| `camera.altitude_m` | number | **Changed in 2.1.** The camera's real altitude, metres above sea level. Up to v2 this field held the orbit distance. |
+| `camera.height_above_ground_m` | number \| null | **New in 2.1.** Camera height above the ground beneath it. `null` when the surface could not be sampled. |
+| `camera.aim_lng/aim_lat` | number | **New in 2.1.** The aim point, duplicated here so a consumer reading only `camera{}` still has both ends of the look vector. Same values as `location.lng/lat`. |
+| `camera.target_distance_m` | number | **New in 2.1.** Eye-to-target distance — the value v2 called `altitude_m`. This is the field to read for "how far from the subject". |
 | `camera.heading_deg` | number | 0 = north, clockwise. |
 | `camera.pitch_deg` | number | Negative = looking down (Cesium tilt). |
 | `camera.roll_deg` | number | Dutch-angle cant, ±30° (Camera panel slider · `[` `]` · `\` to level). `0` = level. Rendered into the frame and round-tripped through saved shots. |
@@ -117,12 +143,31 @@ you get. The LUT is a monitor control only — turning it off changes nothing ab
 | `subjects[]` | array | One per marker **that was visible when the shutter fired**. A path dot with its own cast list emits only the stand-ins in that list — the frame is the truth, so the spec never claims someone who wasn't in it. |
 | `subjects[].id` | string | Stable marker id, so a consumer can follow the same stand-in across shots. |
 | `subjects[].type` | string | `person` / `prop` / `light` / `vfx` (normalized from sticker). |
-| `subjects[].label` | string | The marker's assigned shot type. |
+| `subjects[].label` | string | The marker's assigned shot type (its *role*: `subject`, `foreground`, `background`…). Not unique. |
+| `subjects[].name` | string | **New in 2.1.** A distinct name per stand-in (`Person 1`, `Person 2`, `White Mini Cooper`). Use this to tell two of the same thing apart. |
 | `subjects[].lng/lat` | number | Ground position. |
-| `subjects[].scale` | number | Stand-in scale multiplier (1 = life-size: person 1.8m, vehicle 4.6m). |
-| `subjects[].height_m` | number | Raised height (Alt+scroll / slider / snap). |
+| `subjects[].scale` | number | Stand-in scale multiplier (1 = life-size). |
+| `subjects[].height_m` | number \| null | **Changed in 2.1.** How tall the thing IS, in metres, after scale. Up to v2 this field held the raise-above-ground offset, which nobody sets — so every subject in every v2 export reads `0`. `null` for stand-ins with no real-world size (a pin). |
+| `subjects[].width_m` | number \| null | **New in 2.1.** How wide/long it is, after scale. |
+| `subjects[].elevation_offset_m` | number | **New in 2.1.** How far it was raised off the ground (Alt+scroll / slider / snap) — the value v2 called `height_m`. |
 | `scene_description` | string | Free text from the Style panel. |
 | `reference_frame` | string | `<id>.png` — the captured frame this record describes. |
+
+### Migrating a v2 (or v1) record
+
+Detect by presence, not by string compare — `camera.target_distance_m === undefined` means
+pre-2.1. Then:
+
+| you want | pre-2.1 | 2.1 |
+|---|---|---|
+| the aim point | `camera.lng/lat` | `location.lng/lat` (or `camera.aim_lng/aim_lat`) |
+| eye-to-target distance | `camera.altitude_m` | `camera.target_distance_m` |
+| the camera's real altitude | *not recorded* | `camera.altitude_m` |
+| a stand-in's real size | *not recorded* | `subjects[].height_m` / `width_m` |
+| how far a stand-in was raised | `subjects[].height_m` | `subjects[].elevation_offset_m` |
+
+Scout does this itself in `recallCamera(spec)` and `camDistance(camera)`, so reopening an
+old project puts the camera back exactly where it was.
 
 
 ---
@@ -136,7 +181,7 @@ needs. `cut.json` is its index:
 {
   "spec": "gmapz.cut.v1",
   "exported_at": "<ISO8601>",
-  "location": { "...": "same shape as capture.v2 location" },
+  "location": { "...": "same shape as capture.v2.1 location" },
   "world_lock": { "light": {}, "look": {}, "delivery": {} },
   "shots": [
     { "n": 1, "name": "Pt 1 — Start · Drone",
@@ -231,15 +276,15 @@ bundle concatenates all engines:
   "spec": "gmapz.shot.v1",
   "id": "shot_<ms>",
   "created": "<ISO8601>",
-  "start": { "...gmapz.capture.v2 (camera.move = \"path\")..." : "..." },
-  "end":   { "...gmapz.capture.v2..." : "..." },
+  "start": { "...gmapz.capture.v2.1 (camera.move = \"path\")..." : "..." },
+  "end":   { "...gmapz.capture.v2.1..." : "..." },
   "path": {
     "spec": "gmapz.path.v1",
     "camera_type": "drone",
     "camera_feel": "smooth aerial drone shot, …",
     "duration_seconds": 4,
     "length_m": 180,
-    "points": [ { "lng": 0, "lat": 0, "altitude_m": 120 } ],
+    "points": [ { "lng": 0, "lat": 0, "height_above_ground_m": 120, "ground_elevation_m": 181.4 } ],
     "bearing_start_deg": 30,
     "bearing_end_deg": 42,
     "start_frame": "<id>.png",
@@ -288,7 +333,8 @@ FORGE block:
   "fps": 24,
   "resolution": [2048, 857],
   "world_lock": {
-    "location": { "name": "", "lng": -87.6345, "lat": 41.8885, "ground_elevation_m": 0 },
+    "location": { "name": "", "lng": -87.6345, "lat": 41.8885, "ground_elevation_m": 181.4,
+                   "earth_source": "google_photoreal_3d" },
     "heading_deg": 30, "sun_azimuth_deg": 296.4, "sun_elevation_deg": 6.2
   },
   "characters": [ { "label": "subject", "planned": true } ],
@@ -474,7 +520,7 @@ survive a reload).
   "looks":   [ { "name": "Tower low", "target": {"lat": 0,"lon": 0}, "head": 30, "tilt": 6, "range": 240, "fov": 40, "sensor": "s35", "roll": -8, "shotSize": "close", "angle": "low" } ],
   "path":    { "points": [ { "lon": 0, "lat": 0, "ct": "crane", "color": "#f472b6", "cam": { "lensMm": 35, "shotSize": "wide", "angle": "high" }, "cast": ["marker-id"] } ] },
   "uploads": { "up1": { "name": "Courier", "kind": "person", "w": 0.72, "h": 1.8, "img": "data:image/png;base64,…" } },
-  "shots":   [ { "name": "01 — establish", "spec": { "...gmapz.capture.v2..." }, "beat": 2, "stationIdx": 0, "thumb": "data:image/png;base64,…" } ]
+  "shots":   [ { "name": "01 — establish", "spec": { "...gmapz.capture.v2.1..." }, "beat": 2, "stationIdx": 0, "thumb": "data:image/png;base64,…" } ]
 }
 ```
 
@@ -503,14 +549,27 @@ carries its `roll` / `shotSize` / `angle` so a Dutched close-up comes back Dutch
 
 ## 8. Version delta
 
-| | v1 | v2 |
-|---|---|---|
-| `spec` | `gmapz.capture.v1` | `gmapz.capture.v2` |
-| `camera.sensor` | `"full-frame"` (fixed) | film-back label |
-| `camera.sensor_width_mm` | — | **added** |
-| session | `v:1`, no looks | `v:3`, `looks[]` + `state.sensor` + `path` + `uploads` + per-shot `beat`/`stationIdx` |
+| | v1 | v2 | v2.1 |
+|---|---|---|---|
+| `spec` | `gmapz.capture.v1` | `gmapz.capture.v2` | `gmapz.capture.v2.1` |
+| `camera.sensor` | `"full-frame"` (fixed) | film-back label | film-back label |
+| `camera.sensor_width_mm` | — | **added** | |
+| `camera.lng/lat` | the aim point | the aim point | **the camera** |
+| `camera.altitude_m` | orbit distance | orbit distance | **real altitude ASL** |
+| `camera.target_distance_m` | — | — | **added** (the old `altitude_m`) |
+| `camera.height_above_ground_m` | — | — | **added** |
+| `camera.aim_lng/aim_lat` | — | — | **added** |
+| `location.ground_elevation_m` | literal `0` | literal `0` | **sampled** |
+| `location.earth_source` / `geometry` | — | — | **added** |
+| `subjects[].name` | — | — | **added** |
+| `subjects[].height_m` | raise offset | raise offset | **real stature** |
+| `subjects[].width_m` | — | — | **added** |
+| `subjects[].elevation_offset_m` | — | — | **added** (the old `height_m`) |
+| session | `v:1`, no looks | `v:3`, `looks[]` + `state.sensor` + `path` + `uploads` + per-shot `beat`/`stationIdx` | |
 
 Consumers keying on `spec` should accept `v1` and treat missing `sensor_width_mm` as `36`.
+**v2.1 is the only revision in which the field names mean what they say** — see the
+migration table in §1 before reading a camera position out of an older record.
 
 **2026-07 polish build:** adds `grok` to the engine enum, real values in `camera.move`
 (coverage moves + `path`), the Prompt Studio bundle format (§3), and the `gmapz.shot.v1` /
