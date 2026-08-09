@@ -429,24 +429,41 @@ function loadCesiumFallback(){
   .pstn{padding:8px 10px;}
   /* A row you aren't working on is a summary. Only the active one opens up — the same
      rule the cast list follows, so ten dots read as a list, not ten stacked panels. */
-  .pglance{margin-left:8px;font-family:ui-monospace,monospace;font-size:9.5px;color:var(--faint);
-    letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* Columns, not a sentence. Every row's lens lands under every other row's lens, so five
+     dots read at a glance — and the framing can no longer take the ellipsis and cut off in
+     a different place on every line ("est…", "mediu…", "hi…"). */
+  .pstn>.t{display:grid;grid-template-columns:20px minmax(0,1fr) 62px 54px;
+    align-items:center;gap:6px;}
+  .pname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;}
+  .pglance{font-family:ui-monospace,monospace;font-size:9.5px;color:var(--faint);
+    letter-spacing:.02em;white-space:nowrap;text-align:right;overflow:hidden;}
+  /* The header is the key to the columns, so it uses the same grid. */
+  .phead{display:grid;grid-template-columns:20px minmax(0,1fr) 62px 54px;gap:6px;
+    padding:5px 10px 4px;font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);border-bottom:1px solid var(--line);margin-bottom:2px;}
+  .phead span:nth-child(3){text-align:right;}
+  .plegend{display:flex;flex-wrap:wrap;gap:4px 11px;padding:6px 10px 2px;font-size:9px;
+    color:var(--faint);letter-spacing:.02em;}
+  .plegend i{display:inline-flex;align-items:center;gap:4px;font-style:normal;}
+  .plegend b{width:8px;height:8px;border-radius:50%;flex:none;}
+  .plegend .ring{background:transparent;box-shadow:inset 0 0 0 2px currentColor;}
   .pstn.act .pglance{color:var(--yellow);}
   .pstn.done .pglance{color:#7fd8b4;}
   .pstn:not(.act) .popt,.pstn:not(.act) .pcast,.pstn:not(.act) .prow{display:none;}
   .pstn:not(.act){cursor:pointer;}
   .pstn:not(.act):hover{border-color:#3a3a42;}
-  .pstn.act .pglance{display:none;}
   .pstn.act{border-color:rgba(250,204,21,.7);box-shadow:0 0 0 3px rgba(250,204,21,.10);}
   .pstn.done{border-color:rgba(52,211,153,.45);}
-  .pnum{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex:none;
-    border-radius:5px;background:#26262c;color:var(--dim);font-size:10px;font-weight:700;margin-right:7px;
+  /* The number wears its rig's colour — the same fill the dot has on the map — and its
+     STATE as a ring around it, so one glance answers both questions at once. */
+  .pnum{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:none;
+    border-radius:50%;background:#26262c;color:#0a0a0a;font-size:10px;font-weight:700;
     font-family:ui-monospace,monospace;}
-  .pstn.act .pnum{background:var(--yellow);color:#1a1500;}
-  .pstn.done .pnum{background:var(--emerald);color:#04231a;}
+  .pstn.done .pnum{box-shadow:0 0 0 2px var(--emerald);}
+  .pstn.act .pnum{box-shadow:0 0 0 2px var(--yellow);}
   /* the state tag never wraps or gets pushed off by a long glance line */
   .pstn .pst{flex:none;white-space:nowrap;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);}
-  .pstn .t>span:first-child{display:flex;align-items:center;min-width:0;}
+  .pstn .t>.pst{justify-self:end;}
   .pstn.done .pst{color:var(--emerald);}
   .tag.tvon{color:var(--emerald);background:rgba(52,211,153,.12);}
   .uprow{display:flex;gap:14px;align-items:flex-start;margin-bottom:12px;}
@@ -907,15 +924,28 @@ const COVERAGE={
     {name:'Crane reveal',size:'wide',angle:'high',lens:35,dHead:120,move:'crane down'},
     {name:'Low hero',size:'medium',angle:'low',lens:50,dHead:180,move:'push-in'}]}
 };
-const CAMERA_TYPES={
-  drone:    {label:'\ud83d\udef8 Drone',     feel:'smooth aerial drone shot, gentle float, no jitter, cinematic stability',           defaultAlt:120, glyph:'\ud83d\udef8', color:'#60a5fa'},
-  handheld: {label:'\ud83d\udcf9 Handheld',  feel:'handheld camera, subtle natural shake, lived-in framing, organic motion',          defaultAlt:1.6, glyph:'\ud83d\udcf9', color:'#fb923c'},
-  dolly:    {label:'\ud83c\udfac Dolly',     feel:'dolly track move, perfectly smooth lateral or in-and-out motion, locked horizon', defaultAlt:1.6, glyph:'\ud83c\udfac', color:'#a78bfa'},
-  crane:    {label:'\u2728 Crane',           feel:'crane move, sweeping vertical arc, controlled tilt change, epic scale reveal',    defaultAlt:8,   glyph:'\u2728', color:'#f472b6'},
-  steady:   {label:'\ud83d\udeb6 Steadicam', feel:'steadicam follow, fluid floating motion, perfectly smoothed walking pace',         defaultAlt:1.6, glyph:'\ud83d\udeb6', color:'#34d399'},
-  fpv:      {label:'\u26a1 FPV',             feel:'first-person view drone, fast aggressive motion, dynamic banking, immersive',     defaultAlt:30,  glyph:'\u26a1', color:'#facc15'},
-  locked:   {label:'\ud83d\udd12 Locked',    feel:'locked-off tripod, no camera motion, only world moves through frame',              defaultAlt:1.6, glyph:'\ud83d\udd12', color:'#a1a1aa'}
+// A dot's colour is a fact about the rig, and only that. Three families, because three is
+// what you can read at a glance on a map; the seventh hue told you nothing the glyph and
+// the label didn't, and two of them collided with the colours that carry STATE — emerald
+// for "this dot has a frame" and yellow for "the camera is here now".
+const RIG_FAMILY={
+  aerial:{color:'#60a5fa',label:'Aerial',  note:'drone, FPV, crane'},
+  ground:{color:'#f59e0b',label:'Ground',  note:'handheld, dolly, steadicam'},
+  static:{color:'#71717a',label:'Static',  note:'locked-off, tripod'}
 };
+const CAMERA_TYPES={
+  drone:    {label:'\ud83d\udef8 Drone',     feel:'smooth aerial drone shot, gentle float, no jitter, cinematic stability',           defaultAlt:120, glyph:'\ud83d\udef8', family:'aerial'},
+  handheld: {label:'\ud83d\udcf9 Handheld',  feel:'handheld camera, subtle natural shake, lived-in framing, organic motion',          defaultAlt:1.6, glyph:'\ud83d\udcf9', family:'ground'},
+  dolly:    {label:'\ud83c\udfac Dolly',     feel:'dolly track move, perfectly smooth lateral or in-and-out motion, locked horizon', defaultAlt:1.6, glyph:'\ud83c\udfac', family:'ground'},
+  crane:    {label:'\u2728 Crane',           feel:'crane move, sweeping vertical arc, controlled tilt change, epic scale reveal',    defaultAlt:8,   glyph:'\u2728', family:'aerial'},
+  steady:   {label:'\ud83d\udeb6 Steadicam', feel:'steadicam follow, fluid floating motion, perfectly smoothed walking pace',         defaultAlt:1.6, glyph:'\ud83d\udeb6', family:'ground'},
+  fpv:      {label:'\u26a1 FPV',             feel:'first-person view drone, fast aggressive motion, dynamic banking, immersive',     defaultAlt:30,  glyph:'\u26a1', family:'aerial'},
+  locked:   {label:'\ud83d\udd12 Locked',    feel:'locked-off tripod, no camera motion, only world moves through frame',              defaultAlt:1.6, glyph:'\ud83d\udd12', family:'static'}
+};
+// Every rig resolves to its family's colour. A per-dot override still wins over both.
+Object.keys(CAMERA_TYPES).forEach(k=>{
+  CAMERA_TYPES[k].color=RIG_FAMILY[CAMERA_TYPES[k].family].color;
+});
 const plainType=t=>(CAMERA_TYPES[t]||CAMERA_TYPES.drone).label.replace(/^\W+\s*/,'');
 const PRESETS=[
   ['Marina City, Chicago',-87.6345,41.8885],['Times Square, NYC',-73.9855,40.7580],
@@ -1891,6 +1921,9 @@ function stationDefaultFraming(i){
     range:Math.max(60,Math.round(ct.defaultAlt*4)),fov:S.fov,lensMm:S.lensMm,
     sensor:S.sensor,roll:0,shotSize:S.shotSize,angle:S.angle};
 }
+// Camera department shorthand, so the column always fits: EWS / WS / MS / CU.
+const SIZE_CODE={ewide:'EWS',wide:'WS',medium:'MS',close:'CU'};
+const sizeCode=k=>SIZE_CODE[k]||String(k||'').slice(0,3).toUpperCase();
 function framingSummary(f){
   if(!f)return '';
   return fovToLens(f.fov)+'mm · '+(SHOT_SIZES[f.shotSize]?SHOT_SIZES[f.shotSize].label.toLowerCase():f.shotSize)+
@@ -2101,14 +2134,28 @@ function renderPathListInner(){
       toast(travellerCount()+' stand-in'+(travellerCount()===1?'':'s')+' ride this path — '+first.shotType+' selected');
     }; }
   L.appendChild(head);
+  // What each colour means, once, where the colours are. Three rig families fill the dot;
+  // the ring around it is its state. Nothing here is decoration.
+  const leg=document.createElement('div'); leg.className='plegend';
+  leg.innerHTML=Object.keys(RIG_FAMILY).map(k=>{const f=RIG_FAMILY[k];
+      return '<i title="'+f.note+'"><b style="background:'+f.color+'"></b>'+f.label+'</i>';}).join('')+
+    '<i style="color:var(--emerald)" title="This dot has a captured frame"><b class="ring"></b>shot</i>'+
+    '<i style="color:var(--yellow)" title="The camera is at this dot now"><b class="ring"></b>here</i>';
+  L.appendChild(leg);
+  const hdr=document.createElement('div'); hdr.className='phead';
+  hdr.innerHTML='<span>Pt</span><span>Point</span><span>Lens</span><span>State</span>';
+  L.appendChild(hdr);
   pts.forEach((p,i)=>{
     const d=document.createElement('div');
     d.className='item pstn'+(STN.active===i?' act':'')+(p.locked?' done':'');
     const shot=S.shots.find(s=>s.stationIdx===i);
-    d.innerHTML='<div class="t"><span style="display:flex;align-items:center"><b class="pnum">'+(i+1)+'</b>'+
-      (p.recipe?escapeHtml(p.recipe.split(' \u00b7 ').slice(-1)[0]):stationLabel(i))+
-      '<span class="pglance">'+pointCam(i).glyph+' '+(p.cam?framingSummary(p.cam):'not set')+'</span>'+
-      '</span><span class="pst">'+(p.locked?'\u2713 locked':(p.cam?'set':'open'))+'</span></div>'+
+    const fam=RIG_FAMILY[pointCam(i).family]||RIG_FAMILY.static;
+    d.innerHTML='<div class="t">'+
+      '<b class="pnum" style="background:'+pointColor(i)+'" title="'+fam.label+' rig \u2014 '+fam.note+'">'+(i+1)+'</b>'+
+      '<span class="pname" title="'+escapeHtml(plainType(pointCamType(i)))+'">'+
+        pointCam(i).glyph+' '+(p.recipe?escapeHtml(p.recipe.split(' \u00b7 ').slice(-1)[0]):stationLabel(i))+'</span>'+
+      '<span class="pglance">'+(p.cam?fovToLens(p.cam.fov)+'mm \u00b7 '+sizeCode(p.cam.shotSize):'not set')+'</span>'+
+      '<span class="pst">'+(p.locked?'\u2713 locked':(p.cam?'set':'open'))+'</span></div>'+
       '<div class="popt">'+
         '<input class="pcol" type="color" value="'+pointColor(i)+'" title="Dot colour \u2014 follows the camera type until you pick one. Shift-click to put it back.">'+
         '<select class="psct" title="Which rig shoots this point">'+
@@ -4884,7 +4931,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   relight:relightSequence,buildReport,checkContinuity,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
-  setStationOpt,saveStationFraming,captureFraming,
+  setStationOpt,saveStationFraming,captureFraming,RIG_FAMILY,
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode};
 }

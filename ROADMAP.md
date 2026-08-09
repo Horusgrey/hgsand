@@ -1015,3 +1015,79 @@ earth-state table and the parked-work order.
    deterministic camera stepping instead of animated flight, waiting for tiles per frame,
    cast interpolating on the same clock, and a size story, since GIF caps out fast.
 3. **Unparking the studio handoffs.**
+
+---
+
+# The One Road model, applied
+
+`design/GMAPz_One_Road_Sequence_Model.pptx` — the user's own product model, now kept in the
+repo because it had been uploaded twice and lost twice to container recycling. It is a design
+document, so it belongs in git.
+
+Audited against the shipped app first. Its five build-order items are all done:
+
+| # | Move | Status |
+|---|---|---|
+| 1 | Camera type per dot | shipped — `p.ct`, `pointCamType`, per-dot rig select |
+| 2 | Coverage → presets that plot dots | shipped, and folded under the dots in Pass B |
+| 3 | Save / load sequence preset | shipped as **Saved runs** |
+| 4 | Dot colour by camera type | shipped — but the colours collided (below) |
+| 5 | Per-dot cast | shipped — cast chips per station |
+
+Slide 6's "already built — keep" list also survives intact. So the delta was never function.
+It was the two design laws the deck states and the app was breaking.
+
+## A colour meant two things at once
+
+The deck's legend is unambiguous: aerial blue, ground amber, static grey fill the dot — and
+separately, emerald means *this station has a captured frame*, yellow means *the camera is here
+now*. The globe already drew it that way (fill = rig, ring = state). The palette did not:
+
+```
+steady    #34d399   the same emerald as "shot locked"
+fpv       #facc15   the same yellow as "active station"
+handheld  #fb923c   the VCS-15 lineage orange, spoken for elsewhere
+```
+
+So a steadicam dot and a locked-off shot were the same green, and an FPV dot was
+indistinguishable from the dot you were standing on. Seven hues for seven rigs was not
+information; it was noise that happened to overlap the two colours carrying state.
+
+Three families now, three hues, and the state channel gets its colours back. Every rig resolves
+to `RIG_FAMILY[...].color`; a per-dot override still beats both. The rule is in `CLAUDE.md`:
+**never spend a state colour on a category.**
+
+## The row was a sentence, so it truncated in a different place every time
+
+Name and framing ran together inline with `text-overflow: ellipsis` on the glance, which meant
+the list read:
+
+```
+1  Aerial context  🛸 24mm · est…      ✓ LOCKED
+2  High pull-back  ✨ 35mm · wide · hi…    SET
+3  Eye-level medium 🔒 50mm · mediu…       SET
+```
+
+Three rows, three different truncation points, nothing aligned. The deck lays it out as columns
+— PT, the point, its lens, its state — because columns are the reason you can read five rows at
+once. Now:
+
+```
+PT  POINT                LENS       STATE
+ 1  🛸 Aerial context     24mm · EWS  ✓ LOCKED
+ 2  ✨ High pull-back     35mm · WS        SET
+ 3  🔒 Eye-level medi…    50mm · MS        SET
+```
+
+Values that share a column get **shortened to fit** — EWS / WS / MS / CU, which is what a camera
+department calls them anyway — rather than cut off. The only thing allowed to ellipsis is a
+name, which is a label and not a warning. Above the list: a legend for the three families and
+the two ring states, and a column header. Below the fold, the expanded controls are unchanged.
+
+Two rules were dropped rather than kept as decoration: the deck's zebra striping, which never
+won against `.item`'s own background and is redundant next to bordered rows; and
+`.pstn.act .pglance{display:none}`, which blanked the active row's lens cell and left a hole
+where the eye now expects a number.
+
+Suites: core 44 · truth 57 · path 52 · export 52 · key 6 — **211 assertions, zero failures,
+zero page errors.**

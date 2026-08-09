@@ -128,6 +128,22 @@ dots, labelled with what they will do to the dots that exist right now. They sti
 sequence from cold. "Saved runs" are the user's own named sequences — never call those presets,
 the word already belongs to the recipes.
 
+### The One Road model (`design/GMAPz_One_Road_Sequence_Model.pptx`)
+The user's own product model, and the reason the panel is shaped this way. **One sequence
+object: a path of stations. Everything else is a way to fill it.** All five of its build-order
+items are shipped — camera type per dot, recipes that plot dots, saved runs, dot colour by rig,
+per-dot cast — and its two design laws govern the dot list:
+
+- **A dot's fill is its rig family; the ring around it is its state.** Two channels, never one.
+  Three families only — `RIG_FAMILY`: aerial `#60a5fa` (drone, FPV, crane), ground `#f59e0b`
+  (handheld, dolly, steadicam), static `#71717a` (locked-off). Seven per-rig hues used to
+  include the emerald that means *this dot has a frame* and the yellow that means *the camera is
+  here now*, so a steadicam dot and a shot dot were the same green. **Never spend a state colour
+  on a category.** A per-dot override still beats both.
+- **The dot list is a table, not a sentence.** `Pt · Point · Lens · State` on one grid, so every
+  row's lens lands under every other row's. Values that share a column get shortened to fit
+  (`EWS / WS / MS / CU`) rather than truncated — the only thing allowed to ellipsis is a name.
+
 ## Export — the cut (.zip), the primary deliverable
 ```
 frames/     the real captured PNGs, numbered in cut order
