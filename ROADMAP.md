@@ -1091,3 +1091,42 @@ where the eye now expects a number.
 
 Suites: core 44 · truth 57 · path 52 · export 52 · key 6 — **211 assertions, zero failures,
 zero page errors.**
+
+---
+
+# There is one Scout, not three
+
+Worth stating plainly, because it is easy to believe otherwise after a session with a lab
+copy in it: the repo contains **one** file, `gmapz_scout.html`. The lab copy was a scratch
+surface and is deleted. What can look like three products is three *points in this file's
+history*, and any of them is one checkout away:
+
+| point | commit | what it is |
+|---|---|---|
+| v1 | `a9c243f` | the build the Lake Rachel test was shot on — 4,300 lines |
+| lab head | `c28a4ef` | last state of the experiment surface, before the port |
+| v2 | `622e04d` | truth + one Path panel + the cut as the export + One Road — 4,941 lines |
+
+```bash
+git checkout a9c243f -- gmapz_scout.html     # get v1's file back, without moving the branch
+```
+
+**Nothing was slimmed away.** Comparing the two builds by control surface:
+
+```
+controls at a9c243f : 181
+controls now        : 195
+removed             : 0
+added               : 14   (earthWarn, covFold, pathShoot, pathCast, cutTally,
+                            handoffFold, handoffZip, bundleWhat, upSize, …)
+```
+
+The file is **641 lines larger** than the one that felt clunky. What changed is not how much
+it can do — it is which of that is visible at any moment. Coverage went from a rival tab to a
+fold under the dots it fills; Roll, Auto-frame and Saved runs wait until there are dots to
+act on; the three studio handoffs are folded and off by default. Every one of them still
+works, and the suites prove it.
+
+Local tags `scout-v1-lake-rachel` and `scout-v2-one-road` mark the two ends. They exist in
+this clone only — the push credential for this repo accepts `refs/heads` but rejects
+`refs/tags`, so the commit SHAs above are the durable record.
