@@ -8,10 +8,29 @@ starred tests matter most.
 
 ## Setup
 
+Scout must be **served**, not double-clicked. Opened as a file it boots and looks fine, but
+Cesium's workers are blocked on `file://` — tiles never sharpen and ground height can't be
+measured. The app now says so in red rather than letting you shoot on it.
+
+**Mac / Linux** — in the folder holding the file:
+
 ```bash
 python3 -m http.server 8080
 # open http://localhost:8080/gmapz_scout.html
 ```
+
+**Chromebook** — the file lands in Downloads, which the Linux container can't see until you
+share it. Two steps, once:
+
+1. Open **Files**, right-click the **Downloads** folder → **Share with Linux**
+2. Open **Terminal** and paste:
+
+```bash
+cd /mnt/chromeos/MyFiles/Downloads && python3 -m http.server 8080
+```
+
+Then open **http://localhost:8080/** in Chrome and click the file. Leave the terminal open
+while you work; `Ctrl+C` stops it.
 
 Paste your **Google Map Tiles API key** into the Scout panel → **Apply keys & reload Earth**.
 

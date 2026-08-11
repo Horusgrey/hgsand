@@ -1317,6 +1317,31 @@ function setEarthMode(mode,detail){
 }
 setEarthMode('flat');
 
+// ---- Opened by double-click? ------------------------------------------------------
+// From file:// the app boots and the shutter works, but Cesium's workers cannot load
+// from a blob:null origin, so tiles never decode properly and ground sampling fails.
+// It LOOKS like it is working, which is the one failure mode this app refuses to have.
+if(location.protocol==='file:'){
+  const w=$('earthWarn');
+  if(w){
+    w.innerHTML='<b>This page was opened directly from a file, so Earth will not load properly.</b>'+
+      '<span>Cesium\u2019s workers are blocked on file:// \u2014 the globe appears but tiles never '+
+      'sharpen, ground height cannot be measured, and a Google key cannot be checked. '+
+      'Nothing you shoot from here is trustworthy.</span>'+
+      '<span><b>Serve the folder instead.</b> On Mac/Linux, in the folder holding this file: '+
+      '<span class="ew-why">python3 -m http.server 8080</span> then open '+
+      '<span class="ew-why">http://localhost:8080/</span></span>'+
+      '<span>On a Chromebook: in Files, right-click the folder \u2192 <b>Share with Linux</b>, then in '+
+      'Terminal <span class="ew-why">cd /mnt/chromeos/MyFiles/Downloads</span> and run the same command.</span>'+
+      '<button class="btn sm" id="earthWarnX">I understand \u2014 hide this</button>';
+    w.style.display='block';
+    const x=$('earthWarnX'); if(x)x.onclick=()=>{w.style.display='none';};
+  }
+  const pill=$('loadstat');
+  if(pill){ pill.classList.add('bad');
+    pill.innerHTML='\u2715 Opened as a file \u2014 Earth cannot load properly. Serve the folder instead.'; }
+}
+
 // ---- Google-Earth feel: render quality + camera controller tuning ----
 viewer.scene.postProcessStages.fxaa.enabled=true;
 try{viewer.scene.msaaSamples=4;}catch(_){}
@@ -5027,6 +5052,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming,RIG_FAMILY,
   cesiumVia:()=>window.CESIUM_VIA,
+  servedProperly:()=>location.protocol!=='file:',
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,
   testGoogleKey,diagnoseKey,TILES_ROOT};
