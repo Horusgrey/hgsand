@@ -38,6 +38,15 @@ a key that's valid for Maps JavaScript, Static Maps, Places or Geocoding is stil
 Paste a key into the **Google Map Tiles API key** field in the Scout panel and hit
 **Apply keys & reload Earth**. It's remembered on that device and auto-loads next time.
 
+**Not sure the key is right?** Hit **Test key** beside it. Scout asks Google's tile endpoint
+directly and repeats Google's own answer — API not enabled, no billing, referrer refused, or key
+not recognised — with the single thing to change. Same request Cesium makes first, so it costs
+nothing and doesn't start a billable session. The equivalent by hand is:
+
+```
+https://tile.googleapis.com/v1/3dtiles/root.json?key=YOUR_KEY
+```
+
 ### Using your Google key (and keeping it free)
 
 Photorealistic 3D Tiles is a Google "Enterprise" API, so it **requires a billing account

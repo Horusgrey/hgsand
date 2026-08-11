@@ -20,6 +20,20 @@ Paste your **Google Map Tiles API key** into the Scout panel → **Apply keys & 
 > JavaScript, Static Maps, Places or Geocoding will be **rejected** by this. See the README for
 > the quota cap that keeps the bill at $0.
 
+**Check the key before you Apply.** The Scout panel has a **Test key** button beside Apply. It
+asks Google's own tile endpoint whether this key can fetch Photorealistic 3D Tiles and repeats
+what Google says — API not enabled / no billing / referrer refused / key not recognised — with
+the one thing to go and change. It costs nothing: it fetches the same root manifest Cesium
+fetches first, no tiles, no reload.
+
+You can also ask Google directly in a browser tab:
+
+```
+https://tile.googleapis.com/v1/3dtiles/root.json?key=YOUR_KEY
+```
+
+JSON back with `asset` and `root` means the key works. Anything else, read the `error.message`.
+
 Wait for the status pill (top-left of the stage) to read **✓ Photoreal 3D Earth — real building
 geometry**. That green tick is the only state that means you have 3D.
 

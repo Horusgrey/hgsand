@@ -352,6 +352,16 @@ function loadCesiumFallback(){
   .fold[open]>summary .fchev{transform:rotate(90deg);}
   .foldbody{padding:10px 11px 11px;}
   .foldbody .covplan{margin-top:8px;}
+  /* Google's own words about the key, good or bad. Same colour language as everywhere
+     else: green only when it actually works. */
+  #keyVerdict{margin:2px 0 6px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel2);line-height:1.6;}
+  #keyVerdict.ok{border-color:rgba(52,211,153,.45);color:var(--emerald);}
+  #keyVerdict.bad{border-color:rgba(248,113,113,.5);color:#fca5a5;}
+  #keyVerdict.busy{color:var(--dim);}
+  #keyVerdict b{color:#fff;}
+  #keyVerdict .said{display:block;margin-top:6px;font-family:ui-monospace,Menlo,monospace;
+    font-size:9.5px;color:var(--faint);word-break:break-word;}
   .mini .lnk{color:var(--yellow);cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
   .mini .lnk:hover{color:#fde047;}
   #pathCast{margin:8px 0 2px;}
@@ -660,7 +670,8 @@ function loadCesiumFallback(){
         <label class="fld">Photoreal &amp; terrain keys (optional)</label>
         <div class="row"><input id="googleKey" type="text" placeholder="Google Map Tiles API key"></div>
         <div class="row"><input id="ionKey" type="text" placeholder="Cesium ion token"></div>
-        <div class="row"><button class="btn" id="applyKeys">Apply keys &amp; reload Earth</button></div>
+        <div class="row"><button class="btn" id="applyKeys">Apply keys &amp; reload Earth</button><button class="btn sm" id="testKey" style="flex:none;width:74px" title="Ask Google whether this key can fetch Photorealistic 3D Tiles, and repeat exactly what it says">Test key</button></div>
+        <div class="mini" id="keyVerdict" style="display:none"></div>
         <label class="fld">Terrain exaggeration <span id="exagVal" style="color:var(--dim);float:right">1.0&times;</span></label>
         <input id="exagSlider" type="range" min="1" max="5" step="0.5" value="1">
         <div class="mini">Google&rsquo;s key list runs to hundreds of entries and only one of them works here: enable
@@ -1453,6 +1464,63 @@ async function reloadEarth(){
   }
   setEarthMode(rejected?'rejected':'flat',rejected);
 }
+// The exact endpoint createGooglePhotorealistic3DTileset() hits first. Asking it directly
+// is the cheapest complete test of a key: one manifest request, no tiles, no reload.
+const TILES_ROOT='https://tile.googleapis.com/v1/3dtiles/root.json';
+// Google's refusals are specific and worth reading literally. Map each to the one thing
+// the user has to go and change, and keep Google's own sentence underneath it.
+function diagnoseKey(status,body){
+  const msg=((body&&body.error&&body.error.message)||'').trim();
+  const low=msg.toLowerCase();
+  if(/has not been used|is disabled|not enabled/.test(low)&&/tile/.test(low))
+    return {ok:false,head:'Map Tiles API is not enabled on this key\u2019s project.',
+      fix:'Console \u2192 APIs &amp; Services \u2192 Library \u2192 search <b>Map Tiles API</b> \u2192 Enable. '+
+          'It is not the same entry as Maps JavaScript, Maps Static, Places or Geocoding.',said:msg};
+  if(/billing/.test(low))
+    return {ok:false,head:'This project has no billing account.',
+      fix:'Photorealistic 3D Tiles is an Enterprise API: it needs a card on file even on the free tier. '+
+          'Console \u2192 Billing \u2192 link a billing account, then cap the daily quota (see the README).',said:msg};
+  if(/referer|referrer/.test(low))
+    return {ok:false,head:'The key\u2019s HTTP-referrer restriction is refusing this page.',
+      fix:'Either add <b>http://localhost:*</b> and <b>http://127.0.0.1:*</b> to the key\u2019s allowed referrers, '+
+          'or serve Scout over http:// rather than opening the file directly \u2014 a file:// page sends no referrer at all.',said:msg};
+  if(/api key not valid|invalid|expired|passed|api_key/.test(low)||status===400)
+    return {ok:false,head:'Google does not recognise this key.',
+      fix:'Check it copied whole, with no spaces or line breaks, and that it belongs to the project you enabled the API on.',said:msg};
+  if(status===403)
+    return {ok:false,head:'Google refused the key.',
+      fix:'Usually the Map Tiles API is not enabled, or an API restriction on the key excludes it.',said:msg};
+  return {ok:false,head:'The tile service answered with HTTP '+status+'.',
+    fix:'That is not a refusal Scout recognises \u2014 Google\u2019s own words are below.',said:msg||'(no message)'};
+}
+async function testGoogleKey(){
+  const box=$('keyVerdict'), btn=$('testKey');
+  const key=$('googleKey').value.trim();
+  box.style.display='';
+  if(!key){ box.className='mini'; box.innerHTML='Paste a key first. Without one Scout runs on keyless flat satellite, which works \u2014 it just has no building geometry.'; return; }
+  box.className='mini busy'; box.innerHTML='\u25cc Asking Google\u2026'; btn.disabled=true;
+  try{
+    const r=await fetch(TILES_ROOT+'?key='+encodeURIComponent(key));
+    let body=null; try{ body=await r.json(); }catch(_){}
+    if(r.ok&&body&&(body.root||body.asset)){
+      box.className='mini ok';
+      box.innerHTML='\u2713 <b>This key works.</b> Map Tiles API is enabled and billing is live. '+
+        'Apply keys &amp; reload Earth and the pill should go green.';
+    } else {
+      const d=diagnoseKey(r.status,body);
+      box.className='mini bad';
+      box.innerHTML='\u2715 <b>'+d.head+'</b><br>'+d.fix+'<span class="said">Google said: '+escapeHtml(d.said)+'</span>';
+    }
+  }catch(e){
+    // A network-level failure means the browser never got a readable answer — usually an
+    // extension or a proxy, not the key. Hand over the URL so the user can ask directly.
+    box.className='mini bad';
+    box.innerHTML='\u2715 <b>Couldn\u2019t reach the tile service to ask.</b> That is the connection, not the key. '+
+      'Paste this into a browser tab to get Google\u2019s answer yourself:'+
+      '<span class="said">'+TILES_ROOT+'?key=YOUR_KEY</span>';
+  } finally { btn.disabled=false; }
+}
+$('testKey').onclick=testGoogleKey;
 $('applyKeys').onclick=reloadEarth;
 $('exagSlider').oninput=e=>{const v=+e.target.value;S.exag=v;$('exagVal').textContent=v.toFixed(1)+'\u00d7';try{viewer.scene.verticalExaggeration=v;}catch(_){}};
 
@@ -4933,7 +5001,8 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming,RIG_FAMILY,
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
-  buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode};
+  buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,
+  testGoogleKey,diagnoseKey,TILES_ROOT};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
 </script>
