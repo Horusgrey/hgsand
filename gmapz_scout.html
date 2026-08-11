@@ -17,21 +17,45 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
-window.CESIUM_BASE_URL='https://cdnjs.cloudflare.com/ajax/libs/cesium/1.131.0/';
-// Defined before the CDN script tag below so a fast network failure can still reach it.
-function loadCesiumFallback(){
-  var base='https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/';
-  window.CESIUM_BASE_URL=base;
-  document.getElementById('cesium-css').href=base+'Widgets/widgets.css';
+// ---- Where the engine comes from ---------------------------------------------------
+// Local first, then the CDNs. CesiumJS is Apache-2.0 and freely copyable, so there is no
+// reason for the app to have to ask the internet for its own engine. Put Cesium's
+// Build/Cesium folder next to this file as ./cesium/ and Scout runs with the wifi off,
+// forever, on a copy nobody can withdraw. Don't, and the CDNs work exactly as before.
+//
+//     unzip cesium-1.131.0 -> copy Build/Cesium here as ./cesium/
+//     (or: npm pack cesium@1.131.0, then move package/Build/Cesium to ./cesium)
+window.CESIUM_SOURCES=[
+  {base:'./cesium/',                                                      via:'local copy'},
+  {base:'https://cdnjs.cloudflare.com/ajax/libs/cesium/1.131.0/',         via:'cdnjs'},
+  {base:'https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/', via:'cesium.com'}
+];
+window.CESIUM_VIA='';
+(function loadCesium(i){
+  i=i||0;
+  var src=window.CESIUM_SOURCES[i];
+  if(!src){
+    var l=document.getElementById('loadstat');
+    if(l){ l.innerHTML='&#10007; Cesium engine could not load \u2014 no local copy in ./cesium/ and no connection.';
+           l.style.color='#f87171'; }
+    return;
+  }
+  window.CESIUM_BASE_URL=src.base;
+  var css=document.getElementById('cesium-css');
+  if(css)css.href=src.base+'Widgets/widgets.css';
   var s=document.createElement('script');
-  s.src=base+'Cesium.js';
-  s.onload=function(){ if(window.__bootGmapz) window.__bootGmapz(); };
-  s.onerror=function(){ var l=document.getElementById('loadstat'); if(l){l.innerHTML='&#10007; Cesium engine could not load — check your connection.';l.style.color='#f87171';} };
+  s.src=src.base+'Cesium.js';
+  s.onload=function(){
+    window.CESIUM_VIA=src.via;
+    // boot() may not exist yet if the local copy won the race; the tail of the page
+    // checks for Cesium too, so exactly one of these two paths fires.
+    if(window.__bootGmapz)window.__bootGmapz();
+  };
+  s.onerror=function(){ loadCesium(i+1); };
   document.head.appendChild(s);
-}
+})();
 </script>
-<link id="cesium-css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.131.0/Widgets/widgets.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.131.0/Cesium.js" onerror="loadCesiumFallback()"></script>
+<link id="cesium-css" rel="stylesheet" href="">
 <style>
   :root{
     --bg:#0a0a0a;--panel:#09090b;--panel2:#101012;--line:#27272a;--line2:#3f3f46;
@@ -1659,7 +1683,9 @@ viewer.scene.postRender.addEventListener(()=>{
    'cam lon '+toDeg(carto.longitude).toFixed(5)+'\n'+
    'cam alt '+Math.round(carto.height)+' m\n'+
    'heading '+Math.round(toDeg(cam.heading))+'\u00b0  tilt '+Math.round(toDeg(cam.pitch))+'\u00b0\n'+
-   'lens    '+(cam.frustum.fov!==undefined?fovToLens(toDeg(cam.frustum.fov))+'mm / '+Math.round(toDeg(cam.frustum.fov))+'\u00b0':'-');
+   'lens    '+(cam.frustum.fov!==undefined?fovToLens(toDeg(cam.frustum.fov))+'mm / '+Math.round(toDeg(cam.frustum.fov))+'\u00b0':'-')+
+   // Who you are depending on, right now, as a fact on screen rather than an assumption.
+   '\nengine  '+(window.CESIUM_VIA||'?')+'  \u00b7  earth '+EARTH.mode;
   const mm=cam.frustum.fov!==undefined?fovToLens(toDeg(cam.frustum.fov)):S.lensMm;
   const line=SHOT_SIZES[S.shotSize].label+' · '+mm+'mm · '+S.angle+' · '+phaseOf(sunNow().el)+' · '+S.delivery;
   if(line!==_slateTxt){_slateTxt=line;$('slate').textContent=line;}
@@ -5000,6 +5026,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming,RIG_FAMILY,
+  cesiumVia:()=>window.CESIUM_VIA,
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,
   testGoogleKey,diagnoseKey,TILES_ROOT};

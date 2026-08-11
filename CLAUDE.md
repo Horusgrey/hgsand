@@ -17,6 +17,35 @@ VCS-15, World Builder).
 Everything — camera, light, look, cast — exists to produce honest rendered frames and honest
 machine-readable specs. If a feature doesn't improve the frame or the spec, it's out of scope.
 
+## Why this tool survives a better model, and the others didn't
+The user has built several tools in this space (VCO / Director's Chair, World Builder,
+Cineflow) and shelved them each time a large player shipped something adjacent. Scout is a
+different bet, and the difference is structural rather than motivational:
+
+- Those tools **organise prompts**. That is the first thing a model company builds around its
+  own model, so it was always going to be taken.
+- Scout is a **measuring instrument**. It produces a real rendered frame of a real place, at a
+  real lens, under the real sun for a real date, plus a machine-readable record of the physical
+  facts behind it. No model company ships that, because it is a geometry-and-honesty problem,
+  not a model problem.
+
+The consequence, and the reason to keep going: **a better generator makes Scout more valuable,
+not less.** A controlled start frame is worth more to Veo 4 than to Veo 3. Prompt-organisers
+lose ground as models improve; measuring instruments gain it.
+
+## Sovereignty — depend on as little as possible, and show what's left
+Every dependency is visible and, where it can be, optional.
+
+- **The engine is local-first.** `CESIUM_SOURCES` tries `./cesium/` before either CDN.
+  CesiumJS is Apache-2.0 and copyable, so dropping `Build/Cesium` beside the HTML makes Scout
+  run forever with the network off. Skip it and the CDNs still work. Never remove the
+  fallbacks — add lanes, don't replace the road.
+- **The readout names its own source.** `engine  local copy · earth photoreal`. Whether you
+  are currently depending on anyone is a fact on screen, not an assumption.
+- **Google Photorealistic 3D Tiles is the one hard dependency**, and it is confined to a single
+  `EARTH.mode`. Every other mode works without it; every spec records `earth_source`. The
+  architecture is already shaped to accept a replacement (see `docs/ZEARTH-INTEGRATION.md`).
+
 ## The core loop (must always work end to end)
 Aim at a real place → block the camera (size / angle / lens / height / move) → lock the light
 (date + time → real sun) → capture the rendered frame → put it in the cut → export the cut.

@@ -21,6 +21,23 @@ python3 -m http.server 8080
 It also opens by double-click, but frame capture requires the server (the in-app help
 explains the one-time fix if you forget).
 
+### Running with no internet at all
+
+Scout looks for its engine locally before it looks at any CDN. Put CesiumJS's
+`Build/Cesium` folder next to `gmapz_scout.html` as `./cesium/` and the app never asks the
+network for its own engine again:
+
+```bash
+npm pack cesium@1.131.0 && tar xzf cesium-1.131.0.tgz
+mv package/Build/Cesium ./cesium
+```
+
+CesiumJS is Apache-2.0, so that copy is yours to keep. Skip this and the two CDNs work
+exactly as before — nothing is required. The camera readout tells you which one is in use
+(`engine  local copy` / `cdnjs` / `cesium.com`), so what you're depending on is always
+visible. Keyless ESRI satellite still needs the network for imagery; a fully offline Earth
+is what `docs/ZEARTH-INTEGRATION.md` is about.
+
 ### Keys (optional, pasted into the Scout panel)
 
 | Key | Gets you | Status pill |
