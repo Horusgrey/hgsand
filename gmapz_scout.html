@@ -16,6 +16,7 @@
 <title>GMAPz Scout</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link id="cesium-css" rel="stylesheet" href="">
 <script>
 // ---- Where the engine comes from ---------------------------------------------------
 // Local first, then the CDNs. CesiumJS is Apache-2.0 and freely copyable, so there is no
@@ -55,7 +56,6 @@ window.CESIUM_VIA='';
   document.head.appendChild(s);
 })();
 </script>
-<link id="cesium-css" rel="stylesheet" href="">
 <style>
   :root{
     --bg:#0a0a0a;--panel:#09090b;--panel2:#101012;--line:#27272a;--line2:#3f3f46;
@@ -696,6 +696,9 @@ window.CESIUM_VIA='';
         <div class="row"><input id="ionKey" type="text" placeholder="Cesium ion token"></div>
         <div class="row"><button class="btn" id="applyKeys">Apply keys &amp; reload Earth</button><button class="btn sm" id="testKey" style="flex:none;width:74px" title="Ask Google whether this key can fetch Photorealistic 3D Tiles, and repeat exactly what it says">Test key</button></div>
         <div class="mini" id="keyVerdict" style="display:none"></div>
+        <label class="fld">Preview quality</label>
+        <div class="chips" id="quality"></div>
+        <div class="mini" id="qualityNote"></div>
         <label class="fld">Terrain exaggeration <span id="exagVal" style="color:var(--dim);float:right">1.0&times;</span></label>
         <input id="exagSlider" type="range" min="1" max="5" step="0.5" value="1">
         <div class="mini">Google&rsquo;s key list runs to hundreds of entries and only one of them works here: enable
@@ -1343,12 +1346,46 @@ if(location.protocol==='file:'){
 }
 
 // ---- Google-Earth feel: render quality + camera controller tuning ----
-viewer.scene.postProcessStages.fxaa.enabled=true;
-try{viewer.scene.msaaSamples=4;}catch(_){}
-viewer.resolutionScale=Math.min(1.5,window.devicePixelRatio||1);
+// ---- Preview quality --------------------------------------------------------------
+// These five numbers decide whether the globe flies or crawls. They were hardcoded at the
+// heaviest setting, which is fine on a desktop and unusable on integrated graphics: the
+// GPU falls behind, Cesium throttles tile loading to compensate, and you get lag AND
+// coarse tiles at the same time. Now you choose, and the choice is remembered.
+//
+// Screen-space error is backwards from intuition: LOWER means MORE tiles and more detail.
+const QUALITY={
+  smooth:  {label:'Smooth',   scale:0.75, msaa:1, fxaa:false, tileSSE:24, globeSSE:2.6,
+            note:'Fewest pixels and fewest tiles. Start here on a laptop or Chromebook.'},
+  balanced:{label:'Balanced', scale:1,    msaa:2, fxaa:true,  tileSSE:16, globeSSE:2.0,
+            note:'Cesium\u2019s own defaults. A good middle on most machines.'},
+  best:    {label:'Best',     scale:null, msaa:4, fxaa:true,  tileSSE:10, globeSSE:1.6,
+            note:'Everything up. Only comfortable with a real GPU.'}
+};
+try{ S.quality=localStorage.getItem('gmapz_quality')||'balanced'; }catch(_){ S.quality='balanced'; }
+if(!QUALITY[S.quality])S.quality='balanced';
+function applyQuality(){
+  const q=QUALITY[S.quality]||QUALITY.balanced;
+  const dpr=window.devicePixelRatio||1;
+  viewer.resolutionScale=(q.scale===null)?Math.min(1.5,dpr):q.scale;
+  try{viewer.resize();}catch(_){}          // scale only lands when the viewport is re-measured
+  try{viewer.scene.msaaSamples=q.msaa;}catch(_){}
+  try{viewer.scene.postProcessStages.fxaa.enabled=q.fxaa;}catch(_){}
+  try{viewer.scene.globe.maximumScreenSpaceError=q.globeSSE;}catch(_){}
+  // The photoreal tileset may not exist yet; reloadEarth applies it again when it does.
+  try{ if(googleTileset)googleTileset.maximumScreenSpaceError=q.tileSSE; }catch(_){}
+}
+function setQuality(k){
+  if(!QUALITY[k])return;
+  S.quality=k;
+  try{localStorage.setItem('gmapz_quality',k);}catch(_){}
+  applyQuality();
+  paintChips('quality',Object.keys(QUALITY).map(x=>[QUALITY[x].label,x]),k,setQuality);
+  const h=$('qualityNote'); if(h)h.textContent=QUALITY[k].note+' Captures are unaffected \u2014 they always render at full resolution.';
+  toast('Preview quality: '+QUALITY[k].label+' \u2014 the captured frame is unchanged');
+}
 viewer.scene.globe.depthTestAgainstTerrain=true;
 viewer.scene.globe.showGroundAtmosphere=true;
-viewer.scene.globe.maximumScreenSpaceError=1.7;
+applyQuality();
 const SSCC=viewer.scene.screenSpaceCameraController;
 SSCC.minimumZoomDistance=2;
 SSCC.inertiaSpin=0.92; SSCC.inertiaTranslate=0.92; SSCC.inertiaZoom=0.85;
@@ -1471,7 +1508,7 @@ async function reloadEarth(){
     try{ setStat('&#9676; loading photoreal tiles…');
       Cesium.GoogleMaps.defaultApiKey=S.google;
       googleTileset=await Cesium.createGooglePhotorealistic3DTileset();
-      try{googleTileset.maximumScreenSpaceError=12;}catch(_){}
+      try{googleTileset.maximumScreenSpaceError=(QUALITY[S.quality]||QUALITY.balanced).tileSSE;}catch(_){}
       viewer.scene.primitives.add(googleTileset);
       viewer.scene.globe.show=false;
       try{ // live tile streaming count, like Earth's loading dots
@@ -1710,7 +1747,8 @@ viewer.scene.postRender.addEventListener(()=>{
    'heading '+Math.round(toDeg(cam.heading))+'\u00b0  tilt '+Math.round(toDeg(cam.pitch))+'\u00b0\n'+
    'lens    '+(cam.frustum.fov!==undefined?fovToLens(toDeg(cam.frustum.fov))+'mm / '+Math.round(toDeg(cam.frustum.fov))+'\u00b0':'-')+
    // Who you are depending on, right now, as a fact on screen rather than an assumption.
-   '\nengine  '+(window.CESIUM_VIA||'?')+'  \u00b7  earth '+EARTH.mode;
+   '\nengine  '+(window.CESIUM_VIA||'?')+'  \u00b7  earth '+EARTH.mode+
+   '  \u00b7  preview '+S.quality;
   const mm=cam.frustum.fov!==undefined?fovToLens(toDeg(cam.frustum.fov)):S.lensMm;
   const line=SHOT_SIZES[S.shotSize].label+' · '+mm+'mm · '+S.angle+' · '+phaseOf(sunNow().el)+' · '+S.delivery;
   if(line!==_slateTxt){_slateTxt=line;$('slate').textContent=line;}
@@ -1732,6 +1770,10 @@ paintChips('shotSize',Object.entries(SHOT_SIZES).map(([k,v])=>[v.label,k]),S.sho
 paintChips('angle',Object.keys(ANGLES).map(k=>[k,k]),S.angle,v=>{S.angle=v;S.tilt=ANGLES[v];flyToParams();syncCamUI();});
 paintChips('lens',LENSES.map(l=>[l+'mm',l]),35,v=>{S.lensMm=v;S.fov=lensToFov(v);applyFov();syncCamUI();});
 makeShotChipsDraggable(); // chips are drop-sources for stations from first paint, not only after a restore
+// Painted here rather than beside applyQuality(), because paintChips is defined below it.
+paintChips('quality',Object.keys(QUALITY).map(x=>[QUALITY[x].label,x]),S.quality,setQuality);
+if($('qualityNote'))$('qualityNote').textContent=QUALITY[S.quality].note+
+  ' Captures are unaffected \u2014 they always render at full resolution.';
 paintChips('styles',Object.entries(STYLES).map(([k,v])=>[v.name,k]),S.style,v=>S.style=v);
 paintChips('grades',Object.keys(GRADES).map(k=>[k,k]),S.grade,v=>{S.grade=v;applyGrade();});
 paintChips('atmos',Object.keys(ATMOS).map(k=>[k,k]),S.atmos,v=>{S.atmos=v;applyAtmos();});
@@ -3420,10 +3462,14 @@ function sceneUiVisible(v){ // labels, path viz and the ghost are UI, not scene 
   });
 }
 function capture(hq){
-  let prevScale;
-  if(hq){ prevScale=viewer.resolutionScale; viewer.resolutionScale=Math.min(2, (window.devicePixelRatio||1)*2); }
+  // The preview is a viewfinder and may be as cheap as the machine needs. The captured
+  // frame is the product, so it always renders at full resolution — turning the preview
+  // down must never quietly shrink what comes out of the shutter.
+  const dpr=window.devicePixelRatio||1;
+  const prevScale=viewer.resolutionScale;
+  viewer.resolutionScale=hq?Math.min(2,dpr*2):Math.max(1,Math.min(1.5,dpr));
   sceneUiVisible(false);
-  viewer.render();
+  viewer.resize(); viewer.render();        // re-measure, then draw at the capture scale
   const src=viewer.scene.canvas;
   const r=ASPECTS[S.delivery], w=src.width, h=src.height, cur=w/h;
   let cw=w,ch=h,sx=0,sy=0;
@@ -3431,9 +3477,9 @@ function capture(hq){
   const out=document.createElement('canvas'); out.width=Math.round(cw); out.height=Math.round(ch);
   const ctx=out.getContext('2d'); applyCaptureFilter(ctx);
   ctx.drawImage(src,sx,sy,cw,ch,0,0,cw,ch);
-  let url; try{ url=out.toDataURL('image/png'); }catch(err){ sceneUiVisible(true); if(hq&&prevScale!==undefined)viewer.resolutionScale=prevScale; captureHelp(); return {id:null,url:null}; }
+  let url; try{ url=out.toDataURL('image/png'); }catch(err){ sceneUiVisible(true); viewer.resolutionScale=prevScale; captureHelp(); return {id:null,url:null}; }
   sceneUiVisible(true);
-  if(hq&&prevScale!==undefined){ viewer.resolutionScale=prevScale; viewer.render(); }
+  viewer.resolutionScale=prevScale; viewer.resize(); viewer.render();
   const id='cap'+Date.now();
   S.captures.push({id,url,w:out.width,h:out.height,spec:buildSpec(id,undefined,{w:out.width,h:out.height})});
   renderThumbs();
@@ -5052,6 +5098,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming,RIG_FAMILY,
   cesiumVia:()=>window.CESIUM_VIA,
+  QUALITY,setQuality,applyQuality,
   servedProperly:()=>location.protocol!=='file:',
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,
