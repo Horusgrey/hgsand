@@ -85,9 +85,16 @@ To guarantee a $0 bill, in the [Google Cloud Console](https://console.cloud.goog
    tiles just stop loading — never a charge.
 2. **Set a $1 budget alert**: *Billing → Budgets & alerts*. (Budgets only notify; the quota
    cap above is the actual stop.)
-3. **Restrict the key**: limit it to the **Map Tiles API** and to an **HTTP referrer** for
-   `localhost` / your domain. The key lives in the page HTML, so restriction stops a leaked
-   key being usable elsewhere.
+3. **Restrict the key by API**: limit it to the **Map Tiles API**. That is the restriction
+   worth having — it caps what a leaked key could ever be used for.
+
+   **HTTP-referrer restrictions are optional and are the usual cause of a mysteriously
+   rejected key**, because every address Scout runs from needs its own entry: the hosted
+   site, each preview deploy, and `localhost` on whatever port you served it from. Scout
+   prints the exact pattern for wherever it is currently running, with a copy button, right
+   under the key fields — and quotes it again if Google refuses the key for a referrer.
+   A `file://` page sends no referrer at all, so with referrer restrictions on, opening the
+   file by double-click can never work.
 
 ## The core loop
 

@@ -18,6 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link id="cesium-css" rel="stylesheet" href="">
 <script>
+// (loader below)
 // ---- Where the engine comes from ---------------------------------------------------
 // Local first, then the CDNs. CesiumJS is Apache-2.0 and freely copyable, so there is no
 // reason for the app to have to ask the internet for its own engine. Put Cesium's
@@ -695,6 +696,7 @@ window.CESIUM_VIA='';
         <div class="row"><input id="googleKey" type="text" placeholder="Google Map Tiles API key"></div>
         <div class="row"><input id="ionKey" type="text" placeholder="Cesium ion token"></div>
         <div class="row"><button class="btn" id="applyKeys">Apply keys &amp; reload Earth</button><button class="btn sm" id="testKey" style="flex:none;width:74px" title="Ask Google whether this key can fetch Photorealistic 3D Tiles, and repeat exactly what it says">Test key</button></div>
+        <div class="mini" id="refHint"></div>
         <div class="mini" id="keyVerdict" style="display:none"></div>
         <label class="fld">Preview quality</label>
         <div class="chips" id="quality"></div>
@@ -1553,6 +1555,44 @@ async function reloadEarth(){
 // The exact endpoint createGooglePhotorealistic3DTileset() hits first. Asking it directly
 // is the cheapest complete test of a key: one manifest request, no tiles, no reload.
 const TILES_ROOT='https://tile.googleapis.com/v1/3dtiles/root.json';
+// The referrer pattern Google wants for wherever this page is being served from right now.
+// Scout runs from several addresses over its life — a hosted site, localhost on some port,
+// 127.0.0.1 — and each one needs its own entry on the key. One wrong character fails
+// exactly like a disabled API, so the app reads its own address rather than making you.
+function referrerPattern(){
+  if(location.protocol==='file:')return null;   // a file:// page sends no referrer at all
+  return location.origin+'/*';
+}
+// Netlify gives every branch and preview deploy its own subdomain, and each would need its
+// own entry — so offer the wildcard that covers all of them alongside the exact one.
+function referrerWildcard(){
+  const m=location.hostname.match(/^(?:.*--)?([^.]+\.netlify\.app)$/);
+  return m?(location.protocol+'//*--'+m[1]+'/*'):null;
+}
+function renderRefHint(){
+  const el=$('refHint'); if(!el)return;
+  const pat=referrerPattern();
+  if(!pat){
+    el.innerHTML='Opened as a file, so a referrer-restricted key can never work here \u2014 '+
+      'a file:// page sends no referrer for Google to match.';
+    return;
+  }
+  const wild=referrerWildcard();
+  el.innerHTML='If your key has <b>HTTP referrer</b> restrictions, this address needs its own entry:'+
+    '<span class="said" id="refPat">'+escapeHtml(pat)+'</span>'+
+    (wild?'<span class="said">'+escapeHtml(wild)+'  \u2190 also covers Netlify preview deploys</span>':'')+
+    '<button class="btn sm" id="refCopy" style="width:auto;padding:0 10px;margin-top:6px">Copy</button>'+
+    '<span style="display:block;margin-top:6px">Simplest option: set Application restrictions to '+
+    '<b>None</b> and restrict the key by <b>API</b> instead \u2014 Map Tiles API only.</span>';
+  const c=$('refCopy');
+  if(c)c.onclick=()=>{
+    const txt=pat+(wild?'\n'+wild:'');
+    if(navigator.clipboard&&navigator.clipboard.writeText)
+      navigator.clipboard.writeText(txt).then(()=>toast('Copied \u2014 paste into the key\u2019s referrer list'),
+        ()=>toast('Copy it by hand: '+pat));
+    else toast('Copy it by hand: '+pat);
+  };
+}
 // Google's refusals are specific and worth reading literally. Map each to the one thing
 // the user has to go and change, and keep Google's own sentence underneath it.
 function diagnoseKey(status,body){
@@ -1566,10 +1606,16 @@ function diagnoseKey(status,body){
     return {ok:false,head:'This project has no billing account.',
       fix:'Photorealistic 3D Tiles is an Enterprise API: it needs a card on file even on the free tier. '+
           'Console \u2192 Billing \u2192 link a billing account, then cap the daily quota (see the README).',said:msg};
-  if(/referer|referrer/.test(low))
+  if(/referer|referrer/.test(low)){
+    const pat=referrerPattern(), wild=referrerWildcard();
     return {ok:false,head:'The key\u2019s HTTP-referrer restriction is refusing this page.',
-      fix:'Either add <b>http://localhost:*</b> and <b>http://127.0.0.1:*</b> to the key\u2019s allowed referrers, '+
-          'or serve Scout over http:// rather than opening the file directly \u2014 a file:// page sends no referrer at all.',said:msg};
+      fix:pat
+        ? ('Add this exact entry to the key\u2019s allowed referrers: <b>'+escapeHtml(pat)+'</b>'+
+           (wild?' (and <b>'+escapeHtml(wild)+'</b> to cover preview deploys)':'')+
+           '. Or set Application restrictions to None and restrict by API instead.')
+        : ('This page was opened as a file, and a file:// page sends no referrer at all, so no '+
+           'entry can ever match. Serve the folder over http:// instead.'),said:msg};
+  }
   if(/api key not valid|invalid|expired|passed|api_key/.test(low)||status===400)
     return {ok:false,head:'Google does not recognise this key.',
       fix:'Check it copied whole, with no spaces or line breaks, and that it belongs to the project you enabled the API on.',said:msg};
@@ -4709,6 +4755,7 @@ $('handoffZip').onclick=()=>{
   toast(S.handoffs?'Studio handoffs will ride along in the zip':'Zip is frames, animatic, specs and prompts');
 };
 syncHandoffBtn();
+renderRefHint();
 
 function reportPage(entry,i,total){
   const sp=entry.spec, c=sp.camera, lt=sp.light, lk=sp.look, dl=sp.delivery;
@@ -5102,7 +5149,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   servedProperly:()=>location.protocol!=='file:',
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,
-  testGoogleKey,diagnoseKey,TILES_ROOT};
+  testGoogleKey,diagnoseKey,TILES_ROOT,referrerPattern,referrerWildcard,renderRefHint};
 }
 if(typeof Cesium!=='undefined'){boot();} else {window.__bootGmapz=boot;}
 </script>
