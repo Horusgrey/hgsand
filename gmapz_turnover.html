@@ -144,7 +144,7 @@
 
   .out{font-family:var(--mono);font-size:10.5px;line-height:1.65;white-space:pre-wrap;
     background:#0b0b0d;border:1px solid var(--line);border-radius:8px;padding:12px 14px;
-    max-height:52vh;overflow:auto;color:var(--dim);}
+    max-height:calc(100vh - 190px);overflow:auto;color:var(--dim);}
   .tw{overflow-x:auto;}
   table{border-collapse:collapse;width:100%;font-size:11.5px;}
   th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
@@ -454,7 +454,8 @@ function vcsTurnover(sh){
   L.push('');
   L.push('## VCS-CPAS');
   L.push('shot_size: '+c.shot_size+'   angle: '+c.angle+'   move: '+(c.move||'static'));
-  L.push('lens_mm: '+c.lens_mm+'   fov_deg: '+c.fov_deg+'   sensor: '+(c.sensor||'full-frame')+' '+(c.sensor_width_mm||36)+'mm');
+  L.push('lens_mm: '+c.lens_mm+'   fov_deg: '+c.fov_deg);
+  L.push('sensor: '+(c.sensor||'UNKNOWN')+'   sensor_width_mm: '+(c.sensor_width_mm!=null?c.sensor_width_mm:'UNKNOWN'));
   L.push('heading_deg: '+c.heading_deg+'   pitch_deg: '+c.pitch_deg+'   roll_deg: '+(c.roll_deg||0));
   L.push('camera_position: '+(c.lat!=null?c.lat:'?')+', '+(c.lng!=null?c.lng:'?'));
   L.push('camera_altitude_m: '+(c.altitude_m!=null?c.altitude_m:'UNKNOWN')+'   height_above_ground_m: '+
