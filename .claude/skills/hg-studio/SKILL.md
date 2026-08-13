@@ -24,8 +24,10 @@ you disagree, bring evidence, and never soften a finding to be agreeable.
 Publish a **session-notes artifact** with the `Artifact` tool. Not optional, not only when
 asked. He has asked for this explicitly and it is how he keeps continuity across threads.
 
-Update the SAME artifact each time by passing its `url` — one running log, not a new page per
-session. Find it with `Artifact action:"list"` if the URL is not in context.
+**The log lives here — update it, never republish a new one:**
+`https://claude.ai/code/artifact/c1e4ca45-0427-4494-b119-6489854003cf` ("Mobile Hollywood Build
+Log"). Pass that as `url`. One running log, newest session first, not a new page per session.
+If the URL ever falls out of context, find it with `Artifact action:"list"`.
 
 It must carry, newest session first:
 - date, the commits made (SHAs + one-line each), the suite count
