@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  GMAPz Turnover — the room a Scout cut is handed to.
+  Successor to VCO / Director's Chair, built for one job: receive gmapz.cut.v1 + friends
+  and turn measured facts into an authored shoot, without ever confusing the two.
+
+  RUN IT: serve the folder, same as Scout —
+      python3 -m http.server 8080     then open http://localhost:8080/gmapz_turnover.html
+  No keys. No network. Nothing leaves the machine.
+
+  THE ONE RULE, inherited from Scout and enforced here:
+      Scout MEASURES. Turnover AUTHORS. A measured fact is never editable, an authored
+      field is never pre-filled with a guess, and every line that leaves this app says
+      which of the two it is. That is the whole reason this exists rather than a notes app.
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GMAPz Turnover</title>
+<style>
+  :root{
+    --bg:#0a0a0a;--panel:#09090b;--panel2:#101012;--line:#27272a;--line2:#3f3f46;
+    --txt:#e4e4e7;--dim:#a1a1aa;--faint:#71717a;
+    --yellow:#facc15;--emerald:#34d399;--amber:#fbbf24;--red:#f87171;--blue:#60a5fa;
+    --vcs:#fb923c;--vco:#e8a23c;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:"Space Grotesk",ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--sans);
+    font-size:13px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow:hidden;}
+  button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;}
+
+  /* ── frame ────────────────────────────────────────── */
+  .app{display:flex;height:100vh;}
+  .rail{width:52px;flex:none;background:linear-gradient(180deg,#0b0b0d,#08080a);
+    border-right:1px solid var(--line);display:flex;flex-direction:column;
+    align-items:center;padding:10px 0;gap:4px;}
+  .rail .brand{font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--yellow);
+    writing-mode:vertical-rl;transform:rotate(180deg);margin-bottom:14px;opacity:.85;}
+  .rbtn{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:none;
+    color:var(--faint);cursor:pointer;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.02em;transition:.12s;}
+  .rbtn:hover{background:#141418;color:var(--txt);}
+  .rbtn.on{background:linear-gradient(180deg,#201d0b,#17150a);color:var(--yellow);
+    border-color:rgba(250,204,21,.35);}
+  .rbtn:focus-visible{outline:none;box-shadow:0 0 0 2px rgba(250,204,21,.45);}
+  .rspacer{flex:1;}
+
+  .side{width:340px;flex:none;background:linear-gradient(180deg,#0b0b0d,#08080a);
+    border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;}
+  .shead{padding:14px 16px 12px;border-bottom:1px solid var(--line);}
+  .shead h1{margin:0;font-size:15px;letter-spacing:-.01em;font-weight:700;}
+  .shead .sub{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin-top:3px;}
+  .sbody{flex:1;overflow-y:auto;padding:14px 16px 40px;}
+  .sbody::-webkit-scrollbar,.main::-webkit-scrollbar{width:8px;}
+  .sbody::-webkit-scrollbar-thumb,.main::-webkit-scrollbar-thumb{background:#26262c;border-radius:99px;}
+
+  .main{flex:1;overflow-y:auto;padding:22px 26px 80px;min-width:0;}
+  .mwrap{max-width:920px;}
+
+  /* ── type ─────────────────────────────────────────── */
+  h2{font-size:19px;margin:0 0 4px;letter-spacing:-.015em;font-weight:700;}
+  h3{font-size:13px;margin:22px 0 8px;font-weight:700;letter-spacing:-.005em;}
+  .lede{color:var(--dim);margin:0 0 18px;max-width:62ch;}
+  .fld{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--faint);margin:16px 0 6px;}
+  .fld:first-child{margin-top:0;}
+  .mini{font-size:11px;color:var(--faint);line-height:1.6;}
+  code{font-family:var(--mono);font-size:.88em;background:var(--panel2);border:1px solid var(--line);
+    border-radius:4px;padding:1px 5px;color:var(--dim);}
+
+  /* ── controls ─────────────────────────────────────── */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;
+    padding:9px 12px;border-radius:8px;border:1px solid var(--line2);background:#121214;
+    color:var(--txt);cursor:pointer;font-size:12px;font-weight:600;transition:.12s;}
+  .btn:hover{border-color:var(--faint);background:#17171a;}
+  .btn:focus-visible{outline:none;box-shadow:0 0 0 2px rgba(250,204,21,.45);}
+  .btn:disabled{opacity:.4;cursor:default;}
+  .btn.y{background:var(--yellow);border-color:var(--yellow);color:#1a1500;}
+  .btn.y:hover{background:#fde047;}
+  .btn.vcs{background:var(--vcs);border-color:var(--vcs);color:#2a1200;}
+  .btn.vco{background:var(--vco);border-color:var(--vco);color:#2a1e00;}
+  .btn.sm{padding:6px 9px;font-size:11px;width:auto;}
+  .row{display:flex;gap:7px;margin:7px 0;}
+  input[type=text],textarea,select{width:100%;background:#0d0d0f;border:1px solid var(--line);
+    border-radius:7px;padding:8px 10px;outline:none;transition:.12s;}
+  input[type=text]:focus,textarea:focus,select:focus{border-color:var(--yellow);
+    box-shadow:0 0 0 3px rgba(250,204,21,.10);}
+  textarea{resize:vertical;min-height:64px;line-height:1.6;}
+
+  /* ── the provenance system — the point of this app ─── */
+  .prov{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:8.5px;
+    letter-spacing:.12em;text-transform:uppercase;padding:2px 6px;border-radius:4px;
+    border:1px solid;white-space:nowrap;}
+  .prov.m{color:var(--blue);border-color:rgba(96,165,250,.4);background:rgba(96,165,250,.08);}
+  .prov.a{color:var(--yellow);border-color:rgba(250,204,21,.4);background:rgba(250,204,21,.08);}
+  .prov.d{color:var(--emerald);border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.07);}
+  .prov.u{color:var(--faint);border-color:var(--line2);}
+  .measured{font-family:var(--mono);font-size:11px;color:var(--dim);background:#0c0e12;
+    border:1px solid rgba(96,165,250,.18);border-radius:7px;padding:8px 10px;
+    display:flex;flex-wrap:wrap;gap:3px 14px;}
+  .measured b{color:var(--txt);font-weight:600;}
+  .measured .k{color:var(--faint);}
+
+  /* ── cards / lists ────────────────────────────────── */
+  .card{border:1px solid var(--line);border-radius:10px;background:var(--panel);
+    padding:14px 16px;margin:0 0 12px;}
+  .card.sel{border-color:rgba(250,204,21,.55);box-shadow:0 0 0 3px rgba(250,204,21,.08);}
+  .shotrow{display:grid;grid-template-columns:74px 1fr auto;gap:12px;align-items:center;
+    border:1px solid var(--line);border-radius:9px;background:var(--panel);padding:8px;
+    margin-bottom:7px;cursor:pointer;transition:.12s;}
+  .shotrow:hover{border-color:var(--line2);}
+  .shotrow.on{border-color:rgba(250,204,21,.6);background:#121006;}
+  .shotrow img{width:74px;height:42px;object-fit:cover;border-radius:5px;background:#000;display:block;}
+  .shotrow .no{width:74px;height:42px;border-radius:5px;background:#111;display:flex;
+    align-items:center;justify-content:center;font-family:var(--mono);font-size:8px;color:var(--faint);}
+  .shotrow .t{min-width:0;}
+  .shotrow .t b{display:block;font-size:12px;font-weight:600;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+  .shotrow .t span{font-family:var(--mono);font-size:9.5px;color:var(--faint);
+    white-space:pre;display:block;overflow:hidden;}
+  /* The reference frame is the evidence, not the work: it earns a third of the height,
+     and the authored fields stay reachable without scrolling past it. Contain, never
+     cover — cropping a reference frame misreports the framing it exists to report. */
+  .refframe{display:block;max-height:34vh;max-width:100%;width:auto;margin-bottom:16px;
+    border-radius:10px;border:1px solid var(--line);background:#000;object-fit:contain;}
+  .shotrow .st{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);}
+  .shotrow.done .st{color:var(--emerald);}
+
+  .drop{border:1px dashed var(--line2);border-radius:10px;padding:26px 18px;text-align:center;
+    color:var(--dim);cursor:pointer;transition:.14s;background:#0c0c0e;}
+  .drop:hover,.drop.over{border-color:var(--yellow);color:var(--txt);background:#121006;}
+  .drop b{display:block;color:var(--txt);font-size:13px;margin-bottom:4px;}
+
+  .flag{border-left:2px solid var(--amber);background:#171205;border-radius:0 7px 7px 0;
+    padding:8px 12px;margin:6px 0;font-size:11.5px;color:#fcd34d;}
+  .flag.bad{border-color:var(--red);background:#1a0c0c;color:#fca5a5;}
+  .flag.ok{border-color:var(--emerald);background:#0b1712;color:#6ee7b7;}
+
+  .out{font-family:var(--mono);font-size:10.5px;line-height:1.65;white-space:pre-wrap;
+    background:#0b0b0d;border:1px solid var(--line);border-radius:8px;padding:12px 14px;
+    max-height:52vh;overflow:auto;color:var(--dim);}
+  .tw{overflow-x:auto;}
+  table{border-collapse:collapse;width:100%;font-size:11.5px;}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--mono);font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--faint);background:var(--panel2);}
+  td{color:var(--dim);} td b{color:var(--txt);}
+
+  .empty{border:1px dashed var(--line);border-radius:10px;padding:34px 20px;text-align:center;
+    color:var(--faint);font-size:12px;}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);
+    background:rgba(9,9,11,.96);border:1px solid var(--line2);border-radius:9px;
+    padding:9px 16px;font-size:12px;opacity:0;pointer-events:none;transition:.22s;z-index:99;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .hide{display:none !important;}
+  @media (max-width:900px){ .side{width:100%;position:absolute;z-index:20;height:100%;}
+    .side.closed{display:none;} }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail" id="rail">
+    <div class="brand">TURNOVER</div>
+    <button class="rbtn on" data-p="in"   title="Receive a Scout turnover">IN</button>
+    <button class="rbtn"    data-p="shot" title="Shots — measured facts, authored scene">SH</button>
+    <button class="rbtn"    data-p="cast" title="Cast — who these stand-ins actually are">CA</button>
+    <button class="rbtn"    data-p="cont" title="Continuity — the world lock and what drifts from it">CO</button>
+    <div class="rspacer"></div>
+    <button class="rbtn"    data-p="out"  title="Turnover out — VCS-15, prompts, project">OUT</button>
+  </nav>
+
+  <aside class="side" id="side">
+    <div class="shead">
+      <h1 id="projName">No turnover loaded</h1>
+      <div class="sub" id="projSub">drop a scout cut to begin</div>
+    </div>
+    <div class="sbody" id="sideBody"></div>
+  </aside>
+
+  <main class="main"><div class="mwrap" id="page"></div></main>
+</div>
+<div id="toast"></div>
+<input id="fileIn" type="file" multiple accept=".zip,.json,.png" class="hide">
+
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+let toastT; function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');
+  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),Math.min(6000,Math.max(2200,m.length*55)));}
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PROVENANCE — the spine of this app.
+   Every value carries where it came from, and the four kinds never blur:
+     MEASURED  Scout observed it from real geometry. Locked. You cannot edit it.
+     AUTHORED  You wrote it. Nothing pre-fills it, because a guess in an authored
+               field is indistinguishable from a decision once it is on the page.
+     DERIVED   Computed from measured facts, and it says what from.
+     UNKNOWN   Genuinely not known. VCS-15 calls this out rather than inventing.
+   ══════════════════════════════════════════════════════════════════════════ */
+const PROV = {
+  measured:{cls:'m', tag:'MEASURED', word:'measured by Scout from real geometry'},
+  authored:{cls:'a', tag:'AUTHORED', word:'written by you'},
+  derived: {cls:'d', tag:'DERIVED',  word:'computed from measured facts'},
+  unknown: {cls:'u', tag:'UNKNOWN',  word:'not known, and not guessed'}
+};
+const provTag = k => '<span class="prov '+PROV[k].cls+'" title="'+PROV[k].word+'">'+PROV[k].tag+'</span>';
+
+/* ── project state ─────────────────────────────────────────────────────── */
+const P = {
+  loaded:false, source:'', title:'', shots:[], cast:[], worldLock:null, cutSpec:null,
+  brief:{ logline:'', tone:'', format:'', audience:'', canon:'' },
+  sel:0, page:'in', issues:[]
+};
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ZIP READING
+   Scout writes store-only archives, so the common path needs no inflate at all.
+   Deflate is handled anyway via DecompressionStream, because anything that
+   re-packs the file on the way here (a mail client, a cloud drive) will compress.
+   ══════════════════════════════════════════════════════════════════════════ */
+async function readZip(buf){
+  const b = new Uint8Array(buf), dv = new DataView(buf), out = {};
+  // Walk local file headers. The central directory would be tidier, but a local-header
+  // walk also survives an archive whose directory was truncated in transit.
+  for(let i=0;i<b.length-4;i++){
+    if(!(b[i]===0x50&&b[i+1]===0x4b&&b[i+2]===0x03&&b[i+3]===0x04))continue;
+    const method = dv.getUint16(i+8,true);
+    let csize = dv.getUint32(i+18,true);
+    const nlen = dv.getUint16(i+26,true), elen = dv.getUint16(i+28,true);
+    const name = new TextDecoder().decode(b.slice(i+30,i+30+nlen));
+    const at = i+30+nlen+elen;
+    if(csize===0 && method===0){ i = at-1; continue; }        // directory entry
+    let bytes = b.slice(at, at+csize);
+    if(method===8){
+      try{
+        const ds = new DecompressionStream('deflate-raw');
+        const ab = await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer();
+        bytes = new Uint8Array(ab);
+      }catch(e){ bytes = null; }                              // unreadable, reported below
+    } else if(method!==0){ bytes = null; }
+    if(!name.endsWith('/')) out[name] = bytes;
+    i = at + csize - 1;
+  }
+  return out;
+}
+const bytesToText = b => b ? new TextDecoder().decode(b) : '';
+function bytesToDataUrl(b, mime){
+  if(!b) return '';
+  let s=''; const CH=0x8000;
+  for(let i=0;i<b.length;i+=CH) s += String.fromCharCode.apply(null, b.subarray(i,i+CH));
+  return 'data:'+mime+';base64,'+btoa(s);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   INGEST — read a Scout turnover and refuse to invent anything it did not contain.
+   Accepts: the cut .zip, or loose files (cut.json + specs + frames), or a single
+   capture spec. Everything it could not find is reported, never filled in.
+   ══════════════════════════════════════════════════════════════════════════ */
+async function ingest(fileList){
+  const files = {};
+  for(const f of fileList){
+    const buf = await f.arrayBuffer();
+    if(/\.zip$/i.test(f.name)) Object.assign(files, await readZip(buf));
+    else files[f.name] = new Uint8Array(buf);
+  }
+  const names = Object.keys(files);
+  if(!names.length){ toast('Nothing readable in that'); return; }
+
+  const issues = [];
+  const readJson = n => { try{ return JSON.parse(bytesToText(files[n])); }catch(e){ return null; } };
+
+  // cut.json is the index. Without it we can still work from loose specs.
+  const cutName = names.find(n=>/(^|\/)cut\.json$/i.test(n));
+  const cut = cutName ? readJson(cutName) : null;
+  if(cutName && !cut) issues.push({bad:true, t:'cut.json is present but not valid JSON.'});
+
+  const specNames = names.filter(n=>/^specs\/.*\.json$/i.test(n) || (!cut && /\.json$/i.test(n) && !/cut\.json$/i.test(n)));
+  const frameNames = names.filter(n=>/\.png$/i.test(n));
+
+  const specs = [];
+  specNames.forEach(n=>{ const j = readJson(n); if(j && j.camera && j.location) specs.push({file:n, spec:j});
+                         else if(j) issues.push({t:'Skipped '+n+' — JSON, but not a capture spec.'}); });
+
+  if(!specs.length){ toast('No gmapz capture specs found in that turnover'); }
+
+  // Order by cut.json when present; that is the director's order, not the file order.
+  let ordered = specs;
+  if(cut && Array.isArray(cut.shots)){
+    const byFile = {}; specs.forEach(s=>{ byFile[s.file]=s; byFile[s.file.split('/').pop()]=s; });
+    ordered = cut.shots.map(cs=>{
+      const s = byFile[cs.spec] || byFile[(cs.spec||'').split('/').pop()];
+      if(!s) issues.push({t:'cut.json lists '+cs.spec+', which is not in this package.'});
+      return s ? Object.assign({}, s, {cutEntry:cs}) : null;
+    }).filter(Boolean);
+    specs.forEach(s=>{ if(!ordered.some(o=>o.file===s.file))
+      issues.push({t:s.file+' is in the package but not in cut.json — it was not part of the cut.'}); });
+  }
+
+  const frameFor = (sp, cs) => {
+    const want = (cs && cs.frame) || (sp.reference_frame || '');
+    const hit = frameNames.find(n=>n===want) || frameNames.find(n=>n.split('/').pop()===want.split('/').pop());
+    if(!hit && want) issues.push({t:'No frame found for '+(want||'a shot')+' — the spec is here, the picture is not.'});
+    return hit ? bytesToDataUrl(files[hit],'image/png') : '';
+  };
+
+  P.shots = ordered.map((o,i)=>{
+    const sp = o.spec, cs = o.cutEntry;
+    return {
+      n:i+1,
+      name: (cs && cs.name) || sp.id || ('Shot '+(i+1)),
+      spec: sp,
+      frame: frameFor(sp, cs),
+      beat: (cs && cs.beat_s) || null,
+      // Authored layer. Empty on purpose — see the PROVENANCE note above.
+      scene:'', action:'', dialogue:'', intent:'', notes:''
+    };
+  });
+
+  // Cast is seeded from what Scout MEASURED (what, how big, where) and nothing more.
+  // Identity is authored; it is never inferred from a label.
+  const byId = {};
+  P.shots.forEach(sh=>(sh.spec.subjects||[]).forEach(s=>{
+    if(!byId[s.id]) byId[s.id] = {
+      id:s.id, measured:{ type:s.type, label:s.label, name:s.name,
+        height_m:s.height_m, width_m:s.width_m, lat:s.lat, lng:s.lng },
+      shots:[], character:'', who:'', wardrobe:'', intent:''
+    };
+    byId[s.id].shots.push(sh.n);
+  }));
+  P.cast = Object.values(byId);
+
+  const first = P.shots[0] && P.shots[0].spec;
+  P.worldLock = (cut && cut.world_lock) || (first ? {light:first.light, look:first.look, delivery:first.delivery} : null);
+  P.cutSpec = cut;
+  P.title = (cut && cut.location && cut.location.name) || (first && first.location.name) || 'Untitled turnover';
+  P.source = names.length + ' files';
+  P.loaded = P.shots.length>0;
+  P.sel = 0;
+
+  // Integrity notes that matter to a shoot, stated plainly.
+  if(P.loaded){
+    const flat = P.shots.filter(s=>s.spec.location && s.spec.location.geometry==='flat_2d_imagery');
+    if(flat.length) issues.push({bad:true, t:flat.length+' of '+P.shots.length+
+      ' frames were shot on flat 2D imagery, not real geometry. Their perspective and building '+
+      'sides are painted on. Scout recorded this in earth_source — it is not a judgement, it is a fact about those frames.'});
+    const noFrame = P.shots.filter(s=>!s.frame).length;
+    if(noFrame) issues.push({bad:true, t:noFrame+' shot(s) arrived without their picture. The spec alone cannot start a generation.'});
+    const legacy = P.shots.filter(s=>s.spec.camera.target_distance_m===undefined).length;
+    if(legacy) issues.push({t:legacy+' shot(s) use a pre-2.1 spec, where camera.altitude_m held the '+
+      'orbit distance rather than an altitude. Read those distances, not altitudes.'});
+  }
+  P.issues = issues;
+  toast(P.loaded ? ('Turnover received — '+P.shots.length+' shots') : 'Nothing usable in that package');
+  render();
+}
+
+/* ── helpers over a spec ───────────────────────────────────────────────── */
+const camDist = c => (c && c.target_distance_m!==undefined) ? c.target_distance_m : (c?c.altitude_m:null);
+const SIZE = {ewide:'extreme wide', wide:'wide', medium:'medium', close:'close-up'};
+// Short codes for the list, long words for the page. Same value, sized to its column.
+const SIZE_CODE = {ewide:'EWS', wide:'WS', medium:'MS', close:'CU'};
+function shotSlug(sh){
+  const c = sh.spec.camera;
+  return [Math.round(c.lens_mm)+'mm', SIZE[c.shot_size]||c.shot_size, c.angle,
+          Math.round(c.heading_deg)+'°'].join(' · ');
+}
+// The list version: every field padded to its own width so lens sits under lens and
+// size under size, down the whole column. A row is a row, never two.
+function shotRow(sh){
+  const c = sh.spec.camera;
+  return (Math.round(c.lens_mm)+'mm').padStart(6)+' '+
+         (SIZE_CODE[c.shot_size]||String(c.shot_size).slice(0,3).toUpperCase()).padEnd(4)+
+         String(c.angle||'').slice(0,6).padEnd(7)+
+         (Math.round(c.heading_deg)+'°').padStart(5);
+}
+function measuredLine(sh){
+  const c = sh.spec.camera, l = sh.spec.light, loc = sh.spec.location;
+  const bits = [
+    ['lens', Math.round(c.lens_mm)+'mm / '+c.fov_deg+'°'],
+    ['size', SIZE[c.shot_size]||c.shot_size],
+    ['angle', c.angle],
+    ['heading', Math.round(c.heading_deg)+'°'],
+    ['tilt', Math.round(c.pitch_deg)+'°'],
+    ['to subject', camDist(c)!=null ? Math.round(camDist(c))+' m' : '—'],
+    ['cam alt', c.altitude_m!=null ? Math.round(c.altitude_m)+' m ASL' : '—'],
+    ['above ground', c.height_above_ground_m!=null ? Math.round(c.height_above_ground_m)+' m' : '—'],
+    ['ground', loc.ground_elevation_m!=null ? Math.round(loc.ground_elevation_m)+' m' : '—'],
+    ['sun', 'az '+l.sun_azimuth_deg+'° el '+l.sun_elevation_deg+'°'],
+    ['phase', l.phase],
+    ['when', (l.date||'')+' '+(l.time||'')+' '+(l.tz||'')],
+    ['delivery', sh.spec.delivery.aspect],
+    ['earth', loc.earth_source || 'unrecorded']
+  ];
+  return '<div class="measured">'+bits.map(([k,v])=>'<span><span class="k">'+k+'</span> <b>'+esc(v)+'</b></span>').join('')+'</div>';
+}
+/* A derived sentence must be able to name what it was derived from — the rule Scout
+   learned the hard way when it told a rural lake it had city traffic. */
+function sunSide(sh){
+  const c = sh.spec.camera, l = sh.spec.light;
+  let d = ((l.sun_azimuth_deg - c.heading_deg) % 360 + 360) % 360;
+  if(l.sun_elevation_deg < 0) return 'no key — the sun is below the horizon';
+  if(d<25||d>335) return 'backlit, sun behind the subject';
+  if(d>155&&d<205) return 'frontlit, sun behind the camera';
+  return d<180 ? ('keyed from camera right at '+Math.round(l.sun_elevation_deg)+'°')
+               : ('keyed from camera left at '+Math.round(l.sun_elevation_deg)+'°');
+}
+const castInShot = n => P.cast.filter(c=>c.shots.includes(n));
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VCS-15 TURNOVER — eight sections, fixed order.
+   The measured half is filled from the spec and marked AUTHORITATIVE. The authored
+   half is filled from what you wrote, and stays UNKNOWN when you have not written it.
+   Nothing here is ever invented to make the document look complete.
+   ══════════════════════════════════════════════════════════════════════════ */
+function vcsTurnover(sh){
+  const c = sh.spec.camera, l = sh.spec.light, look = sh.spec.look, loc = sh.spec.location;
+  const cast = castInShot(sh.n);
+  const named = cast.filter(x=>x.character);
+  const U = v => (v && String(v).trim()) ? String(v).trim() : 'UNKNOWN';
+  const L = [];
+  L.push('# VCS-15 TURNOVER — '+(sh.spec.id||('shot_'+sh.n)));
+  L.push('# source: GMAPz Scout '+(sh.spec.spec||'capture spec')+'  ·  turnover authored in GMAPz Turnover');
+  L.push('# Every CPAS/OBS value below is PLANNED and AUTHORITATIVE: measured from real');
+  L.push('# geometry at capture time, not observed from generated footage.');
+  L.push('');
+  L.push('## VCS-OBS');
+  L.push('status: PLANNED / AUTHORITATIVE');
+  L.push('location: '+U(loc.name)+'  ('+loc.lat+', '+loc.lng+')');
+  L.push('ground_elevation_m: '+(loc.ground_elevation_m!=null?loc.ground_elevation_m:'UNKNOWN'));
+  L.push('earth_source: '+(loc.earth_source||'UNRECORDED')+'   geometry: '+(loc.geometry||'UNRECORDED'));
+  L.push('date_time: '+U(l.date)+' '+U(l.time)+' '+(l.tz||'UTC'));
+  L.push('sun: azimuth '+l.sun_azimuth_deg+'°  elevation '+l.sun_elevation_deg+'°  phase '+l.phase);
+  L.push('key_relative_to_lens: '+sunSide(sh)+'   [DERIVED from sun azimuth and camera heading]');
+  L.push('scene: '+U(sh.scene));
+  L.push('action: '+U(sh.action));
+  L.push('');
+  L.push('## VCS-SAL');
+  if(!sh.dialogue.trim()){
+    L.push('speaker_attribution: UNKNOWN');
+    L.push('note: no dialogue authored for this shot. Attribution is never asserted at pre-vis.');
+  } else {
+    L.push('status: AUTHORED at pre-vis — intended, not observed');
+    sh.dialogue.split('\n').filter(x=>x.trim()).forEach(line=>L.push('  '+line.trim()));
+    if(!named.length) L.push('warning: dialogue is authored but no cast member in this shot has a name. Speaker is UNKNOWN.');
+  }
+  L.push('');
+  L.push('## VCS-CPAS');
+  L.push('shot_size: '+c.shot_size+'   angle: '+c.angle+'   move: '+(c.move||'static'));
+  L.push('lens_mm: '+c.lens_mm+'   fov_deg: '+c.fov_deg+'   sensor: '+(c.sensor||'full-frame')+' '+(c.sensor_width_mm||36)+'mm');
+  L.push('heading_deg: '+c.heading_deg+'   pitch_deg: '+c.pitch_deg+'   roll_deg: '+(c.roll_deg||0));
+  L.push('camera_position: '+(c.lat!=null?c.lat:'?')+', '+(c.lng!=null?c.lng:'?'));
+  L.push('camera_altitude_m: '+(c.altitude_m!=null?c.altitude_m:'UNKNOWN')+'   height_above_ground_m: '+
+         (c.height_above_ground_m!=null?c.height_above_ground_m:'UNKNOWN'));
+  L.push('target_distance_m: '+(camDist(c)!=null?camDist(c):'UNKNOWN'));
+  if(c.camera_type) L.push('rig: '+c.camera_type+(c.rig_feel?'  ('+c.rig_feel+')':''));
+  L.push('');
+  L.push('## VCS-STYLE');
+  L.push('style: '+U(look.style)+'   grade: '+U(look.grade)+'   atmosphere: '+U(look.atmosphere));
+  L.push('delivery_aspect: '+sh.spec.delivery.aspect);
+  L.push('delivery_target_px: '+(sh.spec.delivery.resolution||[]).join('×'));
+  L.push('capture_px: '+((sh.spec.delivery.capture_px||[]).join('×')||'UNKNOWN')+
+         '   [what the reference frame actually is, as opposed to the delivery target]');
+  L.push('tone: '+U(P.brief.tone));
+  L.push('');
+  L.push('## VCS-FORGE');
+  L.push('```json');
+  L.push(JSON.stringify(forgeBlock(sh), null, 2));
+  L.push('```');
+  L.push('');
+  L.push('## VCS-MATCH');
+  L.push('reference_frame: '+(sh.spec.reference_frame||'UNKNOWN'));
+  L.push('anchors: sun az '+l.sun_azimuth_deg+'° el '+l.sun_elevation_deg+'° · '+
+         c.lens_mm+'mm · heading '+Math.round(c.heading_deg)+'° · '+sh.spec.delivery.aspect);
+  L.push('');
+  L.push(recreatePrompt(sh));
+  L.push('');
+  L.push('## VCS-NEXT');
+  const nxt = P.shots[sh.n];
+  if(nxt){
+    L.push('# the following shot in this cut, as a pasteable prompt');
+    L.push(generationPrompt(nxt, sh));
+  } else {
+    L.push('# nothing follows this shot in the cut. No coverage is asserted.');
+    L.push('status: END OF CUT');
+  }
+  L.push('');
+  L.push('## CONTINUITY RISKS');
+  continuityRisks(sh).forEach(r=>L.push('- '+r));
+  return L.join('\n');
+}
+function forgeBlock(sh){
+  const c = sh.spec.camera, l = sh.spec.light;
+  return {
+    project_id:'GMAPZ', clip_id: sh.spec.id||('shot_'+sh.n),
+    shot_number: sh.n, duration_seconds: sh.beat || null,
+    world_lock: P.worldLock ? {
+      location: sh.spec.location, light: P.worldLock.light,
+      look: P.worldLock.look, delivery: P.worldLock.delivery
+    } : null,
+    characters: castInShot(sh.n).map(x=>({
+      id:x.id,
+      measured:{ type:x.measured.type, height_m:x.measured.height_m, width_m:x.measured.width_m,
+                 lat:x.measured.lat, lng:x.measured.lng },
+      authored:{ character:x.character||null, who:x.who||null, wardrobe:x.wardrobe||null,
+                 intent:x.intent||null },
+      provenance:'position and size MEASURED by Scout; identity AUTHORED here; nothing inferred'
+    })),
+    camera_continuity:{ heading_deg:c.heading_deg, pitch_deg:c.pitch_deg, lens_mm:c.lens_mm,
+                        target_distance_m:camDist(c), altitude_m:c.altitude_m },
+    style_lock: sh.spec.look,
+    light_lock:{ date:l.date, time:l.time, tz:l.tz,
+                 sun_azimuth_deg:l.sun_azimuth_deg, sun_elevation_deg:l.sun_elevation_deg, phase:l.phase },
+    authored:{ scene:sh.scene||null, action:sh.action||null, intent:sh.intent||null, notes:sh.notes||null },
+    speaker_attribution: sh.dialogue.trim() ? 'AUTHORED_AT_PREVIS' : 'UNKNOWN'
+  };
+}
+
+/* ── prompts: measured facts first, authored intent second, nothing invented ── */
+function factSentence(sh){
+  const c = sh.spec.camera, l = sh.spec.light, loc = sh.spec.location;
+  const bits = [];
+  bits.push((SIZE[c.shot_size]||c.shot_size)+' shot, '+c.angle+' angle, '+Math.round(c.lens_mm)+'mm lens');
+  bits.push('camera '+(c.height_above_ground_m!=null?Math.round(c.height_above_ground_m)+'m above the ground':'')+
+            (camDist(c)!=null?(c.height_above_ground_m!=null?', ':'')+Math.round(camDist(c))+'m from the subject':''));
+  bits.push(l.phase+' light, '+sunSide(sh));
+  if(loc.name) bits.push('at '+loc.name);
+  return bits.filter(Boolean).join('. ')+'.';
+}
+function generationPrompt(sh, prev){
+  const L = [];
+  if(prev) L.push('CONTINUING from '+(prev.spec.id||('shot '+prev.n))+' — hold the location, the sun and the look.');
+  if(sh.scene.trim()) L.push(sh.scene.trim());
+  if(sh.action.trim()) L.push('Action: '+sh.action.trim());
+  const cast = castInShot(sh.n).filter(x=>x.character);
+  if(cast.length) L.push('In frame: '+cast.map(x=>x.character+(x.who?' ('+x.who+')':'')+
+    (x.wardrobe?', '+x.wardrobe:'')).join('; ')+'.');
+  L.push(factSentence(sh));
+  const look = sh.spec.look;
+  L.push([look.style, look.grade&&look.grade!=='none'?look.grade+' grade':'', look.atmosphere]
+    .filter(Boolean).join(', ')+'. '+sh.spec.delivery.aspect+' framing.');
+  if(sh.intent.trim()) L.push('Intent: '+sh.intent.trim());
+  if(sh.spec.reference_frame) L.push('start frame: '+sh.spec.reference_frame);
+  return L.join('\n');
+}
+function recreatePrompt(sh){
+  return 'recreate_prompt: |\n  '+factSentence(sh).replace(/\n/g,'\n  ')+
+         '\n  Match the reference frame exactly: same geography, same sun direction, same lens compression.';
+}
+function continuityRisks(sh){
+  const out = [];
+  const l = sh.spec.light, wl = P.worldLock;
+  if(wl && wl.delivery && wl.delivery.aspect !== sh.spec.delivery.aspect)
+    out.push('DELIVERY DRIFT: this shot is '+sh.spec.delivery.aspect+' but the cut locks '+wl.delivery.aspect+'.');
+  if(wl && wl.light){
+    if(wl.light.date !== l.date) out.push('DATE DRIFT: '+l.date+' against a world lock of '+wl.light.date+'.');
+    const de = Math.abs(wl.light.sun_elevation_deg - l.sun_elevation_deg);
+    if(de > 15) out.push('LIGHT DRIFT: sun elevation differs from the lock by '+de.toFixed(0)+'° — reads as a time jump.');
+  }
+  if(sh.spec.location && sh.spec.location.geometry === 'flat_2d_imagery')
+    out.push('NO GEOMETRY: shot on flat 2D imagery. Building sides and perspective are painted on, not modelled.');
+  if(sh.dialogue.trim() && !castInShot(sh.n).some(x=>x.character))
+    out.push('SPEAKER UNKNOWN: dialogue authored, but no named cast in this shot.');
+  if(!sh.frame) out.push('NO REFERENCE FRAME: the spec arrived without its picture.');
+  out.push('Sun moves with time of day; the captured frame is the lock.');
+  if(!out.length) out.push('None recorded.');
+  return out;
+}
+
+/* ── project JSON: the machine-readable turnover ───────────────────────── */
+function projectJSON(){
+  return {
+    spec:'gmapz.turnover.v1',
+    exported_at:new Date().toISOString(),
+    title:P.title,
+    brief:P.brief,
+    world_lock:P.worldLock,
+    provenance_key:{
+      MEASURED:'observed by GMAPz Scout from real geometry at capture time',
+      AUTHORED:'written by the director in GMAPz Turnover',
+      DERIVED:'computed from measured facts; derived_from is stated',
+      UNKNOWN:'not known and deliberately not guessed'
+    },
+    shots:P.shots.map(sh=>({
+      n:sh.n, name:sh.name, reference_frame:sh.spec.reference_frame, beat_s:sh.beat,
+      measured:sh.spec,
+      authored:{scene:sh.scene, action:sh.action, dialogue:sh.dialogue, intent:sh.intent, notes:sh.notes},
+      derived:{ key_relative_to_lens:sunSide(sh), derived_from:['sun azimuth','camera heading','sun elevation'] },
+      continuity_risks:continuityRisks(sh),
+      prompt:generationPrompt(sh, P.shots[sh.n-2]||null)
+    })),
+    cast:P.cast.map(c=>({id:c.id, measured:c.measured,
+      authored:{character:c.character, who:c.who, wardrobe:c.wardrobe, intent:c.intent},
+      appears_in:c.shots}))
+  };
+}
+function download(text, name, mime){
+  const b = new Blob([text], {type:mime||'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PAGES
+   ══════════════════════════════════════════════════════════════════════════ */
+function render(){
+  $('projName').textContent = P.loaded ? P.title : 'No turnover loaded';
+  $('projSub').textContent  = P.loaded ? (P.shots.length+' shots · '+P.cast.length+' cast · '+P.source)
+                                       : 'drop a scout cut to begin';
+  [...document.querySelectorAll('.rbtn')].forEach(b=>b.classList.toggle('on', b.dataset.p===P.page));
+  ({in:pageIn, shot:pageShot, cast:pageCast, cont:pageCont, out:pageOut}[P.page]||pageIn)();
+}
+function needsTurnover(){
+  $('sideBody').innerHTML = '';
+  $('page').innerHTML = '<h2>Nothing received yet</h2>'+
+    '<p class="lede">This room works on a Scout turnover. Drop one on the <b>IN</b> panel and '+
+    'every measured fact arrives with it — you will not retype a single number.</p>'+
+    '<div class="empty">No shots loaded</div>';
+}
+
+/* ── IN ────────────────────────────────────────────────────────────────── */
+function pageIn(){
+  $('sideBody').innerHTML =
+    '<div class="drop" id="drop"><b>Drop a Scout cut here</b>'+
+    'the .zip from <span style="font-family:var(--mono)">Export the cut</span>, or the loose '+
+    'cut.json + specs + frames</div>'+
+    '<div class="row" style="margin-top:10px"><button class="btn" id="pick">Choose files</button></div>'+
+    '<div class="mini" style="margin-top:10px">Nothing is uploaded anywhere. The package is read '+
+    'in this browser and stays on this machine.</div>';
+  const drop = $('drop');
+  drop.onclick = ()=>$('fileIn').click();
+  $('pick').onclick = ()=>$('fileIn').click();
+  ['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over');}));
+  ['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('over');}));
+  drop.addEventListener('drop',e=>{ if(e.dataTransfer.files.length) ingest(e.dataTransfer.files); });
+
+  const pg = $('page');
+  if(!P.loaded){
+    pg.innerHTML =
+      '<h2>The room a Scout cut is handed to</h2>'+
+      '<p class="lede">Scout measures a place: where the camera stood, how far it was from the '+
+      'subject, where the sun was, what the ground did. This room takes that turnover and lets '+
+      'you author the film on top of it — scene, action, dialogue, who these people are.</p>'+
+      '<h3>The rule that makes this different from a notes app</h3>'+
+      '<div class="tw"><table><thead><tr><th>Kind</th><th>Where it comes from</th><th>Can you edit it</th></tr></thead><tbody>'+
+      Object.keys(PROV).map(k=>'<tr><td>'+provTag(k)+'</td><td>'+esc(PROV[k].word)+'</td><td>'+
+        (k==='authored'?'<b>yes — this is your half</b>':'no')+'</td></tr>').join('')+
+      '</tbody></table></div>'+
+      '<p class="lede" style="margin-top:16px">A measured fact is locked. An authored field is '+
+      'never pre-filled, because a guess sitting in an authored field is indistinguishable from '+
+      'a decision once it is on the page. Every line that leaves here says which kind it is.</p>'+
+      '<div class="empty" style="margin-top:20px">Drop a turnover on the left to begin</div>';
+    return;
+  }
+  const flatCount = P.shots.filter(s=>s.spec.location.geometry==='flat_2d_imagery').length;
+  pg.innerHTML =
+    '<h2>'+esc(P.title)+'</h2>'+
+    '<p class="lede">Received '+P.shots.length+' shots and '+P.cast.length+' stand-ins. '+
+    'Everything below is '+provTag('measured')+' and cannot be edited here.</p>'+
+    (P.issues.length
+      ? '<h3>What came with it</h3>'+P.issues.map(i=>'<div class="flag'+(i.bad?' bad':'')+'">'+esc(i.t)+'</div>').join('')
+      : '<div class="flag ok">Package is complete: every shot in cut.json has its spec and its frame.</div>')+
+    '<h3>World lock</h3>'+
+    (P.worldLock ? '<div class="measured">'+
+      ['delivery '+((P.worldLock.delivery||{}).aspect||'—'),
+       'style '+((P.worldLock.look||{}).style||'—'),
+       'grade '+((P.worldLock.look||{}).grade||'—'),
+       'atmosphere '+((P.worldLock.look||{}).atmosphere||'—'),
+       'date '+((P.worldLock.light||{}).date||'—'),
+       'time '+((P.worldLock.light||{}).time||'—')+' '+((P.worldLock.light||{}).tz||''),
+       'phase '+((P.worldLock.light||{}).phase||'—')
+      ].map(t=>'<span><b>'+esc(t)+'</b></span>').join('')+'</div>'
+      : '<div class="flag">No cut.json in the package, so there is no shared world lock. '+
+        'Each shot carries its own light and look.</div>')+
+    (flatCount ? '' : '<div class="flag ok" style="margin-top:10px">Every frame was shot on real 3D geometry.</div>')+
+    '<h3>The brief</h3>'+
+    '<p class="mini">'+provTag('authored')+' Nothing here is filled in for you. Blank means blank.</p>'+
+    briefField('logline','Logline')+briefField('tone','Tone')+
+    briefField('format','Format / length')+briefField('audience','Audience')+
+    '<label class="fld">Canon — what must stay true across every shot</label>'+
+    '<textarea id="b_canon" placeholder="Rules the whole piece obeys.">'+esc(P.brief.canon)+'</textarea>';
+  ['logline','tone','format','audience','canon'].forEach(k=>{
+    const el = $('b_'+k); if(el) el.oninput = ()=>{ P.brief[k] = el.value; };
+  });
+}
+const briefField = (k,label) => '<label class="fld">'+label+'</label>'+
+  '<input type="text" id="b_'+k+'" value="'+esc(P.brief[k])+'">';
+
+/* ── SHOTS ─────────────────────────────────────────────────────────────── */
+function pageShot(){
+  if(!P.loaded) return needsTurnover();
+  $('sideBody').innerHTML = P.shots.map((sh,i)=>{
+    const done = sh.scene.trim() || sh.action.trim();
+    return '<div class="shotrow'+(i===P.sel?' on':'')+(done?' done':'')+'" data-i="'+i+'">'+
+      (sh.frame ? '<img src="'+sh.frame+'" alt="">' : '<div class="no">NO FRAME</div>')+
+      '<div class="t"><b>'+sh.n+'. '+esc(sh.name)+'</b><span>'+esc(shotRow(sh))+'</span></div>'+
+      '<div class="st">'+(done?'authored':'blank')+'</div></div>';
+  }).join('');
+  [...document.querySelectorAll('.shotrow')].forEach(r=>r.onclick=()=>{P.sel=+r.dataset.i;render();});
+
+  const sh = P.shots[P.sel]; if(!sh) return;
+  $('page').innerHTML =
+    '<h2>'+sh.n+'. '+esc(sh.name)+'</h2>'+
+    '<p class="lede">'+esc(shotSlug(sh))+'</p>'+
+    (sh.frame ? '<img class="refframe" src="'+sh.frame+'" alt="reference frame">'
+              : '<div class="flag bad">This shot arrived without its picture.</div>')+
+    '<h3>What Scout measured '+provTag('measured')+'</h3>'+
+    measuredLine(sh)+
+    '<div class="mini" style="margin-top:8px">Key light: <b style="color:var(--txt)">'+esc(sunSide(sh))+'</b> '+
+    provTag('derived')+' from sun azimuth, sun elevation and camera heading.</div>'+
+    '<h3>What you author '+provTag('authored')+'</h3>'+
+    '<label class="fld">Scene — what this shot is</label>'+
+    '<textarea id="a_scene" placeholder="The thing happening here. Scout knows the place; it does not know the story.">'+esc(sh.scene)+'</textarea>'+
+    '<label class="fld">Action — what moves</label>'+
+    '<textarea id="a_action" placeholder="Who does what, and when within the beat.">'+esc(sh.action)+'</textarea>'+
+    '<label class="fld">Dialogue — one line per speaker</label>'+
+    '<textarea id="a_dialogue" placeholder="NAME: line&#10;Leave empty and VCS-SAL stays UNKNOWN, which is correct at pre-vis.">'+esc(sh.dialogue)+'</textarea>'+
+    '<label class="fld">Intent — why this shot exists</label>'+
+    '<textarea id="a_intent" placeholder="What it has to do for the cut.">'+esc(sh.intent)+'</textarea>'+
+    '<label class="fld">Notes</label>'+
+    '<textarea id="a_notes">'+esc(sh.notes)+'</textarea>'+
+    '<h3>Cast in this shot</h3>'+
+    (castInShot(sh.n).length
+      ? castInShot(sh.n).map(c=>'<div class="mini" style="margin:4px 0">'+
+          '<b style="color:var(--txt)">'+esc(c.character || (c.measured.name||c.measured.label||'unnamed stand-in'))+'</b> — '+
+          esc(c.measured.type)+(c.measured.height_m?', '+c.measured.height_m+'m tall':'')+
+          (c.character?'':' · <span style="color:var(--amber)">no character assigned — set it in Cast</span>')+
+          '</div>').join('')
+      : '<div class="mini">No stand-ins were in frame when this was shot.</div>')+
+    '<h3>Continuity risks '+provTag('derived')+'</h3>'+
+    continuityRisks(sh).map(r=>'<div class="flag'+(/DRIFT|UNKNOWN|NO /.test(r)?' bad':'')+'">'+esc(r)+'</div>').join('');
+  ['scene','action','dialogue','intent','notes'].forEach(k=>{
+    const el = $('a_'+k); if(!el) return;
+    el.oninput = ()=>{ sh[k] = el.value; };
+    el.onblur  = ()=>{ render(); };
+  });
+}
+
+/* ── CAST ──────────────────────────────────────────────────────────────── */
+function pageCast(){
+  if(!P.loaded) return needsTurnover();
+  $('sideBody').innerHTML = '<div class="mini">Scout measured <b style="color:var(--txt)">what</b>, '+
+    '<b style="color:var(--txt)">how big</b> and <b style="color:var(--txt)">where</b>. '+
+    'It cannot know who. That half is yours, and nothing is filled in for you.</div>';
+  $('page').innerHTML = '<h2>Cast</h2>'+
+    '<p class="lede">'+P.cast.length+' stand-ins arrived with the turnover.</p>'+
+    (P.cast.length ? P.cast.map((c,i)=>
+      '<div class="card">'+
+      '<div class="measured" style="margin-bottom:10px">'+
+        '<span><span class="k">type</span> <b>'+esc(c.measured.type)+'</b></span>'+
+        '<span><span class="k">as shot</span> <b>'+esc(c.measured.name||c.measured.label||'—')+'</b></span>'+
+        '<span><span class="k">height</span> <b>'+(c.measured.height_m!=null?c.measured.height_m+' m':'—')+'</b></span>'+
+        '<span><span class="k">width</span> <b>'+(c.measured.width_m!=null?c.measured.width_m+' m':'—')+'</b></span>'+
+        '<span><span class="k">at</span> <b>'+(c.measured.lat!=null?c.measured.lat.toFixed(5)+', '+c.measured.lng.toFixed(5):'—')+'</b></span>'+
+        '<span><span class="k">in shots</span> <b>'+c.shots.join(', ')+'</b></span>'+
+      '</div>'+
+      '<label class="fld">Character '+provTag('authored')+'</label>'+
+      '<input type="text" data-c="'+i+'" data-k="character" value="'+esc(c.character)+'" placeholder="Their name in this film">'+
+      '<label class="fld">Who they are</label>'+
+      '<input type="text" data-c="'+i+'" data-k="who" value="'+esc(c.who)+'" placeholder="Role in the story — not a physical description, Scout has that">'+
+      '<label class="fld">Wardrobe</label>'+
+      '<input type="text" data-c="'+i+'" data-k="wardrobe" value="'+esc(c.wardrobe)+'">'+
+      '<label class="fld">Intent in this cut</label>'+
+      '<input type="text" data-c="'+i+'" data-k="intent" value="'+esc(c.intent)+'">'+
+      '</div>').join('')
+    : '<div class="empty">No stand-ins were placed in this cut.</div>');
+  [...document.querySelectorAll('[data-c]')].forEach(el=>{
+    el.oninput = ()=>{ P.cast[+el.dataset.c][el.dataset.k] = el.value; };
+  });
+}
+
+/* ── CONTINUITY ────────────────────────────────────────────────────────── */
+function pageCont(){
+  if(!P.loaded) return needsTurnover();
+  $('sideBody').innerHTML = '<div class="mini">Every flag here is '+provTag('derived')+
+    ' from measured facts. None of it is an opinion about the film.</div>';
+  const rows = P.shots.map(sh=>{
+    const r = continuityRisks(sh).filter(x=>!/^Sun moves|^None/.test(x));
+    return {sh, r};
+  });
+  const clean = rows.filter(x=>!x.r.length).length;
+  $('page').innerHTML = '<h2>Continuity</h2>'+
+    '<p class="lede">'+clean+' of '+P.shots.length+' shots carry no flags.</p>'+
+    '<div class="tw"><table><thead><tr><th>#</th><th>Shot</th><th>Light</th><th>Delivery</th><th>Flags</th></tr></thead><tbody>'+
+    rows.map(({sh,r})=>'<tr><td><b>'+sh.n+'</b></td><td><b>'+esc(sh.name)+'</b><br><span style="font-family:var(--mono);font-size:10px">'+
+      esc(shotSlug(sh))+'</span></td>'+
+      '<td>'+esc(sh.spec.light.phase)+'<br><span style="font-family:var(--mono);font-size:10px">el '+
+      sh.spec.light.sun_elevation_deg+'° az '+sh.spec.light.sun_azimuth_deg+'°</span></td>'+
+      '<td>'+esc(sh.spec.delivery.aspect)+'</td>'+
+      '<td>'+(r.length?r.map(x=>'<span style="color:var(--amber)">'+esc(x)+'</span>').join('<br>'):'<span style="color:var(--emerald)">clean</span>')+'</td></tr>').join('')+
+    '</tbody></table></div>';
+}
+
+/* ── OUT ───────────────────────────────────────────────────────────────── */
+function pageOut(){
+  if(!P.loaded) return needsTurnover();
+  const sh = P.shots[P.sel];
+  $('sideBody').innerHTML =
+    '<label class="fld">This shot</label>'+
+    '<div class="row"><button class="btn vcs" id="oVcs">VCS-15 turnover (.md)</button></div>'+
+    '<div class="row"><button class="btn" id="oPrompt">Generation prompt</button></div>'+
+    '<label class="fld">The whole cut</label>'+
+    '<div class="row"><button class="btn y" id="oAll">All VCS-15 turnovers (.md)</button></div>'+
+    '<div class="row"><button class="btn vco" id="oProj">Project (.json)</button></div>'+
+    '<div class="row"><button class="btn" id="oPrompts">All prompts (.txt)</button></div>'+
+    '<div class="mini" style="margin-top:12px">Every document states, per field, whether it was '+
+    'measured, authored, derived or unknown. A reader downstream never has to guess which.</div>';
+  $('page').innerHTML = '<h2>Turnover out</h2>'+
+    '<p class="lede">Previewing shot '+sh.n+' — '+esc(sh.name)+'. Pick another in Shots.</p>'+
+    '<div class="out">'+esc(vcsTurnover(sh))+'</div>';
+  const slug = s => (s||'shot').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,40);
+  $('oVcs').onclick = ()=>download(vcsTurnover(sh), 'vcs15_'+sh.n+'_'+slug(sh.name)+'.md', 'text/markdown');
+  $('oPrompt').onclick = ()=>download(generationPrompt(sh, P.shots[sh.n-2]||null), 'prompt_'+sh.n+'.txt');
+  $('oAll').onclick = ()=>download(P.shots.map(x=>vcsTurnover(x)).join('\n\n'+'='.repeat(78)+'\n\n'),
+    'vcs15_turnover_'+slug(P.title)+'.md','text/markdown');
+  $('oProj').onclick = ()=>download(JSON.stringify(projectJSON(),null,2),
+    'turnover_'+slug(P.title)+'.json','application/json');
+  $('oPrompts').onclick = ()=>download(P.shots.map(x=>
+    '--- shot '+x.n+': '+x.name+' ---\n'+generationPrompt(x, P.shots[x.n-2]||null)).join('\n\n'),
+    'prompts_'+slug(P.title)+'.txt');
+}
+
+/* ── wiring ────────────────────────────────────────────────────────────── */
+[...document.querySelectorAll('.rbtn')].forEach(b=>b.onclick=()=>{P.page=b.dataset.p;render();});
+$('fileIn').onchange = e => { if(e.target.files.length) ingest(e.target.files); e.target.value=''; };
+document.addEventListener('dragover', e=>e.preventDefault());
+document.addEventListener('drop', e=>{ e.preventDefault();
+  if(P.page==='in' && e.dataTransfer && e.dataTransfer.files.length) ingest(e.dataTransfer.files); });
+
+// Test surface, same contract as Scout: anything the headless suite must reach lives here.
+window.turnover = {P, ingest, readZip, vcsTurnover, generationPrompt, projectJSON,
+  continuityRisks, sunSide, castInShot, camDist, render, PROV};
+render();
+})();
+</script>
+</body>
+</html>
