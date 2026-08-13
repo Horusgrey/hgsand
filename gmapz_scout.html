@@ -1114,7 +1114,10 @@ function soundscape(sp){
   beds.push(quiet?'open air after dark, sparse and low':'open-air ambience, wind and distance');
   if(look.atmosphere==='storm')beds.push('wind gusting in the open, low thunder rolling under it, rain hiss on hard surfaces');
   else if(look.atmosphere==='haze')beds.push('air thick and muffled, sound carrying short');
-  else if(look.atmosphere==='golden')beds.push('warm evening air, birds settling');
+  // "Evening" is a fact about the clock. Golden is a look you can pick at noon, and this
+  // cut did: atmosphere 'golden' over a scene whose own light block says phase 'day'.
+  else if(look.atmosphere==='golden')beds.push(lt.phase==='golden'||lt.phase==='blue'
+    ? 'warm low-sun air, birds settling' : 'warm still air');
   else if(night)beds.push('night insects, sparse and far apart');
   // A subject 2.5 km away does not make footsteps you can hear.
   if(subj.some(s=>s.type==='prop'||s.type==='vehicle'))
@@ -1143,10 +1146,12 @@ function soundscape(sp){
   };
 }
 function audioLine(sp){ return soundscape(sp).bed.join('; ')+'.'; }
-function audioPhrase(c){ // Veo 3 generates sound — give it something true to the scene
-  const base={clear:'light wind, distant city ambience',haze:'muffled distant traffic, soft wind',golden:'gentle evening ambience, birds settling',blue:'quiet dusk, far-off hum',storm:'wind gusts, low thunder rumble',night:'night insects, sparse distant sounds'}[c.atmos]||'natural location ambience';
-  return base;
-}
+// Veo 3 generates sound, so it gets a bed — but from the ONE place that reasons about it.
+// This used to be a second hardcoded table, and it outlived the fix to soundscape() by a
+// month: it put "distant city ambience" over a Minnesota lake with nothing placed, because
+// it was keyed on the weather and had never heard of the location, the distance or the
+// clock. There is no table here now. If soundscape() cannot justify a sound, it is not said.
+function audioPhrase(c){ return c.audioBed || 'natural location ambience'; }
 // Per-engine builders — each speaks that engine's native prompt dialect
 const ENGINE_BUILDERS={
   runway(c,motion){ // Gen-4: terse, keyword-comma, image carries the look — prompt carries MOTION
@@ -3866,15 +3871,28 @@ async function vco(){
     brief:{
       title:(sp.location.name||'Scouted location')+' \u2014 '+rows.length+' shot'+(rows.length===1?'':'s'),
       logline:sp.scene_description||autoLogline(sp),
-      format:'Pre-vis sequence \u00b7 '+sp.delivery.aspect,
+      // Every delivery in the cut, not shot 1's. A cut that changes aspect halfway is not
+      // a 16:9 cut, and a downstream app conforming to that would crop the rest.
+      format:'Pre-vis sequence \u00b7 '+[...new Set(S.shots.map(x=>x.spec.delivery.aspect))].join(' \u2192 '),
       tone:st.name,
       duration:total.toFixed(1)+'s across '+rows.length+' setup'+(rows.length===1?'':'s'),
       engine:'Veo 3',
       worldContext:'Real geography at '+sp.location.lat.toFixed(5)+', '+sp.location.lng.toFixed(5)+
         (sp.location.name?(' ('+sp.location.name+')'):'')+'. '+dcLightLine(sp)+
         '. Everything here is PLANNED blocking authored in Scout \u2014 nothing was observed from footage.',
-      canon:'Hold the geography, the sun and the look constant across every shot. '+
-        st.name+': '+st.desc+'. No neon cyberpunk, no glossy futurism.'
+      // Claim constancy only for what is actually constant across this cut.
+      canon:(()=>{ const K=seqConstants(), hold=['the geography'];
+        if(K.light)hold.push('the sun');
+        if(K.style&&K.atmos)hold.push('the look');
+        const drift=[];
+        if(!K.light)drift.push('the sun moves between shots');
+        if(!K.style)drift.push('the style changes mid-cut');
+        if(!K.atmos)drift.push('the atmosphere changes mid-cut');
+        if(!K.aspect)drift.push('the delivery aspect changes mid-cut');
+        return 'Hold '+hold.join(', ').replace(/, ([^,]*)$/,' and $1')+' constant across every shot. '+
+          (drift.length?('Do NOT hold the rest: '+drift.join('; ')+' \u2014 each shot\u2019s own '+
+                         'reference frame is authoritative for those. '):'')+
+          st.name+': '+st.desc+'. No neon cyberpunk, no glossy futurism.'; })()
     },
     bible:{
       world_name:sp.location.name||('Scout '+sp.location.lat.toFixed(3)+', '+sp.location.lng.toFixed(3)),
@@ -4552,6 +4570,8 @@ function ctxFromSpec(sp){
   const subj=(sp.subjects||[]).map(s=>({role:s.label,kind:SPEC_NOUN[s.type]||'figure',h:s.height_m}));
   const mm=Math.round(sp.camera.lens_mm);
   return {desc:(sp.scene_description||'').trim().replace(/\.+$/,''),
+    // Derived once, here, from the clock/weather/geometry/subjects of THIS shot.
+    audioBed:soundscape(sp).bed.join(', '),
     size:(SHOT_SIZES[sp.camera.shot_size]||{label:sp.camera.shot_size}).label,
     angle:sp.camera.angle, mm, feel:lensFeel(mm), phase,
     lightWord:({day:'daylight',golden:'golden-hour light',blue:'blue-hour light',night:'night'})[phase]||'daylight',
@@ -4613,17 +4633,51 @@ function seqSubjectLine(){
   const everyShot=S.shots.every(sh=>(sh.spec.subjects||[]).length===seen.size);
   return all.join(', ')+(everyShot?'':'  (not all in every shot — see each CONTINUITY line)');
 }
+// What is ACTUALLY the same in every shot of this cut. The header used to read shot 1
+// and declare it the world lock; a cut that changed style, atmosphere and aspect halfway
+// therefore opened by telling the engine to hold constant three things its own start
+// frames contradict. Anything that moves belongs under "what changes", not the lock.
+function seqConstants(){
+  const first=S.shots[0].spec;
+  const same=k=>S.shots.every(sh=>k(sh.spec)===k(first));
+  return {
+    light:  same(s=>s.light.sun_azimuth_deg+'|'+s.light.sun_elevation_deg+'|'+s.light.phase+'|'+s.light.date+'|'+s.light.time),
+    style:  same(s=>s.look.style),
+    atmos:  same(s=>s.look.atmosphere),
+    aspect: same(s=>s.delivery.aspect)
+  };
+}
 function sequenceHeader(eng){
-  const f=S.shots[0].spec, l=f.light;
+  const f=S.shots[0].spec, l=f.light, K=seqConstants();
+  const styleName=s=>(STYLES[s.look.style]||{name:s.look.style}).name;
+  const lock=[
+    '  location   '+f.location.lat.toFixed(5)+', '+f.location.lng.toFixed(5)+(f.location.name?'  ('+f.location.name+')':'')
+  ];
+  if(K.light)lock.push('  light      sun az '+l.sun_azimuth_deg+'\u00b0 \u00b7 el '+l.sun_elevation_deg+'\u00b0 \u00b7 '+l.phase);
+  if(K.style&&K.atmos)lock.push('  look       '+styleName(f)+' \u00b7 '+f.look.atmosphere);
+  else if(K.style)lock.push('  style      '+styleName(f));
+  else if(K.atmos)lock.push('  atmosphere '+f.look.atmosphere);
+  if(K.aspect)lock.push('  delivery   '+f.delivery.aspect);
+  lock.push('  subjects   '+seqSubjectLine());
+
+  // Everything the cut does NOT hold constant, named rather than quietly overwritten.
+  const moves=[];
+  if(!K.light) moves.push('  light      the sun moves between shots \u2014 each shot\u2019s own light is in its line and its start frame');
+  if(!K.style) moves.push('  style      '+[...new Set(S.shots.map(sh=>styleName(sh.spec)))].join(' \u2192 '));
+  if(!K.atmos) moves.push('  atmosphere '+[...new Set(S.shots.map(sh=>sh.spec.look.atmosphere))].join(' \u2192 '));
+  if(!K.aspect)moves.push('  delivery   '+[...new Set(S.shots.map(sh=>sh.spec.delivery.aspect))].join(' \u2192 ')+
+    '   \u2014 the frame shape changes mid-cut; conform before you assemble');
+
   return '=== GMAPz SEQUENCE \u00b7 '+S.shots.length+' shots \u00b7 '+ENGINES[eng]+' ===\n'+
    'WORLD LOCK \u2014 identical in every shot below:\n'+
-   '  location   '+f.location.lat.toFixed(5)+', '+f.location.lng.toFixed(5)+(f.location.name?'  ('+f.location.name+')':'')+'\n'+
-   '  light      sun az '+l.sun_azimuth_deg+'\u00b0 \u00b7 el '+l.sun_elevation_deg+'\u00b0 \u00b7 '+l.phase+'\n'+
-   '  look       '+(STYLES[f.look.style]||{name:f.look.style}).name+' \u00b7 '+f.look.atmosphere+' \u00b7 '+f.delivery.aspect+'\n'+
-   '  subjects   '+seqSubjectLine()+'\n'+
-   'Hold all of the above constant across every shot. Do not re-invent the geography,\n'+
+   lock.join('\n')+'\n'+
+   (moves.length
+     ? '\nWHAT CHANGES ACROSS THIS CUT \u2014 not locked, do not carry these over:\n'+moves.join('\n')+'\n'
+     : '')+
+   '\nHold the WORLD LOCK constant across every shot. Do not re-invent the geography,\n'+
    'the light direction, or the subjects between shots \u2014 only what each CONTINUITY line\n'+
-   'names has changed. Each shot has a matching start frame exported alongside it.\n';
+   (moves.length?'or the list above names has changed. ':'names has changed. ')+
+   'Each shot has a matching start frame exported alongside it.\n';
 }
 function cameraSentence(ctx,sp){
   const mv=sp.camera.move;
@@ -5135,7 +5189,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
   renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,renderPathList,
   removePathPoint,purgeMarkerFromCasts,
-  renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,sequencePrompts,ctxFromSpec,openSequenceStudio,
+  renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,ENGINES,sequencePrompts,seqConstants,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
   saveLook,loadLook,renderLooks,SENSORS,GRADES,ATMOS,applyMask,applyGrade,
