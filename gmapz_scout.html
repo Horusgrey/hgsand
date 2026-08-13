@@ -1312,6 +1312,14 @@ function setEarthMode(mode,detail){
       'console.cloud.google.com \u2192 APIs &amp; Services and enable <b>Map Tiles API</b> on this key, with billing on.</span>'+
       '<span>It is a different API from Maps JavaScript, Static Maps, Places or Geocoding \u2014 a key that works '+
       'for any of those is still rejected here. That is the one Google\u2019s console makes hardest to find.</span>'+
+      // The recurring cause, as opposed to the one-time ones above: a key that already
+      // works somewhere else is usually restricted to that somewhere else.
+      '<span><b>Already working at another address?</b> Then it is the referrer restriction, not the API. '+
+      'A key allows only the addresses listed on it, and this is a new one:'+
+      (referrerPattern()?'<span class="ew-why">'+escapeHtml(referrerPattern())+'</span>'
+                        :'<span class="ew-why">a file:// page sends no referrer at all \u2014 serve it over http://</span>')+
+      'Add that under Application restrictions, or set them to <b>None</b> and keep only the API '+
+      'restriction \u2014 that is the one that actually protects the key.</span>'+
       (detail?'<span class="ew-why">'+escapeHtml(String(detail).slice(0,220))+'</span>':'')+
       '<button class="btn sm" id="earthWarnX">Shoot flat anyway</button>';
     warn.style.display='block';
