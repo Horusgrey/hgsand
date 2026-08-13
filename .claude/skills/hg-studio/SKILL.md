@@ -29,6 +29,19 @@ asked. He has asked for this explicitly and it is how he keeps continuity across
 Log"). Pass that as `url`. One running log, newest session first, not a new page per session.
 If the URL ever falls out of context, find it with `Artifact action:"list"`.
 
+**ARTIFACTS FREEZE ON HIS MACHINE — always ship the file too.** He has reported repeatedly that
+artifacts won't open, won't load, or won't let him download. An artifact he cannot open is not a
+deliverable. So the log is generated from ONE source into TWO outputs, and both go out every
+session:
+- `scratchpad/buildlog.tmpl.html` — the source, with `HEAD_SHA` / `SUITE_LINE` / `SUITE_FOOT`
+  placeholders so the status band cannot drift from the repo.
+- `python3 scratchpad/mklog.py "<N> green · <M> assertions · 0 page errors"` writes
+  `buildlog.html` (for `Artifact`, no wrapper — the host injects one) and
+  `drop/GMAPz_Build_Log.html` (standalone, with doctype/head/body) — send that one with
+  `SendUserFile` every time.
+
+The same rule applies to anything else he needs to read: publish it AND attach it.
+
 It must carry, newest session first:
 - date, the commits made (SHAs + one-line each), the suite count
 - **what changed, in product terms** — what he can now do that he could not before
