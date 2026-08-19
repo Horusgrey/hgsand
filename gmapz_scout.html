@@ -255,6 +255,81 @@ window.CESIUM_VIA='';
   .hud .btn{flex:none;background:rgba(10,10,13,.72);border-color:rgba(255,255,255,.09);
     backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);}
   .hud .btn:hover{background:rgba(22,22,27,.85);}
+  /* ---- FRAME FORGE: the finishing room, on the stage ---- */
+  #forge{position:absolute;inset:0;background:#08080a;z-index:60;display:none;
+    flex-direction:column;overflow:hidden;}
+  #forge.show{display:flex;}
+  #forgeHead{display:flex;align-items:center;gap:12px;padding:11px 16px;flex:none;
+    border-bottom:1px solid var(--line);background:linear-gradient(180deg,#101014,#0b0b0e);flex-wrap:wrap;}
+  #forgeHead h3{margin:0;font-size:14px;font-weight:700;letter-spacing:.02em;}
+  #forgeHead h3 span{color:var(--yellow);}
+  #forgeHead .sub{font-family:var(--mono);font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--faint);}
+  #forgeStat{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:auto;}
+  /* .btn is flex:1 by default so it fills a .row in the rail. In a toolbar that turns
+     every button into a banner, so the header opts out. */
+  #forgeHead .btn,#forgeFoot .btn{flex:none;}
+  #forgeRows{flex:1;overflow-y:auto;padding:10px 16px 24px;}
+  #forgeFoot{flex:none;display:flex;align-items:center;gap:10px;padding:11px 16px;flex-wrap:wrap;
+    border-top:1px solid var(--line);background:linear-gradient(0deg,#101014,#0b0b0e);}
+  #forgeCanvas{width:150px;height:84px;border-radius:7px;border:1px solid var(--line);
+    background:#000;flex:none;}
+  #forgeProg{font-family:var(--mono);font-size:10px;color:var(--faint);}
+  .frow{display:grid;grid-template-columns:38px 168px minmax(180px,1.25fr) minmax(150px,1fr) minmax(170px,1.1fr) 104px;
+    gap:12px;padding:13px 2px;border-bottom:1px solid var(--line);align-items:start;}
+  .frow.dragging{opacity:.35;}
+  .frow.over{outline:1px dashed var(--yellow);outline-offset:-2px;border-radius:8px;}
+  .frow .frail{display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:3px;}
+  .frow .fgrip{cursor:grab;color:var(--faint);font-size:12px;user-select:none;}
+  .frow .fn{font-family:var(--mono);font-size:10px;color:var(--dim);background:#111116;
+    border:1px solid var(--line);border-radius:5px;padding:2px 6px;}
+  .fthumb{position:relative;width:168px;height:95px;border-radius:8px;overflow:hidden;
+    background:#0e0e12;border:1px solid var(--line);cursor:pointer;}
+  .fthumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .fthumb .none{width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:9.5px;color:var(--faint);text-align:center;padding:0 8px;}
+  .fthumb .over{position:absolute;inset:0;background:rgba(8,8,10,.72);display:flex;
+    align-items:center;justify-content:center;font-size:10.5px;font-weight:600;opacity:0;transition:.14s;}
+  .fthumb:hover .over{opacity:1;}
+  .fcell label{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--faint);margin-bottom:5px;}
+  .fcell textarea{width:100%;min-height:74px;resize:vertical;background:#0b0b0e;
+    border:1px solid var(--line);border-radius:7px;color:var(--txt);padding:8px 9px;
+    font-family:inherit;font-size:12px;line-height:1.5;}
+  .fcell textarea:focus{outline:none;border-color:var(--yellow);}
+  .fchips{display:flex;flex-wrap:wrap;gap:4px;}
+  .fchip{border:1px solid var(--line);background:#0e0e12;color:var(--faint);border-radius:99px;
+    padding:4px 9px;font-size:10px;cursor:pointer;transition:.1s;user-select:none;}
+  .fchip:hover{border-color:var(--line2);color:var(--txt);}
+  .fchip.on{background:linear-gradient(180deg,#231f0c,#17150a);color:var(--yellow);
+    border-color:rgba(250,204,21,.45);font-weight:600;}
+  .ftagin{margin-top:6px;width:100%;background:#0b0b0e;border:1px solid var(--line);
+    border-radius:6px;color:var(--txt);padding:5px 7px;font-size:11px;}
+  .ftags{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;}
+  .ftag{font-family:var(--mono);font-size:9.5px;background:rgba(52,211,153,.09);
+    border:1px solid rgba(52,211,153,.32);color:var(--emerald);padding:2px 7px;border-radius:99px;}
+  .ftag b{cursor:pointer;margin-left:4px;font-weight:400;opacity:.7;}
+  .faud{display:flex;gap:5px;align-items:center;}
+  .faud select{flex:1;min-width:0;background:#0b0b0e;border:1px solid var(--line);
+    color:var(--txt);border-radius:6px;padding:6px 7px;font-size:11px;}
+  .fmini{border:1px solid var(--line);background:#0e0e12;color:var(--dim);border-radius:6px;
+    padding:5px 8px;font-size:11px;cursor:pointer;flex:none;line-height:1;}
+  .fmini:hover{border-color:var(--line2);color:var(--txt);}
+  .fmini.del:hover{border-color:var(--red);color:var(--red);}
+  .fdet{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:5px;
+    display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .fdet.has{color:var(--emerald);}
+  .fmeta{display:flex;flex-direction:column;gap:7px;}
+  .fhold{display:flex;align-items:center;gap:5px;}
+  .fhold input{width:62px;background:#0b0b0e;border:1px solid var(--line);border-radius:6px;
+    color:var(--txt);padding:5px 6px;font-size:11px;text-align:center;font-family:var(--mono);}
+  .fhold span{font-family:var(--mono);font-size:9.5px;color:var(--faint);}
+  .fempty{padding:52px 24px;text-align:center;color:var(--faint);}
+  .fempty b{display:block;color:var(--dim);font-size:15px;margin-bottom:8px;}
+  @media (max-width:1100px){
+    .frow{grid-template-columns:38px 168px 1fr;}
+    .frow .fcell.aud,.frow .fcell.fx,.frow .fmeta{grid-column:2 / -1;}
+  }
   .crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none;width:34px;height:34px;}
   .crosshair:before,.crosshair:after{content:"";position:absolute;background:rgba(250,204,21,.7);}
   .crosshair:before{left:50%;top:0;width:1px;height:100%;transform:translateX(-.5px);}
@@ -833,18 +908,30 @@ window.CESIUM_VIA='';
 
     <details class="sec"><summary>Capture &amp; export <span class="ico">&#9656;</span></summary>
       <div class="body">
-        <label class="fld">The export</label>
-        <div class="row"><button class="btn y" id="bundleBtn" title="The frames, the animatic, the specs and the prompts &mdash; one file, filenames already matching">Export the cut (.zip)</button></div>
+        <label class="fld">Finish the cut</label>
+        <div class="row"><button class="btn y" id="forgeBtn" title="One row per shot &mdash; the frame, what happens in it, its sound, its look, how long it holds. GIF or video out.">&#9635; Frame Forge</button></div>
+        <div class="mini">Where the cut becomes the film. Swap a frame, write what happens, grade it,
+          give it sound, set the hold &mdash; then render the GIF or the video. Nothing leaves this machine.</div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="continuityBtn" title="Light, repeated framings and delivery drift across the whole cut">Check the cut</button></div>
+
+        <label class="fld">Take the whole package</label>
+        <div class="row"><button class="btn" id="bundleBtn" title="The frames, the animatic, the specs and the prompts &mdash; one file, filenames already matching">Export the cut (.zip)</button></div>
         <div class="mini" id="bundleWhat"></div>
         <div class="mini" id="bundleProg"></div>
-        <div class="row"><button class="btn" id="continuityBtn" title="Light, repeated framings and delivery drift across the whole cut">Check the cut</button></div>
+        <div class="row"><button class="btn sm" id="specBtn">Spec only &mdash; gmapz.capture.v2.1 (.json)</button></div>
 
-        <label class="fld">This frame on its own</label>
-        <div class="row"><button class="btn" id="specBtn">Spec only &mdash; gmapz.capture.v2.1 (.json)</button></div>
-        <div class="row"><button class="btn" id="i2vBtn">Prompt studio &mdash; this frame, all engines</button></div>
-        <div class="row"><button class="btn" id="scenePrompt">Sequence prompts &mdash; the whole cut</button></div>
-        <label class="fld">Default engine tab</label>
-        <div class="chips" id="engines"></div>
+        <details class="fold" id="promptFold">
+          <summary><span>Prompts for outside engines &mdash; Runway, Kling, Veo, Sora, Luma, Grok</span><span class="fchev">&#9656;</span></summary>
+          <div class="foldbody">
+            <div class="mini">Scout finishes its own cut now, so these are a side door rather than the
+              way out. They still work, and they still name the exact start frame &mdash; take one if you
+              want an engine to move a shot for you.</div>
+            <div class="row" style="margin-top:8px"><button class="btn sm" id="i2vBtn">This frame, all engines</button></div>
+            <div class="row"><button class="btn sm" id="scenePrompt">The whole cut as a sequence</button></div>
+            <label class="fld">Default engine tab</label>
+            <div class="chips" id="engines"></div>
+          </div>
+        </details>
 
         <details class="fold" id="handoffFold">
           <summary><span>Studio handoffs &mdash; VCS-15, Director&rsquo;s Chair, World Builder</span><span class="fchev">&#9656;</span></summary>
@@ -868,6 +955,29 @@ window.CESIUM_VIA='';
     <div id="maskTop" class="maskbar"></div><div id="maskBot" class="maskbar"></div>
     <div id="maskL"></div><div id="maskR"></div>
     <div class="crosshair" id="crosshair"></div>
+    <input id="forgeImg" type="file" accept="image/*" style="display:none">
+    <input id="forgeAud" type="file" accept="audio/*" style="display:none">
+    <div id="forge">
+      <div id="forgeHead">
+        <div>
+          <h3>FRAME <span>FORGE</span></h3>
+          <div class="sub">finish the cut &middot; one row = one shot</div>
+        </div>
+        <button class="btn sm" id="forgePlay">&#9654; Play</button>
+        <button class="btn sm" id="forgeAddBlank" title="Add an empty row you can drop any image into">+ Row</button>
+        <div id="forgeStat"></div>
+        <button class="btn sm" id="forgeClose" style="flex:none">Close</button>
+      </div>
+      <div id="forgeRows"></div>
+      <div id="forgeFoot">
+        <canvas id="forgeCanvas" width="480" height="270"></canvas>
+        <div id="forgeProg"></div>
+        <div style="flex:1"></div>
+        <button class="btn y" id="forgeGif">&#8595; GIF</button>
+        <button class="btn g" id="forgeVid">&#8595; Video (WebM + audio)</button>
+        <button class="btn" id="forgeZip">&#8595; Package (.zip)</button>
+      </div>
+    </div>
     <div id="take">
       <div id="takeTitle">Director's Take</div>
       <button id="takeClose" title="Close (Esc)">&times;</button>
@@ -3665,6 +3775,10 @@ function buildSpec(refId,move,px){
         // by having no dimensions at all rather than by claiming zero.
         elevation_offset_m:+Math.max(0,m.height||0).toFixed(2)};
     }),
+    // A SECOND pass, recorded as one. look{} is what the plate was shot with; this is
+    // what Frame Forge did to it afterwards. Conflating them would make the captured
+    // frame unable to describe itself, which is the one thing it exists to do.
+    post:forgePost(),
     scene_description:$('sceneDesc').value, reference_frame:(refId||'scout')+'.png'
   };
 }
@@ -4328,6 +4442,75 @@ const loadImg=src=>new Promise((res,rej)=>{const im=new Image();im.onload=()=>re
 function takeMime(){ if(!window.MediaRecorder)return null;
   for(const [type,ext] of [['video/mp4;codecs=avc1','mp4'],['video/webm;codecs=vp9','webm'],['video/webm;codecs=vp8','webm'],['video/webm','webm']]){
     try{ if(MediaRecorder.isTypeSupported(type))return {type,ext}; }catch(_){} } return null; }
+/* ══════════════════════════════════════════════════════════════════════════════
+   FRAME FORGE — post, inside Scout.
+   The captured frame is still the truth. Everything here is a SECOND pass over it:
+   look{} says what the plate was shot with, post{} says what was done afterwards, and
+   a reader downstream can always tell the two apart. Nothing here re-touches a spec.
+   ══════════════════════════════════════════════════════════════════════════════ */
+const FORGE_FX=[
+  {k:'bw',      label:'B&W',      f:'grayscale(1)'},
+  {k:'sepia',   label:'Sepia',    f:'sepia(.85)'},
+  {k:'warm',    label:'Warm',     f:'saturate(1.35) hue-rotate(-6deg) brightness(1.03)'},
+  {k:'cool',    label:'Cool',     f:'saturate(1.15) hue-rotate(8deg) brightness(.98)'},
+  {k:'blur',    label:'Soft',     f:'blur(2.5px)'},
+  {k:'glow',    label:'Glow',     f:'brightness(1.12) contrast(.92)'},
+  {k:'highcon', label:'Contrast', f:'contrast(1.35) saturate(1.1)'},
+  {k:'grain',   label:'Grain',    f:''},        // painted, not filtered
+  {k:'vignette',label:'Vignette', f:''},        // painted, not filtered
+  {k:'freeze',  label:'Freeze',   f:''}         // a note to the cut, no pixels touched
+];
+const FORGE_KEYS=FORGE_FX.map(x=>x.k);
+const forgeFx=sh=>Array.isArray(sh.fx)?sh.fx:(sh.fx=[]);
+// Custom tags travel in fx[] beside the presets; they mean something to you and to VCS,
+// and nothing to the renderer, so they are filtered out before any pixel is touched.
+const forgeFilter=fx=>FORGE_FX.filter(x=>x.f&&fx.indexOf(x.k)>=0).map(x=>x.f).join(' ');
+// One plate painter for the preview, the GIF and the video — so what you watch in the
+// room is what lands in the file. Three painters would drift within a week.
+function drawPlate(ctx,im,W,H,sh){
+  const fx=sh?forgeFx(sh):[];
+  ctx.save();
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  const f=forgeFilter(fx);
+  ctx.filter=f||'none';
+  if(im)drawContain(ctx,im,W,H);
+  ctx.filter='none';
+  if(fx.indexOf('vignette')>=0){
+    const g=ctx.createRadialGradient(W/2,H/2,H*0.26,W/2,H/2,Math.max(W,H)*0.72);
+    g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.58)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  }
+  if(fx.indexOf('grain')>=0){
+    const n=Math.max(300,Math.round(W*H*0.012));
+    ctx.fillStyle='rgba(255,255,255,.055)';
+    for(let i=0;i<n;i++)ctx.fillRect((Math.random()*W)|0,(Math.random()*H)|0,1,1);
+    ctx.fillStyle='rgba(0,0,0,.055)';
+    for(let i=0;i<n;i++)ctx.fillRect((Math.random()*W)|0,(Math.random()*H)|0,1,1);
+  }
+  ctx.restore();
+}
+// The hold is ONE fact. sh.beat is seconds and always has been; the millisecond field in
+// the room reads and writes that same number. Two fields for one quantity is the bug that
+// has cost this project the most, and it is not getting a second outing here.
+const forgeHoldMs=i=>holdMs(i);
+function setForgeHold(sh,ms){ sh.beat=Math.max(0.1,Math.min(20,(+ms||400)/1000)); }
+// What Frame Forge did to the cut, as a fact rather than a vibe. Emitted on every spec
+// so a reader can subtract it and know what the camera actually saw.
+function forgePost(){
+  const L=S.shots||[];
+  const graded=L.filter(sh=>Array.isArray(sh.fx)&&sh.fx.length);
+  if(!graded.length&&!L.some(sh=>sh.swapped||(sh.audio&&sh.audio.url)))return null;
+  const used={}; graded.forEach(sh=>sh.fx.forEach(k=>{used[k]=(used[k]||0)+1;}));
+  return {
+    tool:'frame_forge',
+    applied_to:'the exported frames, not the captured plate',
+    graded_shots:graded.length,
+    fx_used:used,
+    swapped_frames:L.filter(sh=>sh.swapped).length,
+    shots_with_audio:L.filter(sh=>sh.audio&&sh.audio.url).length,
+    note:'look{} describes the plate as shot. This block describes a second pass over it.'
+  };
+}
 function drawContain(ctx,im,W,H){ const r=Math.min(W/im.width,H/im.height),w=im.width*r,h=im.height*r; ctx.drawImage(im,(W-w)/2,(H-h)/2,w,h); }
 function downloadBlob(blob,name){ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500); }
 // Render can be started from the take player or from the Post panel; progress and the
@@ -4353,6 +4536,15 @@ async function exportTake(){
   let imgs; try{ imgs=await Promise.all(list.map(s=>loadImg(s.thumb))); }catch(_){ cap.innerHTML=oldCap; btn.disabled=false; toast('Couldn’t read the frames'); return; }
   const W=1280,H=720, cv=document.createElement('canvas'); cv.width=W; cv.height=H; const ctx=cv.getContext('2d');
   const stream=cv.captureStream(30);
+  // Audio rides along only if some shot actually has any — an empty track on every export
+  // would be a silent lie about what the cut contains.
+  let audioDest=null, lastIdx=-1;
+  if(list.some(sh=>sh.audio&&sh.audio.url)){
+    try{ const ac=forgeAudioCtx(); if(ac.state==='suspended')await ac.resume();
+         audioDest=ac.createMediaStreamDestination();
+         audioDest.stream.getAudioTracks().forEach(t=>stream.addTrack(t)); }
+    catch(err){ console.warn('audio track unavailable',err); audioDest=null; }
+  }
   let rec; try{ rec=new MediaRecorder(stream,{mimeType:mime.type,videoBitsPerSecond:6e6}); }catch(_){ rec=new MediaRecorder(stream); }
   const chunks=[]; rec.ondataavailable=e=>{ if(e.data&&e.data.size)chunks.push(e.data); };
   const stopped=new Promise(r=>{rec.onstop=r;});
@@ -4362,11 +4554,13 @@ async function exportTake(){
   rec.start(120);
   await new Promise(res=>{ const t0=performance.now();
     const frame=()=>{ const e=performance.now()-t0;
-      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
       let idx=0; while(idx<durs.length-1&&e>=starts[idx+1])idx++;
       const into=e-starts[idx], fade=Math.min(220,durs[idx]*0.28);
-      drawContain(ctx,imgs[idx],W,H);
-      if(idx>0&&into<fade){ ctx.save(); ctx.globalAlpha=Math.max(0,1-into/fade); drawContain(ctx,imgs[idx-1],W,H); ctx.restore(); }
+      drawPlate(ctx,imgs[idx],W,H,list[idx]);
+      if(idx>0&&into<fade){ ctx.save(); ctx.globalAlpha=Math.max(0,1-into/fade);
+        drawPlate(ctx,imgs[idx-1],W,H,list[idx-1]); ctx.restore(); }
+      // Each shot's own sound, fired once as its cell comes up.
+      if(idx!==lastIdx){ lastIdx=idx; playShotAudio(list[idx],audioDest,durs[idx]); }
       cap.innerHTML='<b>Rendering take…</b> '+Math.min(100,Math.round(e/total*100))+'%';
       if(e<total) requestAnimationFrame(frame); else res(); };
     requestAnimationFrame(frame);
@@ -4528,8 +4722,7 @@ async function buildTakeGif(onProgress){
   for(let i=0;i<imgs.length;i++){
     say('<b>Building GIF\u2026</b> frame '+(i+1)+' / '+imgs.length);
     await new Promise(r=>setTimeout(r,0));
-    ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
-    drawContain(ctx,imgs[i],W,H);
+    drawPlate(ctx,imgs[i],W,H,list[i]);      // the look you set in Frame Forge, baked
     frames.push(ctx.getImageData(0,0,W,H).data);
   }
   say('<b>Building GIF\u2026</b> encoding');
@@ -4550,6 +4743,193 @@ async function exportTakeGifFile(){
   downloadBlob(new Blob([g.bytes],{type:'image/gif'}),'previs_take_'+Date.now()+'.gif');
   toast('Previs GIF exported \u2014 '+((g.bytes.length/1024)|0)+' KB, '+g.count+' frames, loops forever');
 }
+/* ---- Frame Forge: audio ------------------------------------------------------
+   Native Web Audio, no library. A clip is decoded once and cached on the shot, so
+   scrubbing the room doesn't re-decode a wav on every frame. */
+let _fac=null;
+function forgeAudioCtx(){ if(!_fac)_fac=new (window.AudioContext||window.webkitAudioContext)(); return _fac; }
+async function forgeDecode(sh){
+  if(!sh.audio||!sh.audio.url)return null;
+  if(sh.audio._buf)return sh.audio._buf;
+  const ac=forgeAudioCtx();
+  const arr=await fetch(sh.audio.url).then(r=>r.arrayBuffer());
+  sh.audio._buf=await ac.decodeAudioData(arr);
+  return sh.audio._buf;
+}
+function playShotAudio(sh,dest,holdMsVal){
+  if(!sh||!sh.audio||!sh.audio._buf)return;
+  try{
+    const ac=forgeAudioCtx();
+    const src=ac.createBufferSource(); src.buffer=sh.audio._buf;
+    src.connect(dest||ac.destination);
+    // A four-second bed under a 0.4s cell would run over the next three shots.
+    src.start(0,0,Math.min(sh.audio._buf.duration,(holdMsVal||400)/1000+0.25));
+  }catch(err){ console.warn('audio playback skipped',err); }
+}
+
+/* ---- Frame Forge: the room --------------------------------------------------- */
+const FORGE={open:false,playing:false,t:null,i:0};
+function forgeShots(){ return S.shots; }
+function openForge(){
+  $('forge').classList.add('show'); FORGE.open=true;
+  renderForge(); forgePreview(0);
+}
+function closeForge(){ forgeStop(); $('forge').classList.remove('show'); FORGE.open=false; }
+function forgeStat(){
+  const L=forgeShots();
+  const img=L.filter(sh=>sh.thumb).length, aud=L.filter(sh=>sh.audio&&sh.audio.url).length,
+        fx=L.filter(sh=>forgeFx(sh).length).length;
+  const ms=L.reduce((a,_,i)=>a+forgeHoldMs(i),0);
+  $('forgeStat').textContent=L.length+' rows \u00b7 '+img+' with a frame \u00b7 '+aud+' with sound \u00b7 '+
+    fx+' graded \u00b7 '+(ms/1000).toFixed(1)+'s';
+}
+function renderForge(){
+  const R=$('forgeRows'); if(!R)return;
+  const L=forgeShots();
+  R.innerHTML='';
+  if(!L.length){
+    R.innerHTML='<div class="fempty"><b>Nothing in the cut yet</b>'+
+      'Block a shot and press S, or roll a path. Every shot you save arrives here as a row \u2014 '+
+      'its frame, what happens in it, its sound, its look, how long it holds.</div>';
+    forgeStat(); return;
+  }
+  L.forEach((sh,i)=>{
+    if(!Array.isArray(sh.fx))sh.fx=[];
+    if(typeof sh.desc!=='string')sh.desc='';
+    const custom=sh.fx.filter(k=>FORGE_KEYS.indexOf(k)<0);
+    const d=document.createElement('div'); d.className='frow'; d.draggable=true;
+    d.innerHTML=
+      '<div class="frail"><span class="fgrip" title="Drag to reorder">\u283f</span>'+
+        '<span class="fn">'+String(i+1).padStart(2,'0')+'</span></div>'+
+      '<div class="fthumb" data-swap="'+i+'">'+
+        (sh.thumb?'<img src="'+sh.thumb+'" alt="">':'<div class="none">no frame<br>click to place one</div>')+
+        '<div class="over">'+(sh.thumb?'Replace':'Place')+'</div></div>'+
+      '<div class="fcell"><label>What happens here</label>'+
+        '<textarea data-desc="'+i+'" placeholder="Camera, action, light, feeling. Scout knows the place; it does not know the scene.">'+escapeHtml(sh.desc)+'</textarea></div>'+
+      '<div class="fcell aud"><label>Sound</label>'+
+        '<div class="faud">'+
+          '<select data-audmode="'+i+'">'+
+            '<option value="none"'+(!(sh.audio&&sh.audio.url)?' selected':'')+'>No sound</option>'+
+            '<option value="clip"'+((sh.audio&&sh.audio.url)?' selected':'')+'>Clip on this shot</option>'+
+          '</select>'+
+          '<button class="fmini" data-audplay="'+i+'" title="Hear this shot\u2019s sound">\u25b6</button>'+
+        '</div>'+
+        '<div class="fdet'+((sh.audio&&sh.audio.url)?' has':'')+'">'+
+          ((sh.audio&&sh.audio.name)?escapeHtml(sh.audio.name)+' <b data-audx="'+i+'" style="cursor:pointer;opacity:.7">\u00d7</b>':'silent')+
+        '</div></div>'+
+      '<div class="fcell fx"><label>Look \u2014 a second pass over the plate</label>'+
+        '<div class="fchips">'+FORGE_FX.map(f=>'<span class="fchip'+(sh.fx.indexOf(f.k)>=0?' on':'')+
+          '" data-fx="'+f.k+'" data-i="'+i+'">'+f.label+'</span>').join('')+'</div>'+
+        '<input class="ftagin" data-tag="'+i+'" placeholder="+ your own tag, enter">'+
+        '<div class="ftags">'+custom.map(t=>'<span class="ftag">'+escapeHtml(t)+
+          ' <b data-rmtag="'+escapeHtml(t)+'" data-i="'+i+'">\u00d7</b></span>').join('')+'</div></div>'+
+      '<div class="fmeta"><label style="font-family:var(--mono);font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)">Hold</label>'+
+        '<div class="fhold"><input type="number" min="100" max="20000" step="50" value="'+forgeHoldMs(i)+'" data-hold="'+i+'"><span>ms</span></div>'+
+        '<button class="fmini" data-jump="'+i+'">Preview</button>'+
+        '<button class="fmini del" data-del="'+i+'">Remove</button></div>';
+    d.ondragstart=ev=>{ev.dataTransfer.setData('text/forge',String(i));ev.dataTransfer.effectAllowed='move';d.classList.add('dragging');};
+    d.ondragend=()=>d.classList.remove('dragging');
+    d.ondragover=ev=>{ if(!ev.dataTransfer.types.includes('text/forge'))return; ev.preventDefault(); d.classList.add('over'); };
+    d.ondragleave=()=>d.classList.remove('over');
+    d.ondrop=ev=>{ if(!ev.dataTransfer.types.includes('text/forge'))return;
+      ev.preventDefault(); ev.stopPropagation(); d.classList.remove('over');
+      const from=+ev.dataTransfer.getData('text/forge');
+      if(from!==i){ reorderShots(from,i); renderForge(); } };
+    R.appendChild(d);
+  });
+  wireForge(); forgeStat();
+}
+function wireForge(){
+  const R=$('forgeRows'), L=forgeShots();
+  // Typing must never re-render — that is how you lose a caret mid-sentence.
+  R.querySelectorAll('[data-desc]').forEach(t=>{ t.oninput=()=>{ L[+t.dataset.desc].desc=t.value; }; });
+  R.querySelectorAll('[data-hold]').forEach(inp=>{ inp.onchange=()=>{ setForgeHold(L[+inp.dataset.hold],inp.value);
+    inp.value=forgeHoldMs(+inp.dataset.hold); forgeStat(); renderShots(); }; });
+  R.querySelectorAll('[data-swap]').forEach(el=>{ el.onclick=()=>{ FORGE.swap=+el.dataset.swap; $('forgeImg').click(); }; });
+  R.querySelectorAll('[data-fx]').forEach(el=>{ el.onclick=()=>{
+    const sh=L[+el.dataset.i], k=el.dataset.fx, at=sh.fx.indexOf(k);
+    if(at>=0)sh.fx.splice(at,1); else sh.fx.push(k);
+    el.classList.toggle('on',at<0); forgeStat(); forgePreview(+el.dataset.i); }; });
+  R.querySelectorAll('[data-tag]').forEach(inp=>{ inp.onkeydown=ev=>{
+    if(ev.key!=='Enter')return; ev.preventDefault();
+    const v=inp.value.trim(), sh=L[+inp.dataset.tag];
+    if(v&&sh.fx.indexOf(v)<0){ sh.fx.push(v); inp.value=''; renderForge(); } }; });
+  R.querySelectorAll('[data-rmtag]').forEach(b=>{ b.onclick=()=>{
+    const sh=L[+b.dataset.i], at=sh.fx.indexOf(b.dataset.rmtag);
+    if(at>=0)sh.fx.splice(at,1); renderForge(); }; });
+  R.querySelectorAll('[data-audmode]').forEach(sel=>{ sel.onchange=()=>{
+    const i=+sel.dataset.audmode, sh=L[i];
+    if(sel.value==='clip'){ FORGE.swap=i; $('forgeAud').click(); }
+    else { sh.audio=null; renderForge(); } }; });
+  R.querySelectorAll('[data-audplay]').forEach(b=>{ b.onclick=async()=>{
+    const sh=L[+b.dataset.audplay];
+    if(!sh.audio||!sh.audio.url){ toast('No sound on this shot yet'); return; }
+    const ac=forgeAudioCtx(); if(ac.state==='suspended')await ac.resume();
+    await forgeDecode(sh); playShotAudio(sh,null,forgeHoldMs(+b.dataset.audplay)); }; });
+  R.querySelectorAll('[data-audx]').forEach(b=>{ b.onclick=()=>{ L[+b.dataset.i].audio=null; renderForge(); }; });
+  R.querySelectorAll('[data-jump]').forEach(b=>{ b.onclick=()=>forgePreview(+b.dataset.jump); });
+  R.querySelectorAll('[data-del]').forEach(b=>{ b.onclick=()=>{
+    const i=+b.dataset.del; pushUndo({type:'shot'}); S.shots.splice(i,1);
+    renderShots(); renderForge(); }; });
+}
+async function forgePreview(i){
+  const cv=$('forgeCanvas'); if(!cv)return;
+  const ctx=cv.getContext('2d'), L=forgeShots(), sh=L[i];
+  if(!sh){ ctx.fillStyle='#000'; ctx.fillRect(0,0,cv.width,cv.height); return; }
+  let im=null; if(sh.thumb){ try{ im=await loadImg(sh.thumb); }catch(_){} }
+  drawPlate(ctx,im,cv.width,cv.height,sh);
+  $('forgeProg').textContent=(i+1)+' / '+L.length+'  \u00b7  '+(forgeHoldMs(i)/1000).toFixed(2)+'s';
+}
+async function forgePlay(){
+  const L=forgeShots(); if(!L.length){toast('Nothing in the cut yet');return;}
+  if(FORGE.playing){ forgeStop(); return; }
+  FORGE.playing=true; $('forgePlay').innerHTML='\u275a\u275a Pause';
+  const ac=forgeAudioCtx(); if(ac.state==='suspended')await ac.resume();
+  await Promise.all(L.map(sh=>forgeDecode(sh).catch(()=>null)));
+  const step=async()=>{
+    if(!FORGE.playing)return;
+    const n=forgeShots().length; if(!n)return forgeStop();
+    if(FORGE.i>=n)FORGE.i=0;
+    await forgePreview(FORGE.i);
+    playShotAudio(forgeShots()[FORGE.i],null,forgeHoldMs(FORGE.i));
+    const hold=forgeHoldMs(FORGE.i);
+    FORGE.t=setTimeout(()=>{ FORGE.i++; step(); },hold);
+  };
+  step();
+}
+function forgeStop(){ FORGE.playing=false; clearTimeout(FORGE.t);
+  const b=$('forgePlay'); if(b)b.innerHTML='\u25b6 Play'; }
+
+$('forgeClose').onclick=closeForge;
+$('forgePlay').onclick=forgePlay;
+$('forgeAddBlank').onclick=()=>{
+  pushUndo({type:'shot'});
+  S.shots.push({name:'Row '+(S.shots.length+1),spec:buildSpec(),thumb:null,desc:'',fx:[],beat:0.4});
+  renderShots(); renderForge(); toast('Empty row added \u2014 click its slot to place an image');
+};
+$('forgeImg').onchange=e=>{
+  const f=e.target.files[0], sh=forgeShots()[FORGE.swap];
+  if(f&&sh){ const r=new FileReader();
+    r.onload=()=>{ sh.thumb=r.result; sh.swapped=true; renderShots(); renderForge();
+      forgePreview(FORGE.swap); toast('Frame replaced on row '+(FORGE.swap+1)); };
+    r.readAsDataURL(f); }
+  e.target.value='';
+};
+$('forgeAud').onchange=async e=>{
+  const f=e.target.files[0], i=FORGE.swap, sh=forgeShots()[i];
+  if(f&&sh){
+    sh.audio={name:f.name,url:URL.createObjectURL(f)};
+    try{ await forgeDecode(sh); toast('Sound on row '+(i+1)+' \u2014 '+f.name); }
+    catch(err){ sh.audio=null; toast('Couldn\u2019t decode that audio file'); }
+    renderForge();
+  }
+  e.target.value='';
+};
+$('forgeGif').onclick=()=>{ forgeStop(); exportTakeGifFile(); };
+$('forgeVid').onclick=()=>{ forgeStop(); exportTake(); };
+$('forgeZip').onclick=()=>{ forgeStop(); exportBundle(); };
+$('forgeBtn').onclick=openForge;
+
 $('takeGif').onclick=exportTakeGifFile;
 $('postGif').onclick=exportTakeGifFile;
 $('postVid').onclick=exportTake;
@@ -5189,6 +5569,8 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
   renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,renderPathList,
   removePathPoint,purgeMarkerFromCasts,
+  openForge,closeForge,renderForge,forgePreview,drawPlate,forgeFilter,forgePost,
+  FORGE_FX,FORGE_KEYS,forgeHoldMs,setForgeHold,FORGE,
   renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,ENGINES,sequencePrompts,seqConstants,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
