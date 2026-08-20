@@ -269,6 +269,12 @@ window.CESIUM_VIA='';
   /* .btn is flex:1 by default so it fills a .row in the rail. In a toolbar that turns
      every button into a banner, so the header opts out. */
   #forgeHead .btn,#forgeFoot .btn{flex:none;}
+  /* A soft frame never wears a neutral border. Red, and it does not fade. */
+  .fcellframe{display:flex;flex-direction:column;}
+  .frow.soft .fthumb{border-color:var(--red);box-shadow:0 0 0 1px var(--red) inset;}
+  .fsoft{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--red);margin-top:4px;display:block;}
+  .thumb.soft{outline:2px solid var(--red);outline-offset:-2px;}
   #forgeRows{flex:1;overflow-y:auto;padding:10px 16px 24px;}
   #forgeFoot{flex:none;display:flex;align-items:center;gap:10px;padding:11px 16px;flex-wrap:wrap;
     border-top:1px solid var(--line);background:linear-gradient(0deg,#101014,#0b0b0e);}
@@ -1414,6 +1420,7 @@ const earthIsFlat=()=>EARTH.mode==='flat'||EARTH.mode==='rejected';
 function setEarthMode(mode,detail){
   EARTH.mode=mode; EARTH.detail=detail||'';
   GROUND_CACHE={};                      // a different Earth has a different surface
+  S._tilesNeverSettle=false;            // and a different Earth deserves a fresh verdict
   const warn=$('earthWarn'), pill=$('loadstat');
   if(pill)pill.classList.toggle('bad',mode==='rejected');
   if(warn)warn.style.display='none';
@@ -2292,8 +2299,10 @@ function flyToStation(i,quiet){
   flyToParams(quiet?0:1.1); syncCamUI(); renderPathList();
   if(!quiet)toast('Station '+(i+1)+' — '+stationLabel(i)+' · '+how+' · block it, then Lock shot');
 }
-function lockStation(i){
+async function lockStation(i){
   if(!S.path||!S.path.points[i])return;
+  await settleForShutter();          // the same gate the roll uses, for the Lock button too
+  if(!S.path||!S.path.points[i])return;   // the path can be edited while we wait
   const p=S.path.points[i], ct=pointCam(i);
   travelCast(i); applyStationCast(i); // the frame must match the station, even if Lock was clicked directly
   const wasQuiet=S._quiet; S._quiet=true;
@@ -2361,8 +2370,10 @@ async function rollStations(){
     $('rollInfo').textContent=' '+(i+1)+'/'+total+' — '+stationLabel(i)+' · '+
       plainType(pointCamType(i))+(S.path.points[i].cam?' · '+framingSummary(S.path.points[i].cam):'');
     $('rollFill').style.width=Math.round(i/total*100)+'%';
-    flyToStation(i,true); await waitForTiles(2200);
-    lockStation(i);
+    flyToStation(i,true);
+    // No 2200ms shrug. Wait for the world, and if it never arrives, the frame will say so.
+    await waitForTiles(TILE_WAIT_MS,t=>{ if(t)$('rollInfo').textContent=' '+(i+1)+'/'+total+' \u2014 '+t; });
+    await lockStation(i);
   }
   $('rollFill').style.width='100%';
   setTimeout(()=>{$('rollSlate').classList.remove('show');$('slate').style.display='';$('rollFill').style.width='0';},650);
@@ -2626,21 +2637,72 @@ function renderSeqPresets(){
 $('saveSeqBtn').onclick=()=>{ saveSeqPreset($('seqName').value.trim()); $('seqName').value=''; };
 $('seqName').onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();$('saveSeqBtn').click();} };
 renderSeqPresets();
-function waitForTiles(maxMs){
+// Is the world actually there, right now? One synchronous truth, asked by the gate and
+// again by the shutter — because between the two the tiles can start moving again.
+function tilesSettled(){
+  const pending=(googleTileset&&googleTileset.statistics)?(googleTileset.statistics.numberOfPendingRequests|0):0;
+  const globeDrawn=!!viewer.scene.globe.show;
+  const globe=globeDrawn?!!viewer.scene.globe.tilesLoaded:true;
+  // Ask only about what is actually drawing this world. In photoreal the 3D tileset is
+  // the world and the globe is switched off; asking whether that globe has loaded is a
+  // question about something nobody is rendering, and it never comes back true.
+  const parts=[];
+  if(EARTH.mode==='photoreal')parts.push(pending===0);
+  if(globeDrawn)parts.push(globe);
+  const resolved=parts.length?parts.every(Boolean):true;
+  return {resolved, pending, globe, globeDrawn, mode:EARTH.mode};
+}
+// The gate. Waits until the world stops loading, and RESOLVES WITH WHETHER IT DID.
+// The old one took a 2200ms cap and returned the same thing whether the tiles had
+// settled or the clock had simply run out, which is how a soft frame got to look like a
+// sharp one. It also now says out loud that it is waiting, because a shutter that
+// silently hangs for four seconds is its own kind of bug.
+const TILE_WAIT_MS=12000;      // generous: photoreal tiles over a real connection
+const TILE_STALL_MS=2600;      // ...but a world that is not loading at all is not "slow"
+function waitForTiles(maxMs,say){
+  const cap=maxMs||TILE_WAIT_MS;
   return new Promise(res=>{
-    const start=performance.now(); let idle=0;
+    const start=performance.now(); let idle=0, told=false, lastPending=-1, lastChange=start;
     function tick(){
-      const elapsed=performance.now()-start;
-      if(elapsed>maxMs){res();return;}
-      const loading=googleTileset?googleTileset.statistics&&googleTileset.statistics.numberOfPendingRequests:0;
-      const tilesReady=!loading||loading===0;
-      const globeReady=viewer.scene.globe.tilesLoaded;
-      if(tilesReady&&globeReady){idle++; if(idle>=3){res();return;}} else {idle=0;}
+      const now=performance.now(), elapsed=now-start;
+      const t=tilesSettled();
+      if(t.resolved){ idle++; if(idle>=3){ if(told&&say)say(''); res(true); return; } }
+      else {
+        idle=0;
+        if(t.pending!==lastPending){ lastPending=t.pending; lastChange=now; }
+        if(!told&&elapsed>420)told=true;
+        if(told&&say)say(t.pending?('Waiting for the world to load\u2026 '+t.pending+' tiles out')
+                                  :'Waiting for the world to load\u2026');
+        // Nothing pending and nothing arriving is not a slow world, it is a stopped one.
+        // Waiting the full twelve seconds for it would punish the shutter for a network.
+        if(!t.pending&&now-lastChange>TILE_STALL_MS){ if(told&&say)say(''); res(false); return; }
+      }
+      if(elapsed>cap){ if(told&&say)say(''); res(false); return; }   // gave up, and says so
       requestAnimationFrame(tick);
     }
     tick();
   });
 }
+// Every shutter goes through here. One path to a frame, not three.
+// A world that has already proved it does not settle is not re-interrogated on every
+// press: it is noted once, every frame still records the truth in its own spec, and the
+// shutter stops paying for a condition the user cannot fix from in here.
+async function settleForShutter(){
+  if(tilesSettled().resolved) return true;
+  if(S._tilesNeverSettle) return false;
+  const ok=await waitForTiles(TILE_WAIT_MS,t=>{ if(!S._quiet) softToast(t); });
+  if(!ok){
+    S._tilesNeverSettle=true;
+    if(!S._quiet)toast('\u26a0 This world is not finishing its tiles. Frames will still be '+
+      'captured and marked, but Scout will stop waiting on every press.');
+  }
+  return ok;
+}
+// A fresh place, or a key that just started working, deserves a fresh answer.
+function forgetTileStall(){ S._tilesNeverSettle=false; }
+let _softT;
+function softToast(t){ if(!t){ clearTimeout(_softT); return; }
+  const el=$('loadstat'); if(el){ el.innerHTML=escapeHtml(t); el.style.color='var(--amber)'; } }
 // What the path IS, independent of shooting it. p.alt is metres above the ground the dot
 // sits on — never an altitude, which is the confusion this whole pass exists to end.
 function buildPathSpec(headStart,headEnd,startFrame,endFrame){
@@ -3650,7 +3712,15 @@ function capture(hq){
   sceneUiVisible(true);
   viewer.resolutionScale=prevScale; viewer.resize(); viewer.render();
   const id='cap'+Date.now();
-  S.captures.push({id,url,w:out.width,h:out.height,spec:buildSpec(id,undefined,{w:out.width,h:out.height})});
+  // Measured at the instant the shutter fired, not before the gate — the tiles can start
+  // moving again while the gate is congratulating itself.
+  const tiles=tilesSettled();
+  S._lastTiles=tiles;
+  S.captures.push({id,url,w:out.width,h:out.height,tiles,
+    spec:buildSpec(id,undefined,{w:out.width,h:out.height,tiles})});
+  if(!tiles.resolved&&!S._quiet)
+    toast('\u26a0 Frame captured before the world finished loading \u2014 '+tiles.pending+
+          ' tiles still out. It is marked soft; re-shoot it when the stage is sharp.');
   renderThumbs();
   const fl=$('captureFlash');fl.style.transition='none';fl.style.opacity=.85;requestAnimationFrame(()=>{fl.style.transition='opacity .5s';fl.style.opacity=0;});
   if(!S._quiet) toast((hq?'HQ frame ':'Frame ')+'captured ('+out.width+'\u00d7'+out.height+')');
@@ -3668,8 +3738,10 @@ function renderThumbs(){
     return sh&&sh.spec?sh.spec.id:null; })();
   S.captures.forEach(c=>{
     const inCut=shotOf[c.id];
+    const capSoft=!!(c.tiles&&c.tiles.resolved===false);
     const t=document.createElement('div');
-    t.className='thumb'+(inCut?' incut':'')+(activeId&&c.id===activeId?' live':'');
+    t.className='thumb'+(inCut?' incut':'')+(activeId&&c.id===activeId?' live':'')+(capSoft?' soft':'');
+    if(capSoft)t.title='Captured before the world finished loading \u2014 '+c.tiles.pending+' tiles were still out';
     t.title=inCut?('Shot '+(inCut.i+1)+' — '+inCut.sh.name):'Scratch frame';
     t.innerHTML=(inCut?'<span class="tseq">'+(inCut.i+1)+'</span>':'')+
       '<img src="'+c.url+'"><div class="cap">'+(inCut?escapeHtml(inCut.sh.name.slice(0,16)):S.delivery)+'</div>'+
@@ -3724,6 +3796,12 @@ $('capBarBtn').onclick=()=>capture(false);
 $('capBarHQ').onclick=()=>capture(true);
 $('shutter').onclick=e=>capture(e.shiftKey);
 
+// Prefer what the capture measured; fall back to asking now. Never guess true.
+function tileTruth(cap){
+  if(cap&&cap.tiles)return !!cap.tiles.resolved;
+  if(S._lastTiles&&!cap)return !!S._lastTiles.resolved;
+  try{ return tilesSettled().resolved; }catch(_){ return null; }
+}
 function aspectRes(a){const map={'2.39:1':[2048,857],'1.85:1':[1998,1080],'16:9':[1920,1080],'4:3':[1440,1080],'1:1':[1080,1080],'9:16':[1080,1920]};return map[a]||[1920,1080];}
 // Reading a spec's camera back onto the controls. Pre-2.1 files put the aim point in
 // camera.lat/lng and the orbit distance in altitude_m, so they are detected and read the
@@ -3763,6 +3841,10 @@ function buildSpec(refId,move,px){
     // a consumer should never have to guess which of the two it is holding.
     delivery:{aspect:S.delivery,resolution:aspectRes(S.delivery),
       capture_px:(px&&px.w&&px.h)?[px.w,px.h]:null},
+    // Was the world actually there when the shutter fired? A frame shot on unresolved
+    // tiles is a frame shot on geometry that had not arrived, and it must never be
+    // possible to mistake it for a sharp one by reading the file.
+    tiles_resolved:tileTruth(px),
     subjects:S.markers.map(m=>{
       const wp=worldProp(m.type), sc=m.scale||1;
       return {id:m.id,type:specSubjectType(m.type),label:m.shotType,name:subjectName(m),
@@ -4138,7 +4220,27 @@ async function exportWorldBuilder(){
 }
 function checkContinuity(){
   if(S.shots.length<2){toast('Save at least two shots first');return;}
-  let warn=0; const lines=['LIGHT CONTINUITY',''];
+  let warn=0; const lines=[];
+  // THE FRAME comes before the light, the framing and the delivery, because those are
+  // notes about a cut and this is a cut that cannot be delivered.
+  {
+    const soft=cutIssues().soft;
+    lines.push('THE FRAMES','');
+    if(soft.length){
+      warn+=soft.length;
+      lines.push('\u26a0 '+soft.length+' frame'+(soft.length===1?'':'s')+' captured before the '+
+        'world had finished loading:');
+      soft.forEach(i=>lines.push('    shot '+(i+1)+' \u2014 '+(S.shots[i].name||'unnamed')));
+      lines.push('');
+      lines.push('  These are soft. Fly back to each one, wait for the stage to sharpen, and');
+      lines.push('  lock it again \u2014 a re-shoot, never a relabel. Scout will not pretend a');
+      lines.push('  frame is sharp because you exported it.');
+    } else {
+      lines.push('\u2713 Every frame was captured on a world that had finished loading.');
+    }
+    lines.push('');
+  }
+  lines.push('LIGHT CONTINUITY','');
   const iss=cutIssues();
   S.shots.forEach((sh,i)=>{const lt=sh.spec.light;lines.push('Shot '+(i+1)+' \u2014 '+sh.name+': '+lt.phase+' (el '+lt.sun_elevation_deg+'\u00b0 / az '+lt.sun_azimuth_deg+'\u00b0 @ '+lt.time+')');});
   lines.push('');
@@ -4231,7 +4333,11 @@ function contactSheet(){
 $('contactSheetBtn').onclick=contactSheet;
 
 $('saveShot').onclick=saveShot;
-function saveShot(){
+async function saveShot(){
+  await settleForShutter();
+  return saveShotNow();
+}
+function saveShotNow(){
   const name=$('shotName').value.trim()||('Shot '+(S.shots.length+1));
   S._savingShot=true; const cap=capture(); S._savingShot=false;
   S.shots.push({name,spec:buildSpec(cap.id||undefined,undefined,cap),thumb:cap.url}); $('shotName').value=''; renderShots(); toast('Saved: '+name);
@@ -4320,6 +4426,8 @@ function sameFraming(a,b){
 }
 // What is wrong with this cut, as opposed to what is wrong with one frame in it.
 function cutIssues(){
+  // Counted first so every consumer of cutIssues() gets it without asking.
+  var __soft=(S.shots||[]).map((sh,i)=>shotIsSoft(sh)?i:-1).filter(i=>i>=0);
   const cut=S.shots.filter(s=>s.spec);
   const groups=[];
   cut.forEach((sh,i)=>{
@@ -4331,6 +4439,7 @@ function cutIssues(){
           dupes,
           repeats:dupes.reduce((a,g)=>a+g.also.length,0),
           distinct:groups.length,
+          soft:__soft,                       // shot indices whose world had not arrived
           aspects:[...new Set(cut.map(s=>s.spec.delivery&&s.spec.delivery.aspect).filter(Boolean))]};
 }
 function cutTally(){
@@ -4350,6 +4459,12 @@ function renderCutTally(){
   if(t.open)bits.push('<b class="cutopen">'+t.open+' open</b>');
   if(t.free)bits.push(t.free+' free-roam');
   const iss=cutIssues(), warns=[];
+  // First, because this one is not a note about the cut — it is a frame that is not the
+  // product. Everything below it is style; this is the thing being sold.
+  if(iss.soft.length)warns.push('<b style="color:var(--red)">'+iss.soft.length+' frame'+
+    (iss.soft.length===1?'':'s')+' shot before the world finished loading (shot'+
+    (iss.soft.length===1?' ':'s ')+iss.soft.map(i=>i+1).join(', ')+
+    ') \u2014 re-shoot, do not export soft</b>');
   if(iss.repeats)warns.push(iss.repeats+' shot'+(iss.repeats===1?'':'s')+' repeat'+(iss.repeats===1?'s':'')+
     ' a framing you already have \u2014 '+iss.n+' shots, '+iss.distinct+' distinct camera'+(iss.distinct===1?'':'s'));
   if(iss.aspects.length>1)warns.push('delivery changes mid-cut ('+iss.aspects.join(' \u2192 ')+
@@ -4496,6 +4611,9 @@ const forgeHoldMs=i=>holdMs(i);
 function setForgeHold(sh,ms){ sh.beat=Math.max(0.1,Math.min(20,(+ms||400)/1000)); }
 // What Frame Forge did to the cut, as a fact rather than a vibe. Emitted on every spec
 // so a reader can subtract it and know what the camera actually saw.
+// A shot is soft if its own spec says the world had not arrived. Absent means an older
+// spec that never recorded it — unknown, not false, so it is never flagged as soft.
+const shotIsSoft=sh=>!!(sh&&sh.spec&&sh.spec.tiles_resolved===false);
 function forgePost(){
   const L=S.shots||[];
   const graded=L.filter(sh=>Array.isArray(sh.fx)&&sh.fx.length);
@@ -4797,13 +4915,15 @@ function renderForge(){
     if(!Array.isArray(sh.fx))sh.fx=[];
     if(typeof sh.desc!=='string')sh.desc='';
     const custom=sh.fx.filter(k=>FORGE_KEYS.indexOf(k)<0);
-    const d=document.createElement('div'); d.className='frow'; d.draggable=true;
+    const soft=shotIsSoft(sh);
+    const d=document.createElement('div'); d.className='frow'+(soft?' soft':''); d.draggable=true;
     d.innerHTML=
       '<div class="frail"><span class="fgrip" title="Drag to reorder">\u283f</span>'+
         '<span class="fn">'+String(i+1).padStart(2,'0')+'</span></div>'+
-      '<div class="fthumb" data-swap="'+i+'">'+
+      '<div class="fcellframe"><div class="fthumb" data-swap="'+i+'">'+
         (sh.thumb?'<img src="'+sh.thumb+'" alt="">':'<div class="none">no frame<br>click to place one</div>')+
         '<div class="over">'+(sh.thumb?'Replace':'Place')+'</div></div>'+
+        (soft?'<span class="fsoft">&#9888; shot before the world loaded</span>':'')+'</div>'+
       '<div class="fcell"><label>What happens here</label>'+
         '<textarea data-desc="'+i+'" placeholder="Camera, action, light, feeling. Scout knows the place; it does not know the scene.">'+escapeHtml(sh.desc)+'</textarea></div>'+
       '<div class="fcell aud"><label>Sound</label>'+
@@ -5018,6 +5138,9 @@ function seqSubjectLine(){
 // therefore opened by telling the engine to hold constant three things its own start
 // frames contradict. Anything that moves belongs under "what changes", not the lock.
 function seqConstants(){
+  // An empty cut holds everything constant vacuously. Reading shots[0] here threw, which
+  // took vco() down with it the moment anything asked before a shot was saved.
+  if(!S.shots.length)return {light:true,style:true,atmos:true,aspect:true};
   const first=S.shots[0].spec;
   const same=k=>S.shots.every(sh=>k(sh.spec)===k(first));
   return {
@@ -5390,7 +5513,8 @@ function showHelp(){showModal('<span class="closex" onclick="document.getElement
 document.addEventListener('keydown',e=>{
   if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;
   const k=e.key.toLowerCase();
-  if(k==='g'){getCurrent();} else if(k==='f'){flyToParams();} else if(k==='c'){capture();}
+  if(k==='g'){getCurrent();} else if(k==='f'){flyToParams();}
+  else if(k==='c'){ settleForShutter().then(()=>capture()); }
   else if(k==='s'){saveShot();} else if(k==='r'){flyToParams();} else if(k==='k'){$('kmlFile').click();}
   else if(/^[1-7]$/.test(k)){const mm=LENSES[+k-1];S.lensMm=mm;S.fov=lensToFov(mm);applyFov();syncCamUI();toast('Lens '+mm+'mm');}
   else if(e.key.indexOf('Arrow')===0){
@@ -5569,8 +5693,10 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   travelCast,toggleTravel,addMarker,exportTakeGifFile,encodeGIF,registerUpload,
   renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,renderPathList,
   removePathPoint,purgeMarkerFromCasts,
+  tilesSettled,waitForTiles,settleForShutter,shotIsSoft,tileTruth,TILE_WAIT_MS,
   openForge,closeForge,renderForge,forgePreview,drawPlate,forgeFilter,forgePost,
   FORGE_FX,FORGE_KEYS,forgeHoldMs,setForgeHold,FORGE,
+  saveShot,forgetTileStall,TILE_STALL_MS,
   renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,ENGINES,sequencePrompts,seqConstants,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
