@@ -883,6 +883,10 @@ window.CESIUM_VIA='';
 
         <div id="pathShoot" style="display:none">
           <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every dot</button></div>
+          <div class="row"><button class="btn g" id="shootMoveBtn" title="Render the whole path as ONE moving shot, frame by frame, over the real geometry">&#9679; Shoot the move &mdash; one shot, rendered</button></div>
+          <div class="mini">Roll gives you one shot per dot. Shoot the move gives you one shot
+            <i>through</i> them &mdash; the camera stepped frame by frame over the real world, so it
+            actually moves. No engine involved and nothing generated.</div>
           <div class="subrow">
             <button class="btn sm on" id="autoFrameBtn" title="Give a dot a sensible setup when it has none of its own. Turn it off to keep your framing everywhere.">Auto-frame: ON</button>
             <button class="btn sm" id="buildShotBtn" title="Export this path as a single start-and-end move with one spec">Start+end move</button>
@@ -2361,6 +2365,115 @@ function nextStation(){
     if(!pts[i].locked){ flyToStation(i); return; } }
   toast('Every station is locked — press Play Take to watch it');
 }
+/* ---- Shoot the move: the dialog --------------------------------------------- */
+function openMoveStudio(){
+  if(!S.path||S.path.points.length<2){toast('Plot at least two dots first');return;}
+  const pts=S.path.points.length, secs=S.pathDuration||4;
+  showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span>'+
+    '<h3>Shoot the move &mdash; '+pts+' dots as one shot</h3>'+
+    '<div class="mini">The camera is stepped, not flown: placed at each frame\u2019s position, '+
+    'given time for the world to arrive, then photographed. This is rendered motion over real '+
+    'geometry &mdash; not generated motion, and no engine is involved.</div>'+
+    '<div class="row" style="margin-top:12px">'+
+      '<label class="fld" style="flex:1">Length<input id="mvSecs" type="number" min="1" max="30" step="0.5" value="'+secs+'"></label>'+
+      '<label class="fld" style="flex:1">Frames / second<select id="mvFps">'+
+        '<option value="8">8 &mdash; previs</option><option value="12" selected>12 &mdash; animatic</option>'+
+        '<option value="24">24 &mdash; film</option><option value="30">30 &mdash; video</option></select></label>'+
+      '<label class="fld" style="flex:1">Height<select id="mvH">'+
+        '<option value="540">540p</option><option value="720" selected>720p</option>'+
+        '<option value="1080">1080p</option></select></label>'+
+    '</div>'+
+    '<div class="mini" id="mvCost"></div>'+
+    '<div class="row" style="margin-top:10px">'+
+      '<button class="btn y" id="mvGo">Render the move</button>'+
+      '<button class="btn sm" id="mvCancel" style="flex:none;width:70px" disabled>Stop</button></div>'+
+    '<div class="mini" id="mvProg" style="margin-top:8px"></div>'+
+    '<div class="row" id="mvOut" style="margin-top:8px;display:none">'+
+      '<button class="btn g" id="mvWebm">&#8595; Video (WebM)</button>'+
+      '<button class="btn" id="mvGif">&#8595; GIF</button>'+
+      '<button class="btn" id="mvZip">&#8595; Frames + spec (.zip)</button></div>');
+  let result=null;
+  const cost=()=>{
+    const f=Math.max(2,Math.round((+$('mvSecs').value||4)*(+$('mvFps').value||12)));
+    const h=+$('mvH').value, w=Math.round(h*ASPECTS[S.delivery]);
+    // Say the size out loud before it is spent, not after.
+    $('mvCost').innerHTML='<b>'+f+' frames</b> at '+w+'&times;'+h+
+      ' \u00b7 roughly '+Math.max(1,Math.round(f*0.9))+'\u2013'+Math.round(f*3.2)+'s to render, '+
+      'because every frame waits for the world.'+
+      (f>240?' <b style="color:var(--amber)">That is a long render \u2014 try 12fps first.</b>':'')+
+      (h>720&&f>120?' <b style="color:var(--amber)">1080p at this length will make a very large GIF; use the video.</b>':'');
+  };
+  ['mvSecs','mvFps','mvH'].forEach(id=>{$(id).oninput=cost;$(id).onchange=cost;});
+  cost();
+  $('mvCancel').onclick=()=>{ MOVE.cancel=true; $('mvProg').textContent='Stopping after this frame\u2026'; };
+  $('mvGo').onclick=async()=>{
+    if(MOVE.running)return;
+    MOVE.running=true; MOVE.cancel=false;
+    $('mvGo').disabled=true; $('mvCancel').disabled=false; $('mvOut').style.display='none';
+    const t0=performance.now();
+    try{
+      result=await renderMove({fps:+$('mvFps').value,seconds:+$('mvSecs').value,height:+$('mvH').value},
+        (i,total,soft)=>{ $('mvProg').innerHTML='<b>Frame '+i+' / '+total+'</b>'+
+          (soft?' \u00b7 <b style="color:var(--red)">'+soft+' before the world loaded</b>':''); });
+      const secsTook=((performance.now()-t0)/1000).toFixed(1);
+      $('mvProg').innerHTML='<b>'+result.frames.length+' frames in '+secsTook+'s.</b>'+
+        (result.soft?' <b style="color:var(--red)">\u26a0 '+result.soft+' of them were rendered before '+
+          'the world had finished loading \u2014 they are in the shot and they are not sharp.</b>'
+         :' <b style="color:var(--emerald)">Every frame waited for the world.</b>');
+      $('mvOut').style.display='';
+    }catch(err){ $('mvProg').textContent='Render failed: '+err.message; }
+    MOVE.running=false; $('mvGo').disabled=false; $('mvCancel').disabled=true;
+  };
+  $('mvWebm').onclick=async()=>{
+    if(!result)return; const b=$('mvWebm'); b.disabled=true; b.textContent='Encoding\u2026';
+    try{
+      const blob=await moveToWebM(result,(i,t)=>{ $('mvProg').innerHTML='<b>Encoding '+i+' / '+t+'</b>'; });
+      downloadBlob(blob,'gmapz_move_'+Date.now()+'.'+takeMime().ext);
+      $('mvProg').innerHTML='<b>Video saved</b> \u2014 '+((blob.size/1048576).toFixed(1))+' MB';
+    }catch(err){ $('mvProg').textContent='Encode failed: '+err.message; }
+    b.disabled=false; b.innerHTML='&#8595; Video (WebM)';
+  };
+  $('mvGif').onclick=async()=>{
+    if(!result)return; const b=$('mvGif'); b.disabled=true; b.textContent='Encoding\u2026';
+    try{
+      const imgs=await Promise.all(result.frames.map(u=>loadImg(u)));
+      const cv=document.createElement('canvas'); cv.width=result.W; cv.height=result.H;
+      const ctx=cv.getContext('2d',{willReadFrequently:true});
+      const data=[];
+      for(let i=0;i<imgs.length;i++){ ctx.drawImage(imgs[i],0,0,result.W,result.H);
+        data.push(ctx.getImageData(0,0,result.W,result.H).data);
+        if(i%8===0){ $('mvProg').innerHTML='<b>GIF '+(i+1)+' / '+imgs.length+'</b>';
+          await new Promise(r=>setTimeout(r,0)); } }
+      const cs=Math.max(2,Math.round(100/result.fps));
+      const bytes=encodeGIF(data,result.W,result.H,data.map(()=>cs));
+      downloadBlob(new Blob([bytes],{type:'image/gif'}),'gmapz_move_'+Date.now()+'.gif');
+      $('mvProg').innerHTML='<b>GIF saved</b> \u2014 '+((bytes.length/1048576).toFixed(1))+' MB';
+    }catch(err){ $('mvProg').textContent='GIF failed: '+err.message; }
+    b.disabled=false; b.innerHTML='&#8595; GIF';
+  };
+  $('mvZip').onclick=async()=>{
+    if(!result)return; const b=$('mvZip'); b.disabled=true; b.textContent='Packing\u2026';
+    try{
+      const files=result.frames.map((u,i)=>({name:'frames/'+String(i+1).padStart(4,'0')+'.jpg',
+        bytes:dataUrlBytes(u)}));
+      files.push({name:'move.json',bytes:utf8(JSON.stringify(moveSpec(result),null,2))});
+      files.push({name:'README.txt',bytes:utf8(
+        'GMAPz Scout \u2014 rendered move\n'+'='.repeat(30)+'\n\n'+
+        result.frames.length+' frames at '+result.fps+' fps \u00b7 '+result.W+'\u00d7'+result.H+
+        ' \u00b7 '+(result.frames.length/result.fps).toFixed(2)+'s\n\n'+
+        'frames/    the rendered sequence, in order, JPEG q0.92\n'+
+        'move.json  gmapz.move.v1 \u2014 what was interpolated, what was not, and how many\n'+
+        '           frames were taken before the world had finished loading\n\n'+
+        'The camera was STEPPED frame by frame over real geometry and photographed.\n'+
+        'This is rendered motion, not generated motion. Nothing here came from a model.\n')});
+      downloadBlob(makeZip(files),'gmapz_move_'+Date.now()+'.zip');
+      $('mvProg').innerHTML='<b>Frames + spec saved</b>';
+    }catch(err){ $('mvProg').textContent='Pack failed: '+err.message; }
+    b.disabled=false; b.innerHTML='&#8595; Frames + spec (.zip)';
+  };
+}
+$('shootMoveBtn').onclick=openMoveStudio;
+
 async function rollStations(){
   if(!S.path||S.path.points.length<2){toast('Plot a camera path first');return;}
   const total=S.path.points.length;
@@ -2659,16 +2772,24 @@ function tilesSettled(){
 // silently hangs for four seconds is its own kind of bug.
 const TILE_WAIT_MS=12000;      // generous: photoreal tiles over a real connection
 const TILE_STALL_MS=2600;      // ...but a world that is not loading at all is not "slow"
+const TILE_HOLD_MS=50;         // settled has to hold for a beat, so a lull is not mistaken for done
 function waitForTiles(maxMs,say){
   const cap=maxMs||TILE_WAIT_MS;
   return new Promise(res=>{
-    const start=performance.now(); let idle=0, told=false, lastPending=-1, lastChange=start;
+    const start=performance.now();
+    let settledAt=0, told=false, lastPending=-1, lastChange=start;
     function tick(){
       const now=performance.now(), elapsed=now-start;
       const t=tilesSettled();
-      if(t.resolved){ idle++; if(idle>=3){ if(told&&say)say(''); res(true); return; } }
+      if(t.resolved){
+        // Settled for a BEAT, measured in milliseconds. Counting rAF callbacks instead
+        // made the gate hostage to the frame rate — and Shoot the move starves rAF by
+        // design, so a settled world could time out and be reported soft.
+        if(!settledAt)settledAt=now;
+        if(now-settledAt>=TILE_HOLD_MS){ if(told&&say)say(''); res(true); return; }
+      }
       else {
-        idle=0;
+        settledAt=0;
         if(t.pending!==lastPending){ lastPending=t.pending; lastChange=now; }
         if(!told&&elapsed>420)told=true;
         if(told&&say)say(t.pending?('Waiting for the world to load\u2026 '+t.pending+' tiles out')
@@ -2678,6 +2799,10 @@ function waitForTiles(maxMs,say){
         if(!t.pending&&now-lastChange>TILE_STALL_MS){ if(told&&say)say(''); res(false); return; }
       }
       if(elapsed>cap){ if(told&&say)say(''); res(false); return; }   // gave up, and says so
+      // Polled on rAF. A timer was tried here on the theory that reading a tile counter
+      // need not be in step with the compositor; measured, it was slower, because on a
+      // busy main thread setTimeout is starved by the same renderer rAF is. The gate's
+      // latency is bounded by main-thread availability whichever door it knocks on.
       requestAnimationFrame(tick);
     }
     tick();
@@ -4629,6 +4754,156 @@ function forgePost(){
     note:'look{} describes the plate as shot. This block describes a second pass over it.'
   };
 }
+/* ══════════════════════════════════════════════════════════════════════════════
+   SHOOT THE MOVE — the path, rendered frame by frame.
+   ══════════════════════════════════════════════════════════════════════════════ */
+const MOVE={running:false,cancel:false};
+// Shortest way round. 350° to 10° is +20, not -340, and a camera that takes the long way
+// round on a whip pan is a bug you only see once it is rendered.
+const lerpAngle=(a,b,t)=>{ const d=((b-a+540)%360)-180; return a+d*t; };
+const lerp=(a,b,t)=>a+(b-a)*t;
+
+// The path as a list of camera states, one per frame. Legs are weighted by distance so
+// the camera holds one speed — even splits make it lurch across a long leg and crawl
+// across a short one.
+function moveSamples(frames){
+  const pts=(S.path&&S.path.points)||[];
+  if(pts.length<2)return [];
+  const legs=[]; let total=0;
+  for(let i=1;i<pts.length;i++){ const d=Math.max(1,haversineMeters(pts[i-1],pts[i]));
+    legs.push(d); total+=d; }
+  const camAt=i=>S.path.points[i].cam||stationDefaultFraming(i);
+  const out=[];
+  for(let f=0;f<frames;f++){
+    const t=frames===1?0:f/(frames-1);
+    let want=t*total, i=0;
+    while(i<legs.length-1&&want>legs[i]){ want-=legs[i]; i++; }
+    const u=Math.min(1,Math.max(0,want/legs[i]));
+    const a=pts[i], b=pts[i+1], ca=camAt(i), cb=camAt(i+1);
+    out.push({
+      lon:lerp(a.lon,b.lon,u), lat:lerp(a.lat,b.lat,u),
+      head:lerpAngle(ca.head,cb.head,u), tilt:lerp(ca.tilt,cb.tilt,u),
+      range:lerp(ca.range,cb.range,u),   fov:lerp(ca.fov,cb.fov,u),
+      leg:i, u   // roll is a per-station choice; blending two cants makes a third nobody picked
+    });
+  }
+  return out;
+}
+// Placed, not flown. lookAt locks the camera into a reference frame, so it is always
+// released afterwards — leaving it locked makes every later camera call behave oddly in
+// ways that show up three panels away.
+function placeCameraAt(sm,ground){
+  const c=Cesium.Cartesian3.fromDegrees(sm.lon,sm.lat,ground);
+  viewer.camera.lookAt(c,new Cesium.HeadingPitchRange(toRad(sm.head),toRad(sm.tilt),sm.range));
+  viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+  // S.fov is DEGREES everywhere in state; only the frustum is radians, and applyFov() is
+  // the one place that crosses that boundary. Setting it here goes through the same door.
+  if(sm.fov){ const prev=S.fov; S.fov=sm.fov; applyFov(); S.fov=prev; }
+}
+// One frame off the stage, cropped to the delivery aspect, drawn at the render size.
+function grabMoveFrame(ctx,W,H){
+  const src=viewer.scene.canvas;
+  const r=ASPECTS[S.delivery], w=src.width, h=src.height, cur=w/h;
+  let cw=w,ch=h,sx=0,sy=0;
+  if(cur>r){cw=h*r;sx=(w-cw)/2;} else {ch=w/r;sy=(h-ch)/2;}
+  ctx.save(); applyCaptureFilter(ctx);
+  ctx.drawImage(src,sx,sy,cw,ch,0,0,W,H);
+  ctx.restore();
+}
+// PASS ONE. Step, wait, render, keep. Returns JPEG frames plus an honest count of how
+// many of them were taken before the world had finished arriving.
+async function renderMove(opts,say){
+  const fps=opts.fps, seconds=opts.seconds;
+  const frames=Math.max(2,Math.round(fps*seconds));
+  const sm=moveSamples(frames);
+  if(!sm.length)throw new Error('Plot at least two dots first');
+  const H=opts.height, W=Math.round(H*ASPECTS[S.delivery]);
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d');
+  const prevScale=viewer.resolutionScale, prevFov=viewer.camera.frustum.fov;
+  viewer.resolutionScale=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+  sceneUiVisible(false);
+  viewer.resize();                     // once: the stage does not change size mid-move
+  // Ground is MEASURED at the dots and interpolated between them. Picking it per frame
+  // reads whatever tile happens to be loaded at that instant, so as tiles refine the
+  // answer moves and the camera bobs vertically through the shot.
+  const pts=S.path.points, legG=pts.map(p=>groundAt(p.lon,p.lat));
+  const groundFor=x=>lerp(legG[x.leg],legG[x.leg+1],x.u);
+  const out=[]; let soft=0;
+  try{
+    for(let f=0;f<sm.length;f++){
+      if(MOVE.cancel)break;
+      placeCameraAt(sm[f],groundFor(sm[f]));
+      viewer.render();
+      // The same gate every shutter uses. A move is 150 shutters in a row.
+      const settled=await waitForTiles(opts.waitMs||2600);
+      if(!settled)soft++;
+      else if(!tilesSettled().resolved)viewer.render();   // only redraw if it actually moved
+      grabMoveFrame(ctx,W,H);
+      out.push(cv.toDataURL('image/jpeg',0.92));
+      if(say)say(f+1,sm.length,soft);
+      // Yield so the progress line paints and Stop can be pressed, without paying a
+      // whole animation frame per rendered frame.
+      if((f&7)===0)await new Promise(r=>setTimeout(r,0));
+    }
+  } finally {
+    sceneUiVisible(true);
+    viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+    viewer.resolutionScale=prevScale; viewer.camera.frustum.fov=prevFov;
+    viewer.resize(); flyToParams(0); viewer.render();
+  }
+  return {frames:out, W, H, fps, seconds, soft, sampled:sm.length};
+}
+// What this move IS, as a fact. soft_frames is not a footnote: it is the number of frames
+// in this shot that show a world which had not finished arriving.
+function moveSpec(r){
+  return {
+    spec:'gmapz.move.v1', captured_at:new Date().toISOString(),
+    location:{name:$('search').value||'', lat:S.target.lat, lng:S.target.lon,
+      earth_source:earthSource(), geometry:earthIsFlat()?'flat_2d_imagery':'3d'},
+    render:{fps:r.fps, frames:r.frames.length, seconds:+(r.frames.length/r.fps).toFixed(2),
+      width:r.W, height:r.H, aspect:S.delivery, still_format:'image/jpeg q0.92'},
+    integrity:{soft_frames:r.soft,
+      note:r.soft?(r.soft+' of '+r.frames.length+' frames were rendered before the world had '+
+        'finished loading. They are in the move; they are not sharp.')
+        :'Every frame waited for the world to finish loading.'},
+    path:buildPathSpec(),
+    light:{date:$('lDate').value,time:$('lTime').value,tz:'UTC'},
+    look:{style:S.style,grade:S.grade,atmosphere:S.atmos},
+    interpolated:['position','heading','tilt','distance','lens'],
+    not_interpolated:['roll','cast positions'],
+    note:'Camera stepped frame by frame over real geometry. This is rendered motion, not '+
+         'generated motion \u2014 nothing here was invented by a model.'
+  };
+}
+// PASS TWO. Play the stored frames back at the real rate into MediaRecorder, so the file
+// runs for the seconds you asked for rather than for however long the render took.
+async function moveToWebM(r,say){
+  const mime=takeMime(); if(!mime)throw new Error('This browser cannot record video');
+  const cv=document.createElement('canvas'); cv.width=r.W; cv.height=r.H;
+  const ctx=cv.getContext('2d');
+  const imgs=await Promise.all(r.frames.map(u=>loadImg(u)));
+  const stream=cv.captureStream(r.fps);
+  let rec; try{ rec=new MediaRecorder(stream,{mimeType:mime.type,videoBitsPerSecond:8e6}); }
+  catch(_){ rec=new MediaRecorder(stream); }
+  const chunks=[]; rec.ondataavailable=e=>{ if(e.data&&e.data.size)chunks.push(e.data); };
+  const stopped=new Promise(res=>{rec.onstop=res;});
+  rec.start(120);
+  const per=1000/r.fps, t0=performance.now();
+  await new Promise(res=>{
+    const step=()=>{
+      const i=Math.floor((performance.now()-t0)/per);
+      if(i>=imgs.length){res();return;}
+      ctx.drawImage(imgs[i],0,0,r.W,r.H);
+      if(say)say(i+1,imgs.length);
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+  try{ rec.requestData(); }catch(_){}
+  rec.stop(); await stopped;
+  return new Blob(chunks,{type:mime.type});
+}
 function drawContain(ctx,im,W,H){ const r=Math.min(W/im.width,H/im.height),w=im.width*r,h=im.height*r; ctx.drawImage(im,(W-w)/2,(H-h)/2,w,h); }
 function downloadBlob(blob,name){ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500); }
 // Render can be started from the take player or from the Post panel; progress and the
@@ -5697,6 +5972,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   openForge,closeForge,renderForge,forgePreview,drawPlate,forgeFilter,forgePost,
   FORGE_FX,FORGE_KEYS,forgeHoldMs,setForgeHold,FORGE,
   saveShot,forgetTileStall,TILE_STALL_MS,
+  MOVE,moveSamples,renderMove,moveSpec,moveToWebM,openMoveStudio,lerpAngle,placeCameraAt,ASPECTS,TILE_HOLD_MS,
   renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,ENGINES,sequencePrompts,seqConstants,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
   saveSeqPreset,applySeqPreset,deleteSeqPreset,loadSeqPresets,renderSeqPresets,captureHelp,sunNow,updateSun,
