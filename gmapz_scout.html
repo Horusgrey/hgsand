@@ -336,6 +336,16 @@ window.CESIUM_VIA='';
     .frow{grid-template-columns:38px 168px 1fr;}
     .frow .fcell.aud,.frow .fcell.fx,.frow .fmeta{grid-column:2 / -1;}
   }
+  /* The one choice that decides what the dots below it mean. */
+  .seg2{display:flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;margin-bottom:8px;}
+  .seg2 button{flex:1;padding:9px 8px;background:#0e0e11;border:0;color:var(--faint);cursor:pointer;
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;line-height:1.35;transition:.12s;}
+  .seg2 button+button{border-left:1px solid var(--line);}
+  .seg2 button span{display:block;font-size:8.5px;letter-spacing:0;opacity:.8;margin-top:2px;
+    text-transform:none;font-family:var(--sans);}
+  .seg2 button:hover{color:var(--txt);background:#141418;}
+  .seg2 button.on{background:linear-gradient(180deg,#231f0c,#17150a);color:var(--yellow);
+    box-shadow:inset 0 0 0 1px rgba(250,204,21,.4);}
   .crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none;width:34px;height:34px;}
   .crosshair:before,.crosshair:after{content:"";position:absolute;background:rgba(250,204,21,.7);}
   .crosshair:before{left:50%;top:0;width:1px;height:100%;transform:translateX(-.5px);}
@@ -863,8 +873,6 @@ window.CESIUM_VIA='';
           <div class="chips" id="cameraTypes"></div>
           <div class="row"><button class="btn" id="pathMode">Draw path: OFF</button><button class="btn sm" id="clearPath" style="flex:none;width:54px">Clear</button></div>
           <div class="mini">After dropping a camera: click ground to set start, click again to add waypoints, double-click to finish. The red line is the move.</div>
-          <label class="fld">Duration <span id="durVal" style="color:var(--dim);float:right">4.0s</span></label>
-          <input id="durSlider" type="range" min="2" max="10" step="0.5" value="4">
         </div>
         <div id="pathSummary"><span id="pathSummaryTxt"></span><button class="btn sm" id="pathEdit" style="flex:none;width:44px">Edit</button></div>
         <div class="list" id="pathList"></div>
@@ -882,14 +890,28 @@ window.CESIUM_VIA='';
         </details>
 
         <div id="pathShoot" style="display:none">
-          <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every dot</button></div>
-          <div class="row"><button class="btn g" id="shootMoveBtn" title="Render the whole path as ONE moving shot, frame by frame, over the real geometry">&#9679; Shoot the move &mdash; one shot, rendered</button></div>
-          <div class="mini">Roll gives you one shot per dot. Shoot the move gives you one shot
-            <i>through</i> them &mdash; the camera stepped frame by frame over the real world, so it
-            actually moves. No engine involved and nothing generated.</div>
+          <label class="fld">This path is</label>
+          <div class="seg2" id="pathKind">
+            <button data-k="move" title="The dots are keyframes of one shot. The camera travels between them.">A MOVE<span>one shot, camera travels</span></button>
+            <button data-k="cov" title="The dots are separate camera setups. Each one becomes its own shot in the cut.">COVERAGE<span>one shot per dot</span></button>
+          </div>
+          <div class="mini" id="pathCanon"></div>
+
+          <div id="kindMove">
+          <div id="durWrap">
+            <label class="fld">Length of the move <span id="durVal" style="color:var(--dim);float:right">4.0s</span></label>
+            <input id="durSlider" type="range" min="2" max="10" step="0.5" value="4">
+          </div>
+            <div class="row"><button class="btn g" id="shootMoveBtn" title="Render the whole path as ONE moving shot, frame by frame, over the real geometry">&#9679; Shoot the move</button></div>
+            <div class="subrow"><button class="btn sm" id="buildShotBtn" title="The cheap version: just the first and last frame, with one spec describing the move between them">Start + end only</button></div>
+          </div>
+
+          <div id="kindCov">
+            <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every dot</button></div>
+          </div>
+
           <div class="subrow">
             <button class="btn sm on" id="autoFrameBtn" title="Give a dot a sensible setup when it has none of its own. Turn it off to keep your framing everywhere.">Auto-frame: ON</button>
-            <button class="btn sm" id="buildShotBtn" title="Export this path as a single start-and-end move with one spec">Start+end move</button>
           </div>
           <label class="fld">Saved runs</label>
           <div class="row"><input id="seqName" type="text" placeholder="Name this run &mdash; e.g. Marina drone run"><button class="btn sm" id="saveSeqBtn" style="flex:none;width:50px">Save</button></div>
@@ -1057,7 +1079,8 @@ const S={
   style:'cinematic',grade:'none',atmos:'clear',sceneDesc:'',
   delivery:'2.39:1',sticker:'person',placeMode:false,engine:'runway',exag:1,
   markers:[],shots:[],captures:[],looks:[],selMarker:null,_sun:null,
-  cameraType:'drone',pathMode:false,path:null,pathDuration:4,autoFrame:true,viewLut:true
+  cameraType:'drone',pathMode:false,path:null,pathDuration:4,autoFrame:true,viewLut:true,
+  pathKind:'cov'
 };
 const SENSORS={full:{name:'Full 36',w:36},s35:{name:'S35 24.9',w:24.9},apsc:{name:'APS-C 23.5',w:23.5},m43:{name:'M4/3 17.3',w:17.3}};
 const COVERAGE={
@@ -2021,6 +2044,8 @@ function clearPathEntities(){
 }
 function startPath(lon,lat){
   if(S.path)clearPath();
+  // A new path means every learned offset is about a path that no longer exists.
+  S.markers.forEach(forgetRide);
   const ct=CAMERA_TYPES[S.cameraType];
   S.path={cameraType:S.cameraType,points:[{lon,lat,alt:ct.defaultAlt,ct:S.cameraType}]};
   pathEntities.start=viewer.entities.add({
@@ -2169,15 +2194,32 @@ function stationHeading(i){
 }
 // Cast marked as travelling ride the path: at station i they stand at point i,
 // so the camera that frames the station also frames them.
+// Who rides the path, and WHERE they ride it.
+//
+// This used to be `m.lon=p.lon; m.lat=p.lat` — every traveller teleported onto the camera
+// dot, so a runner ended up standing exactly where the lens is at every station. That is
+// the cast riding the camera, not the cast moving through the shot, and it is the reason
+// clicking the avatar never did the thing it looked like it should.
+//
+// A traveller now keeps the offset it had from the FIRST station and carries that offset
+// along the path. Ten metres ahead and to the left at dot one is ten metres ahead and to
+// the left at dot four. Their real position is still a placed fact — Scout never invents
+// where somebody is, it only carries them the distance the camera moved.
 function travelCast(i){
   if(!S.path||!S.path.points[i])return 0;
-  const p=S.path.points[i];
+  const p=S.path.points[i], p0=S.path.points[0];
   let moved=0;
   S.markers.forEach(m=>{ if(!m.travels)return;
-    m.lon=p.lon; m.lat=p.lat; syncMarkerVisual(m); moved++; });
+    // Learn the offset once, from wherever you actually put them.
+    if(!m._ride)m._ride={dLon:m.lon-p0.lon, dLat:m.lat-p0.lat};
+    m.lon=p.lon+m._ride.dLon; m.lat=p.lat+m._ride.dLat;
+    syncMarkerVisual(m); moved++; });
   if(moved)renderMarkerList();
   return moved;
 }
+// Moving a stand-in by hand re-teaches the offset; otherwise the next station would drag
+// them straight back to where the old offset said they were.
+function forgetRide(m){ if(m)delete m._ride; }
 function travellerCount(){ return S.markers.filter(m=>m.travels).length; }
 // Who is in frame at a given dot. No list on the dot means everybody — a dot only
 // starts carrying a cast list the moment you switch someone off at it.
@@ -2472,6 +2514,27 @@ function openMoveStudio(){
     b.disabled=false; b.innerHTML='&#8595; Frames + spec (.zip)';
   };
 }
+// A path is one thing or the other, and the panel only ever offers the one you picked.
+// The sentence under the switch is the thing that would have saved a page of argument:
+// nobody reading the panel could tell that a locked dot IS a shot.
+function syncPathKind(){
+  const kind=S.pathKind||'cov';
+  [...document.querySelectorAll('#pathKind button')].forEach(b=>b.classList.toggle('on',b.dataset.k===kind));
+  const mv=$('kindMove'), cv=$('kindCov');
+  if(mv)mv.style.display=kind==='move'?'':'none';
+  if(cv)cv.style.display=kind==='cov'?'':'none';
+  const c=$('pathCanon');
+  if(c)c.innerHTML=kind==='move'
+    ? 'The dots are keyframes of <b>one shot</b>. The camera travels through them and the path has a length \u2014 set it on the Length slider. Nothing enters the cut until you render it.'
+    : 'A <b>locked dot is one shot</b>. The cut is locked dots, in path order. Each one holds for its own beat.';
+  // Deliberately does NOT re-render the dot list: renderPathList() calls back into
+  // syncPathPanelMode(), which calls this, which called it — a stack overflow at boot.
+  // The list is repainted by whoever changed the kind, once.
+}
+[...document.querySelectorAll('#pathKind button')].forEach(b=>{
+  b.onclick=()=>{ S.pathKind=b.dataset.k; syncPathKind(); renderPathList(); autosaveSoon();
+    toast(b.dataset.k==='move'?'This path is one moving shot':'This path is one shot per dot'); };
+});
 $('shootMoveBtn').onclick=openMoveStudio;
 
 async function rollStations(){
@@ -2518,6 +2581,7 @@ function syncPathPanelMode(){
     $('pathSummaryTxt').textContent='New dots: '+plainType(S.cameraType)+' \u00b7 '+S.pathDuration.toFixed(1)+'s move';
     $('pathEdit').textContent=pathSetupOpen?'Done':'Edit'; }
   const shoot=$('pathShoot'); if(shoot)shoot.style.display=pts.length?'':'none';
+  if(typeof syncPathKind==='function')syncPathKind();
 
   // The Roll button says what it is about to do to the dots that are actually there.
   const rb=$('rollStationsBtn');
@@ -5971,7 +6035,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   tilesSettled,waitForTiles,settleForShutter,shotIsSoft,tileTruth,TILE_WAIT_MS,
   openForge,closeForge,renderForge,forgePreview,drawPlate,forgeFilter,forgePost,
   FORGE_FX,FORGE_KEYS,forgeHoldMs,setForgeHold,FORGE,
-  saveShot,forgetTileStall,TILE_STALL_MS,
+  saveShot,forgetTileStall,TILE_STALL_MS,syncPathKind,travelCast,forgetRide,
   MOVE,moveSamples,renderMove,moveSpec,moveToWebM,openMoveStudio,lerpAngle,placeCameraAt,ASPECTS,TILE_HOLD_MS,
   renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,ENGINES,sequencePrompts,seqConstants,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
