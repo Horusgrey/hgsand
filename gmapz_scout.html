@@ -364,6 +364,19 @@ window.CESIUM_VIA='';
   .ridebtn.on{color:var(--yellow);border-color:rgba(250,204,21,.45);background:#17150a;}
   .castin{color:var(--emerald);} .castout{color:var(--amber);}
   .castnote{display:block;color:var(--faint);font-size:10px;margin-top:3px;line-height:1.45;}
+  /* The next move, and nothing else. Eight panels cannot tell you which one you want. */
+  #nextUp{margin:0 0 10px;padding:9px 11px;border-radius:8px;font-size:12px;line-height:1.5;
+    background:linear-gradient(180deg,#16140a,#100f08);border:1px solid rgba(250,204,21,.25);
+    color:var(--dim);display:none;}
+  #nextUp.show{display:block;}
+  #nextUp b{color:var(--yellow);}
+  #nextUp .go{margin-top:6px;display:inline-block;font-family:var(--mono);font-size:10px;
+    letter-spacing:.06em;color:var(--yellow);border:1px solid rgba(250,204,21,.45);
+    border-radius:6px;padding:4px 9px;cursor:pointer;background:#17150a;}
+  #nextUp .go:hover{background:#221e0c;}
+  #nextUp.done{background:linear-gradient(180deg,#0d1512,#0a100e);
+    border-color:rgba(52,211,153,.28);}
+  #nextUp.done b{color:var(--emerald);}
   .crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none;width:34px;height:34px;}
   .crosshair:before,.crosshair:after{content:"";position:absolute;background:rgba(250,204,21,.7);}
   .crosshair:before{left:50%;top:0;width:1px;height:100%;transform:translateX(-.5px);}
@@ -786,7 +799,8 @@ window.CESIUM_VIA='';
     <nav id="railbar"></nav>
     <div id="panelTab" title="Show / hide panel"><span>Panel</span></div>
     <div id="panelbody">
-    <div class="brand"><h1>GMAPz <span>Scout</span></h1><p>Mobile Hollywood · location → block → spec</p></div>
+    <div class="brand"><h1>GMAPz <span>Scout</span></h1><p>Mobile Hollywood · block it · shoot it · finish it</p></div>
+    <div id="nextUp" title="The next move, from where you actually are"></div>
     <div id="capbar">
       <button class="btn y" id="capBarBtn" title="Capture the exact on-screen frame (C)">&#9673;&nbsp; Capture frame</button>
       <button class="btn sm" id="capBarHQ" title="Capture at double resolution" style="flex:none;width:42px">HQ</button>
@@ -1467,6 +1481,7 @@ function setEarthMode(mode,detail){
   EARTH.mode=mode; EARTH.detail=detail||'';
   GROUND_CACHE={};                      // a different Earth has a different surface
   S._tilesNeverSettle=false;            // and a different Earth deserves a fresh verdict
+  if(typeof renderNextUp==='function')renderNextUp();
   const warn=$('earthWarn'), pill=$('loadstat');
   if(pill)pill.classList.toggle('bad',mode==='rejected');
   if(warn)warn.style.display='none';
@@ -2603,6 +2618,7 @@ function syncPathPanelMode(){
     $('pathEdit').textContent=pathSetupOpen?'Done':'Edit'; }
   const shoot=$('pathShoot'); if(shoot)shoot.style.display=pts.length?'':'none';
   if(typeof syncPathKind==='function')syncPathKind();
+  if(typeof renderNextUp==='function')renderNextUp();
 
   // The Roll button says what it is about to do to the dots that are actually there.
   const rb=$('rollStationsBtn');
@@ -3685,7 +3701,7 @@ function refreshFrameTags(){
   if(changed)renderCastTally();
 }
 function renderMarkerList(){
-  autosaveSoon();
+  autosaveSoon(); renderNextUp();
   const L=$('markerList'); L.innerHTML='';
   S.markers.forEach(m=>{
     if(m.scale==null)m.scale=1; if(m.rot==null)m.rot=0;
@@ -4642,7 +4658,7 @@ function reorderShots(from,to){
   toast('“'+moved.name+'” → position '+(to+1));
 }
 function renderShots(){
-  autosaveSoon(); renderThumbs();
+  autosaveSoon(); renderThumbs(); renderNextUp();
   // If the cut changes under an open player, the player has to notice. Otherwise it
   // sits there showing a shot you just removed.
   const tk=$('take');
@@ -4740,6 +4756,57 @@ function cutTally(){
           frames:S.shots.filter(s=>s.thumb).length};
 }
 // One line saying what the GIF will contain — and what it won't.
+// The next move, derived. Never a stored step number — a stored step is a lie the moment
+// you do something out of order, and this app is deliberately not a wizard.
+function nextUp(){
+  const shots=S.shots.length, caps=S.captures.length;
+  const dots=(S.path&&S.path.points)?S.path.points.length:0;
+  const locked=(S.path&&S.path.points)?S.path.points.filter(p=>p.locked).length:0;
+  const framed=S.shots.filter(sh=>sh.thumb).length;
+  const soft=cutIssues().soft.length;
+
+  if(EARTH.mode==='rejected')
+    return {t:'Your key was refused, so you are shooting <b>flat 2D imagery</b> with no building geometry. Fix it before you shoot anything you mean to keep.',
+            go:'Test the key',act:()=>{openSectionByLabel('Scout');$('testKey')&&$('testKey').click();}};
+  if(soft)
+    return {t:'<b>'+soft+' frame'+(soft===1?'':'s')+'</b> in the cut '+(soft===1?'was':'were')+
+              ' captured before the world finished loading. Re-shoot '+(soft===1?'it':'them')+' \u2014 a soft frame is not a reference.',
+            go:'Check the cut',act:()=>{openSectionByLabel('Post');$('continuityBtn').click();}};
+  if(!caps&&!shots&&!dots){
+    // Cold start. If there is also no key, that is the more useful of the two things to say.
+    if(EARTH.mode==='flat'&&!S.google)
+      return {t:'No key yet, so this is <b>flat satellite imagery</b> \u2014 real places, no building geometry. It works; it just is not 3D. Find a place and press <b>S</b> either way.',
+              go:'Add a Map Tiles key',act:()=>openSectionByLabel('Scout')};
+    return {t:'Find a place, aim at it, then press <b>S</b> to save your first shot. Everything downstream is that, repeated.',
+            go:'Search a place',act:()=>{openSectionByLabel('Scout');$('search').focus();}};
+  }
+  if(dots&&locked<dots&&S.pathKind!=='move')
+    return {t:'<b>'+(dots-locked)+'</b> of '+dots+' dots still have no frame. Roll them and each one becomes a shot in the cut.',
+            go:'Open Path',act:()=>openSectionByLabel('Path')};
+  if(dots&&S.pathKind==='move'&&!shots)
+    return {t:'The path is set as <b>one moving shot</b>. Render it and you get real motion over real geometry \u2014 no engine involved.',
+            go:'Open Path',act:()=>openSectionByLabel('Path')};
+  if(caps&&!shots)
+    return {t:'You have <b>'+caps+'</b> frame'+(caps===1?'':'s')+' but nothing in the cut yet. A frame only becomes a shot when you save it.',
+            go:'Open Post',act:()=>openSectionByLabel('Post')};
+  if(shots&&framed<shots)
+    return {t:'<b>'+(shots-framed)+'</b> shot'+(shots-framed===1?'':'s')+' in the cut '+
+              (shots-framed===1?'has':'have')+' no picture. Fly back and lock '+(shots-framed===1?'it':'them')+'.',
+            go:'Open Post',act:()=>openSectionByLabel('Post')};
+  if(shots)
+    return {done:true,
+            t:'<b>'+shots+' shot'+(shots===1?'':'s')+'</b> in the cut, all with frames. Finish it in Frame Forge \u2014 write what happens, grade it, set the holds, render the GIF or the video.',
+            go:'Open Frame Forge',act:()=>{openSectionByLabel('Export');openForge();}};
+  return null;
+}
+function renderNextUp(){
+  const el=$('nextUp'); if(!el)return;
+  let r=null; try{ r=nextUp(); }catch(_){ r=null; }
+  if(!r){ el.className=''; el.innerHTML=''; return; }
+  el.className='show'+(r.done?' done':'');
+  el.innerHTML=r.t+(r.go?'<br><span class="go">'+escapeHtml(r.go)+' \u2192</span>':'');
+  const go=el.querySelector('.go'); if(go&&r.act)go.onclick=r.act;
+}
 function renderCutTally(){
   const el=$('cutTally'); if(!el)return;
   const t=cutTally();
@@ -6035,12 +6102,14 @@ document.addEventListener('keydown',e=>{
       localStorage.setItem('gmapz_welcomed','1');
       showModal('<span class="closex" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">&times;</span>'+
         '<h3>GMAPz <span style="color:var(--yellow)">Scout</span></h3>'+
-        '<div class="mini" style="font-size:12.5px;line-height:1.7">Fly a real camera over the real Earth. Block the shot, lock the sun, capture the frame \u2014 and leave with engine-ready prompts and a machine-readable spec.</div>'+
+        '<div class="mini" style="font-size:12.5px;line-height:1.7">Fly a real camera over the real Earth. Block the shot, lock the sun, photograph it \u2014 then cut it and finish it, here, into a GIF or a video. No other app required.</div>'+
         '<table style="margin-top:10px">'+
-        '<tr><td><span class="k">1</span></td><td>Paste a Google Map Tiles key under Scout for photoreal Earth \u2014 it\u2019s remembered on this device. No key still works.</td></tr>'+
-        '<tr><td><span class="k">2</span></td><td>Right-click anywhere to aim. The wheel dives at your cursor; T toggles top-down.</td></tr>'+
-        '<tr><td><span class="k">3</span></td><td>C or the shutter captures the exact frame; the Prompt Studio turns it into prompts for six i2v engines.</td></tr>'+
+        '<tr><td><span class="k">1</span></td><td>Paste a Google <b>Map Tiles</b> key under Scout for photoreal Earth \u2014 remembered on this device. No key still works, on flat imagery.</td></tr>'+
+        '<tr><td><span class="k">2</span></td><td>Right-click anywhere to aim. The wheel dives at your cursor; <b>T</b> toggles top-down.</td></tr>'+
+        '<tr><td><span class="k">3</span></td><td><b>S</b> saves the framing you are looking at as a shot in the cut. <b>C</b> just takes a frame.</td></tr>'+
+        '<tr><td><span class="k">4</span></td><td>Export \u2192 <b>Frame Forge</b> is where the cut becomes the film: one row per shot, then render.</td></tr>'+
         '</table>'+
+        '<div class="mini" style="margin-top:10px;color:var(--faint)">The yellow line under the title always says what the next move is, from wherever you actually are.</div>'+
         '<div class="row" style="margin-top:14px"><button class="btn y" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">Start scouting</button></div>');
     }
   }catch(_){}
@@ -6162,6 +6231,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   openForge,closeForge,renderForge,forgePreview,drawPlate,forgeFilter,forgePost,forgeMeasured,
   FORGE_FX,FORGE_KEYS,forgeHoldMs,setForgeHold,FORGE,
   saveShot,forgetTileStall,TILE_STALL_MS,syncPathKind,travelCast,forgetRide,
+  nextUp,renderNextUp,
   markerInFrame,standInSize,castTally,renderCastTally,
   MOVE,moveSamples,renderMove,moveSpec,moveToWebM,openMoveStudio,lerpAngle,placeCameraAt,ASPECTS,TILE_HOLD_MS,
   renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,ENGINES,sequencePrompts,seqConstants,ctxFromSpec,openSequenceStudio,
