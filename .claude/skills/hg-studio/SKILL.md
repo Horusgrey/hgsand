@@ -1,6 +1,6 @@
 ---
 name: hg-studio
-description: Operating procedure for the Hollywood-by-HG tool line — GMAPz Scout, GMAPz Turnover, VCS-15, VCO/Director's Chair, World Builder, Z-Earth. Use at the START of any session touching these tools, before writing code or answering a direction question, and at the END of any session that changed something. Covers where files live, how to hand a build to a Chromebook, what a "copy" or "branch" actually means here, the house build discipline, and the session-notes artifact that must be published every time.
+description: Operating procedure for the Hollywood-by-HG tool line — GMAPz Scout (capture → Frame Forge), Giffy, VCS-15, VCO/Cineflow, World Builder, Z-Earth. Use at the START of any session touching these tools, before writing code or answering a direction question, and at the END of any session that changed something. Covers where files live, how to hand a build to a Chromebook, what a "copy" or "branch" actually means here, the house build discipline, and the session-notes artifact that must be published every time.
 ---
 
 # Hollywood by HG — how we work
@@ -61,6 +61,12 @@ repo root. There is no build step and there never should be.
 | "keep this version" | `git tag` locally **and** write the SHA into `ROADMAP.md` — tag pushes are rejected by this repo's credential, the SHA in a doc is what survives | the SHA and what it contains |
 | "which version am I testing" | send him the actual file | the filename and the URL, nothing else |
 | "new build on netlify" | prepare a folder with `index.html`, hand it over | that Netlify's servers are unreachable from the sandbox, so he drags the folder |
+
+**Two apps, and only two: Scout → VCO/Cineflow.** Scout captures and finishes its own cut
+in Frame Forge (the Export tab). Giffy is the same job built outside the house; if it stays,
+it stays as one tool, not two. GMAPz Turnover was retired at `HEAD` — I built it before I
+knew Giffy existed, it duplicated the job, and the one idea worth keeping (measured facts
+beside the sentence you write about them) was ported into a Frame Forge row.
 
 **Never leave two near-identical HTML files in the repo.** A lab copy is for one unproven
 experiment; the moment it lands, delete it. Two files that must be edited in lockstep diverge

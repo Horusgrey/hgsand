@@ -303,6 +303,13 @@ window.CESIUM_VIA='';
     border:1px solid var(--line);border-radius:7px;color:var(--txt);padding:8px 9px;
     font-family:inherit;font-size:12px;line-height:1.5;}
   .fcell textarea:focus{outline:none;border-color:var(--yellow);}
+  /* Measured facts read as data, never as something you could edit. */
+  .fmeas{display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:7px;align-items:center;
+    font-family:var(--mono);font-size:9.5px;color:var(--dim);}
+  .fmeas span{white-space:nowrap;}
+  .fmeas i{color:var(--faint);font-style:normal;margin-right:4px;}
+  .prov{font-size:8px;letter-spacing:.12em;padding:1px 5px;border-radius:3px;
+    color:var(--blue);border:1px solid rgba(96,165,250,.4);background:rgba(96,165,250,.08);}
   .fchips{display:flex;flex-wrap:wrap;gap:4px;}
   .fchip{border:1px solid var(--line);background:#0e0e12;color:var(--faint);border-radius:99px;
     padding:4px 9px;font-size:10px;cursor:pointer;transition:.1s;user-select:none;}
@@ -346,6 +353,17 @@ window.CESIUM_VIA='';
   .seg2 button:hover{color:var(--txt);background:#141418;}
   .seg2 button.on{background:linear-gradient(180deg,#231f0c,#17150a);color:var(--yellow);
     box-shadow:inset 0 0 0 1px rgba(250,204,21,.4);}
+  /* The most useful fact about a stand-in, on the row that describes it. */
+  .frametag{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;padding:2px 6px;
+    border-radius:99px;border:1px solid;flex:none;}
+  .frametag.in{color:var(--emerald);border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.08);}
+  .frametag.out{color:var(--faint);border-color:var(--line);}
+  .ridebtn{font-family:var(--mono);font-size:9px;padding:3px 7px;border-radius:6px;
+    border:1px solid var(--line);background:#0e0e12;color:var(--faint);cursor:pointer;flex:none;}
+  .ridebtn:hover{border-color:var(--line2);color:var(--txt);}
+  .ridebtn.on{color:var(--yellow);border-color:rgba(250,204,21,.45);background:#17150a;}
+  .castin{color:var(--emerald);} .castout{color:var(--amber);}
+  .castnote{display:block;color:var(--faint);font-size:10px;margin-top:3px;line-height:1.45;}
   .crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none;width:34px;height:34px;}
   .crosshair:before,.crosshair:after{content:"";position:absolute;background:rgba(250,204,21,.7);}
   .crosshair:before{left:50%;top:0;width:1px;height:100%;transform:translateX(-.5px);}
@@ -861,8 +879,9 @@ window.CESIUM_VIA='';
         <div style="margin:9px 0 2px"><div class="dropzone" id="dropzone">Add a picture &mdash; click, drop a file here, or paste</div></div>
         <input id="avatarFile" type="file" accept="image/*" style="display:none">
         <div class="row"><button class="btn" id="placeMode">Place mode: OFF</button><button class="btn sm" id="snapGround" style="flex:none;width:88px">Snap to ground</button><button class="btn sm" id="clearMarkers" style="flex:none;width:56px">Clear</button></div>
-        <div class="mini">Drag a placed stand-in to move it. Select one to size, rotate, raise it, or send it along the path.</div>
+        <div class="mini" id="castTally" style="margin-top:8px"></div>
         <div class="list" id="markerList"></div>
+        <div class="mini">Drag a placed stand-in on the globe to move it. Click a row to size, rotate or raise it.</div>
       </div>
     </details>
 
@@ -1942,6 +1961,8 @@ const nearestLens=mm=>LENSES.reduce((a,b)=>Math.abs(b-mm)<Math.abs(a-mm)?b:a);
 
 let _slateTxt='', _lastHd=null;
 viewer.scene.postRender.addEventListener(()=>{
+  // Whether the lens is pointed at a stand-in changes as you fly, so the tag does too.
+  if(typeof refreshFrameTags==='function')refreshFrameTags();
   const cam=viewer.camera,carto=cam.positionCartographic;
   $('readout').textContent=
    'cam lat '+toDeg(carto.latitude).toFixed(5)+'\n'+
@@ -3603,6 +3624,66 @@ function syncShadow(m){ // ground the stand-in with a sun-aware contact shadow s
 function pruneShadows(){ const alive=new Set(S.markers.map(m=>'sh_'+m.id));
   viewer.entities.values.filter(e=>typeof e.id==='string'&&e.id.indexOf('sh_')===0&&!alive.has(e.id)).forEach(e=>viewer.entities.remove(e)); }
 function syncAllMarkerVisuals(){S.markers.forEach(syncMarkerVisual); pruneShadows();}
+// Is the lens pointed at this stand-in? Projects their real world position into the
+// canvas and asks whether it landed on it.
+//
+// IN FRAME is not VISIBLE and the wording never pretends otherwise: someone standing
+// behind a building is in frame and completely hidden. This answers "is the camera
+// looking their way", which is the question you actually have while blocking.
+function markerInFrame(m){
+  try{
+    const g=groundAt(m.lon,m.lat);
+    const pos=Cesium.Cartesian3.fromDegrees(m.lon,m.lat,g+Math.max(0,m.height||0)+(standInSize(m)/2));
+    const win=Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene,pos);
+    if(!win)return false;                       // behind the camera
+    const c=viewer.scene.canvas;
+    const W=c.clientWidth||c.width, H=c.clientHeight||c.height;
+    if(win.x<0||win.y<0||win.x>W||win.y>H)return false;
+    // The delivery aspect letterboxes the stage, and anything in the black bars is not in
+    // the frame you are going to export — only in the window you happen to be looking at.
+    const r=ASPECTS[S.delivery], cur=W/H;
+    if(cur>r){ const fw=H*r, x0=(W-fw)/2; if(win.x<x0||win.x>x0+fw)return false; }
+    else     { const fh=W/r, y0=(H-fh)/2; if(win.y<y0||win.y>y0+fh)return false; }
+    return true;
+  }catch(_){ return false; }
+}
+// How tall the thing really is, in metres, after scale. The number the spec calls height_m.
+function standInSize(m){ const wp=worldProp(m.type); return wp?wp.h*(m.scale||1):0; }
+function castTally(){
+  const inF=S.markers.filter(markerInFrame).length;
+  const rides=S.markers.filter(m=>m.travels).length;
+  return {n:S.markers.length, inFrame:inF, rides};
+}
+function renderCastTally(){
+  const el=$('castTally'); if(!el)return;
+  const t=castTally();
+  if(!t.n){ el.innerHTML='Nothing placed yet. Drag a stand-in onto the globe \u2014 it lands life-size.'; return; }
+  el.innerHTML='<b>'+t.n+'</b> placed \u00b7 <b class="'+(t.inFrame?'castin':'castout')+'">'+t.inFrame+
+    ' in frame</b>'+(S.path?' \u00b7 <b>'+t.rides+'</b> ride'+(t.rides===1?'s':'')+' the path':'')+
+    '<span class="castnote">In frame means the lens is pointed at them \u2014 not that nothing is standing in the way.</span>';
+}
+// IN FRAME is only useful if it is live. Repainting the whole list on every camera tick
+// would fight the controls you are dragging, so this touches nothing but the two tags.
+let _frameTagT=0;
+function refreshFrameTags(){
+  const now=performance.now();
+  if(now-_frameTagT<180)return;                 // the camera moves every frame; this need not
+  _frameTagT=now;
+  const L=$('markerList'); if(!L||!S.markers.length)return;
+  let changed=false;
+  S.markers.forEach(m=>{
+    const row=L.querySelector('[data-x="'+m.id+'"]');
+    const tag=row&&row.parentElement.querySelector('.frametag');
+    if(!tag)return;
+    const inF=markerInFrame(m), was=tag.classList.contains('in');
+    if(inF!==was){
+      tag.classList.toggle('in',inF); tag.classList.toggle('out',!inF);
+      tag.textContent=inF?'IN FRAME':'OUT';
+      changed=true;
+    }
+  });
+  if(changed)renderCastTally();
+}
 function renderMarkerList(){
   autosaveSoon();
   const L=$('markerList'); L.innerHTML='';
@@ -3610,24 +3691,39 @@ function renderMarkerList(){
     if(m.scale==null)m.scale=1; if(m.rot==null)m.rot=0;
     const sel=S.selMarker===m.id;
     const d=document.createElement('div');d.className='item'+(sel?' sel':'');
-    d.innerHTML='<div class="t"><span>'+escapeHtml(standInName(m.type))+' <span class="tag">'+m.height.toFixed(0)+'m</span>'+
-      (m.travels?' <span class="tag tvon">\u2192 travels</span>':'')+
-      '</span><span class="x" data-x="'+m.id+'" title="Delete">&times;</span></div>';
+    // The chip is the stand-in's REAL SIZE. It used to be m.height — the raise — so a
+    // person standing on the ground read "0m" and a person on a roof read "12m tall".
+    const size=standInSize(m), inF=markerInFrame(m), raise=Math.max(0,m.height||0);
+    d.innerHTML='<div class="t"><span>'+escapeHtml(standInName(m.type))+
+      (size?' <span class="tag">'+size.toFixed(2)+'m tall</span>':'')+
+      (raise>=1?' <span class="tag" title="Raised this far off the ground">+'+raise.toFixed(0)+'m</span>':'')+
+      '</span><span style="display:flex;align-items:center;gap:6px;flex:none">'+
+      '<span class="frametag '+(inF?'in':'out')+'" title="'+(inF
+        ? 'The lens is pointed at them. Something may still be standing in the way.'
+        : 'Outside the frame you are about to export.')+'">'+(inF?'IN FRAME':'OUT')+'</span>'+
+      (S.path?'<button class="ridebtn'+(m.travels?' on':'')+'" data-ride="'+m.id+
+        '" title="Carry this stand-in along the path, keeping the offset you gave it">'+
+        (m.travels?'\u2192 rides':'stays')+'</button>':'')+
+      '<span class="x" data-x="'+m.id+'" title="Delete">&times;</span></span></div>';
     const sel2=document.createElement('select');SHOTTYPES.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;if(t===m.shotType)o.selected=true;sel2.appendChild(o);});
     sel2.style.marginTop='6px';sel2.onchange=()=>{m.shotType=sel2.value;const e=viewer.entities.getById(m.id);if(e)e.label.text=sel2.value;};
     d.appendChild(sel2);
     if(sel){ // expanded controls only on the selected prop — keeps the list tight
       const ctl=document.createElement('div'); ctl.className='mctl';
       ctl.innerHTML=
-        '<div class="mrow"><span>Height</span><input type="range" min="0" max="400" step="1" value="'+m.height+'" data-k="height"><b>'+m.height.toFixed(0)+'m</b></div>'+
+        // "Raise", not "Height". This slider has never set how tall something is — it sets
+        // how far off the ground it floats, and calling it Height is how the chip came to
+        // claim a person was zero metres tall.
+        '<div class="mrow"><span>Raise</span><input type="range" min="0" max="400" step="1" value="'+m.height+'" data-k="height"><b>+'+m.height.toFixed(0)+'m</b></div>'+
         '<div class="mrow"><span>Scale</span><button class="mb" data-k="scale" data-d="-0.1">\u2212</button><b>'+(worldProp(m.type)?(worldProp(m.type).h*m.scale).toFixed(2)+'m':m.scale.toFixed(1)+'\u00d7')+'</b><button class="mb" data-k="scale" data-d="0.1">+</button></div>'+
         '<div class="mrow"><span>Rotate</span><button class="mb" data-k="rot" data-d="-15">\u21ba</button><b>'+m.rot+'\u00b0</b><button class="mb" data-k="rot" data-d="15">\u21bb</button></div>'+
-        '<div class="mrow"><span>Travel</span><button class="tvb'+(m.travels?' on':'')+'">'+(m.travels?'\u2192 rides the path':'stays put')+'</button></div>'+
         (AVATARS[m.type]?'<div class="mrow"><span>Facing</span><button class="tvb flipb'+(m.flip?' on':'')+'">'+(m.flip?'\u25c0 flipped':'\u25b6 as uploaded')+'</button></div>':'');
       const fb=ctl.querySelector('.flipb');
       if(fb)fb.onclick=ev=>{ev.stopPropagation();m.flip=!m.flip;syncMarkerVisual(m);renderMarkerList();};
-      ctl.querySelector('.tvb').onclick=ev=>{ev.stopPropagation();toggleTravel(m.id);};
-      ctl.querySelector('input[data-k="height"]').oninput=ev=>{m.height=+ev.target.value;syncMarkerVisual(m);ctl.querySelector('.mrow b').textContent=m.height.toFixed(0)+'m';d.querySelector('.tag').textContent=m.height.toFixed(0)+'m';};
+
+      ctl.querySelector('input[data-k="height"]').oninput=ev=>{m.height=+ev.target.value;
+        syncMarkerVisual(m); ctl.querySelector('.mrow b').textContent='+'+m.height.toFixed(0)+'m';
+        renderCastTally();};
       ctl.querySelectorAll('.mb').forEach(b=>b.onclick=ev=>{ev.stopPropagation();
         const k=b.dataset.k, dd=+b.dataset.d;
         if(k==='scale')m.scale=Math.min(3,Math.max(0.3,+(m.scale+dd).toFixed(1)));
@@ -3638,6 +3734,11 @@ function renderMarkerList(){
     d.onclick=ev=>{if(ev.target.dataset.x||ev.target.classList.contains('mb')||ev.target.tagName==='INPUT'||ev.target.tagName==='SELECT')return;S.selMarker=m.id;renderMarkerList();syncAllMarkerVisuals();};
     L.appendChild(d);
   });
+  // Riding the path is one click from the row now. It used to live inside the controls of
+  // whichever stand-in you had selected, behind a hint that told you to go and find it.
+  L.querySelectorAll('[data-ride]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();
+    toggleTravel(b.dataset.ride);});
+  renderCastTally();
   L.querySelectorAll('[data-x]').forEach(x=>x.onclick=()=>{const id=x.dataset.x;pushUndo({type:'markerDel'});
     viewer.entities.removeById(id); viewer.entities.removeById('sh_'+id);
     S.markers=S.markers.filter(m=>m.id!==id); if(S.selMarker===id)S.selMarker=null;
@@ -4765,6 +4866,30 @@ const FORGE_FX=[
   {k:'freeze',  label:'Freeze',   f:''}         // a note to the cut, no pixels touched
 ];
 const FORGE_KEYS=FORGE_FX.map(x=>x.k);
+// What Scout measured about this shot, in the room where you write about it.
+// Ported from Turnover, which is retired: the point was never the app, it was that an
+// authored sentence should sit next to the facts it is describing, clearly marked as the
+// other kind of thing. Everything here came off the frame; nothing here is editable.
+function forgeMeasured(sh){
+  const sp=sh&&sh.spec; if(!sp||!sp.camera)return '';
+  const c=sp.camera, l=sp.light||{}, loc=sp.location||{};
+  const dist=(c.target_distance_m!==undefined)?c.target_distance_m:c.altitude_m;
+  const bits=[
+    ['lens', Math.round(c.lens_mm)+'mm'],
+    ['size', sizeCode(c.shot_size)],
+    ['angle', c.angle],
+    ['head', Math.round(c.heading_deg)+'\u00b0'],
+    ['tilt', Math.round(c.pitch_deg)+'\u00b0'],
+    ['to subject', dist!=null?Math.round(dist)+'m':'\u2014'],
+    ['above ground', c.height_above_ground_m!=null?Math.round(c.height_above_ground_m)+'m':'\u2014'],
+    ['sun', l.sun_elevation_deg!=null?('el '+l.sun_elevation_deg+'\u00b0 az '+l.sun_azimuth_deg+'\u00b0'):'\u2014'],
+    ['phase', l.phase||'\u2014'],
+    ['earth', loc.earth_source||'unrecorded']
+  ];
+  return '<div class="fmeas"><span class="prov">MEASURED</span>'+
+    bits.map(([k,v])=>'<span><i>'+k+'</i>'+escapeHtml(String(v))+'</span>').join('')+
+    '</div>';
+}
 const forgeFx=sh=>Array.isArray(sh.fx)?sh.fx:(sh.fx=[]);
 // Custom tags travel in fx[] beside the presets; they mean something to you and to VCS,
 // and nothing to the renderer, so they are filtered out before any pixel is touched.
@@ -5264,7 +5389,8 @@ function renderForge(){
         '<div class="over">'+(sh.thumb?'Replace':'Place')+'</div></div>'+
         (soft?'<span class="fsoft">&#9888; shot before the world loaded</span>':'')+'</div>'+
       '<div class="fcell"><label>What happens here</label>'+
-        '<textarea data-desc="'+i+'" placeholder="Camera, action, light, feeling. Scout knows the place; it does not know the scene.">'+escapeHtml(sh.desc)+'</textarea></div>'+
+        '<textarea data-desc="'+i+'" placeholder="Camera, action, light, feeling. Scout knows the place; it does not know the scene.">'+escapeHtml(sh.desc)+'</textarea>'+
+        forgeMeasured(sh)+'</div>'+
       '<div class="fcell aud"><label>Sound</label>'+
         '<div class="faud">'+
           '<select data-audmode="'+i+'">'+
@@ -6033,9 +6159,10 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   renderThumbs,renderFrameBin,addCaptureToCut,dropFromCut,nextStation,refreshPathVisuals,renderPathList,
   removePathPoint,purgeMarkerFromCasts,
   tilesSettled,waitForTiles,settleForShutter,shotIsSoft,tileTruth,TILE_WAIT_MS,
-  openForge,closeForge,renderForge,forgePreview,drawPlate,forgeFilter,forgePost,
+  openForge,closeForge,renderForge,forgePreview,drawPlate,forgeFilter,forgePost,forgeMeasured,
   FORGE_FX,FORGE_KEYS,forgeHoldMs,setForgeHold,FORGE,
   saveShot,forgetTileStall,TILE_STALL_MS,syncPathKind,travelCast,forgetRide,
+  markerInFrame,standInSize,castTally,renderCastTally,
   MOVE,moveSamples,renderMove,moveSpec,moveToWebM,openMoveStudio,lerpAngle,placeCameraAt,ASPECTS,TILE_HOLD_MS,
   renderShots,renderMarkerList,SHOT_SIZES,LENSES,ANGLES,CAMERA_TYPES,COVERAGE,STYLES,lensToFov,ENGINES,sequencePrompts,seqConstants,ctxFromSpec,openSequenceStudio,
   setStationCamType,setStationColor,pointCamType,pointColor,plainType,
