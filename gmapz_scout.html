@@ -62,6 +62,18 @@ window.CESIUM_VIA='';
     --bg:#0a0a0a;--panel:#09090b;--panel2:#101012;--line:#27272a;--line2:#3f3f46;
     --txt:#e4e4e7;--dim:#a1a1aa;--faint:#71717a;
     --yellow:#facc15;--emerald:#34d399;--vcs:#fb923c;--vco:#e8a23c;--blue:#60a5fa;
+    /* amber = a caveat, red = a failure. Fourteen places in this file already asked for
+       these two by name and got the inherited colour instead, because they were never
+       declared: the soft-frame border in Frame Forge, the soft thumbnail outline, the
+       out-of-frame cast marker, the soft counts in the move report and in Check the cut,
+       and the warning state of the loadstat pill. Every one of them was rendering as
+       ordinary text -- a failure with no colour on it reads as a pass. */
+    --amber:#fbbf24;--red:#f87171;
+    /* Same story, same cause: Frame Forge asks for the mono face in seventeen places --
+       every filename, every MEASURED strip, every soft badge -- and got the display face,
+       because the variable was never declared. The constitution names both. */
+    --sans:'Space Grotesk',ui-sans-serif,system-ui,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
@@ -82,6 +94,11 @@ window.CESIUM_VIA='';
   .railbtn .rl{font-size:7.5px;letter-spacing:.03em;text-transform:uppercase;font-weight:600;
     max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .raildiv{flex:none;height:1px;background:#191920;margin:7px 14px;}
+  /* A group name is not a button and must never be mistaken for one: no icon, no hover,
+     no pointer, half the weight of a label. It answers "which of the five jobs is this". */
+  .railhead{flex:none;font-size:6px;letter-spacing:.16em;text-transform:uppercase;color:#4b4b55;
+    text-align:center;padding:9px 0 3px;font-weight:700;user-select:none;pointer-events:none;}
+  .railhead:first-child{padding-top:4px;}
   .railbtn{position:relative;}
   .railbtn:hover{background:#141418;color:var(--txt);}
   .railbtn:focus-visible{outline:none;box-shadow:0 0 0 2px rgba(250,204,21,.4);}
@@ -606,7 +623,7 @@ window.CESIUM_VIA='';
   .plegend .ring{background:transparent;box-shadow:inset 0 0 0 2px currentColor;}
   .pstn.act .pglance{color:var(--yellow);}
   .pstn.done .pglance{color:#7fd8b4;}
-  .pstn:not(.act) .popt,.pstn:not(.act) .pcast,.pstn:not(.act) .prow{display:none;}
+  .pstn:not(.act) .popt,.pstn:not(.act) .pcast,.pstn:not(.act) .prow,.pstn:not(.act) .psub{display:none;}
   .pstn:not(.act){cursor:pointer;}
   .pstn:not(.act):hover{border-color:#3a3a42;}
   .pstn.act{border-color:rgba(250,204,21,.7);box-shadow:0 0 0 3px rgba(250,204,21,.10);}
@@ -657,9 +674,20 @@ window.CESIUM_VIA='';
   #pathSummaryTxt{flex:1;min-width:0;font-size:11.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .pcam{margin-top:5px;font-family:ui-monospace,monospace;font-size:10px;color:var(--faint);letter-spacing:.02em;}
   .pstn.done .pcam{color:#7fd8b4;}
-  .psave{flex:none !important;width:26px;}
+  /* It was a bare glyph in the button row; on the demoted line it says what it does. */
+  .psave{flex:1;white-space:nowrap;}
   .prow{display:flex;gap:5px;margin-top:7px;align-items:center;}
   .prow .btn{padding:5px 7px;font-size:10px;}
+  /* One station is active at a time and it gets one obvious thing to press. "Fly here" on
+     the dot you are already standing on is a dead control, so it goes; everything else drops
+     to a demoted second line rather than competing with the shutter. Nothing is removed. */
+  .pstn.act .prow .pfly{display:none;}
+  .pstn.act .prow .plock{flex:1;padding:8px 7px;font-size:11px;}
+  .psub{display:flex;gap:5px;margin-top:5px;align-items:center;}
+  .psub .btn{padding:4px 7px;font-size:9.5px;color:var(--faint);background:transparent;
+    border-color:#232329;white-space:nowrap;}
+  .psub .btn:hover{color:var(--txt);border-color:#3a3a42;background:#141418;}
+  .psub .pdel:hover{color:var(--red);border-color:rgba(248,113,113,.45);}
   .pthumb{width:46px;height:26px;flex:none;border-radius:4px;object-fit:cover;background:#000;
     border:1px solid var(--line2);}
   /* the sequence filmstrip: numbered, scroll-aware, current shot marked */
@@ -781,6 +809,8 @@ window.CESIUM_VIA='';
     #railbar{flex-direction:row;width:100%;min-width:0;height:auto;overflow-x:auto;overflow-y:hidden;
       border-right:none;border-bottom:1px solid var(--line);padding:6px 4px;}
     .raildiv{width:1px;height:26px;margin:0 5px;align-self:center;}
+    .railhead{width:1px;height:26px;padding:0;margin:0 5px;align-self:center;background:#191920;
+      overflow:hidden;text-indent:-99px;}
     .railbtn{margin:0 2px;padding:7px 6px;}
     #panelbody{width:100% !important;border-right:none;}
     .panel.closed #panelbody{display:none;}
@@ -811,25 +841,44 @@ window.CESIUM_VIA='';
       <div class="body">
         <label class="fld">Search a place</label>
         <div class="row"><span class="searchwrap"><input id="search" type="text" autocomplete="off" placeholder="Place name — or coords: 41.8885, -87.6345"><div id="sugg"></div></span><button class="btn sm" id="searchBtn" style="flex:none;width:64px">Go</button></div>
-        <label class="fld">Places from a KML / KMZ</label>
-        <div style="margin:2px 0 4px"><div class="dropzone" id="kmlZone">Load a KML or KMZ &mdash; click, or drop the file here</div></div>
-        <input id="kmlFile" type="file" accept=".kml,.kmz" style="display:none">
-        <div class="list" id="kmlList"></div>
-        <label class="fld">Photoreal &amp; terrain keys (optional)</label>
-        <div class="row"><input id="googleKey" type="text" placeholder="Google Map Tiles API key"></div>
-        <div class="row"><input id="ionKey" type="text" placeholder="Cesium ion token"></div>
-        <div class="row"><button class="btn" id="applyKeys">Apply keys &amp; reload Earth</button><button class="btn sm" id="testKey" style="flex:none;width:74px" title="Ask Google whether this key can fetch Photorealistic 3D Tiles, and repeat exactly what it says">Test key</button></div>
-        <div class="mini" id="refHint"></div>
-        <div class="mini" id="keyVerdict" style="display:none"></div>
-        <label class="fld">Preview quality</label>
-        <div class="chips" id="quality"></div>
-        <div class="mini" id="qualityNote"></div>
-        <label class="fld">Terrain exaggeration <span id="exagVal" style="color:var(--dim);float:right">1.0&times;</span></label>
-        <input id="exagSlider" type="range" min="1" max="5" step="0.5" value="1">
-        <div class="mini">Google&rsquo;s key list runs to hundreds of entries and only one of them works here: enable
-          <b>Map Tiles API</b> (console.cloud.google.com &rarr; APIs &amp; Services), with billing on. A key that works for
-          Maps JavaScript, Static Maps or Geocoding is still rejected by this one. No key at all is fine &mdash; you get
-          keyless ESRI satellite, which is flat 2D drape with no building geometry. Keys are remembered on this device.</div>
+        <div class="mini" id="scoutHint" style="margin-top:7px">Type a place, or paste coordinates. Everything below is set once and then left alone.</div>
+
+        <!-- Set once, then left alone. The summary states the earth you are actually on, so
+             the fold never has to be opened to find that out -- and a rejected key forces it
+             open and keeps it open, because a warning you have to click for is not a warning. -->
+        <details class="fold" id="earthFold">
+          <summary><span id="earthFoldLabel">Photoreal Earth &mdash; keys</span><span class="fchev">&#9656;</span></summary>
+          <div class="foldbody">
+            <div class="row"><input id="googleKey" type="text" placeholder="Google Map Tiles API key"></div>
+            <div class="row"><input id="ionKey" type="text" placeholder="Cesium ion token"></div>
+            <div class="row"><button class="btn" id="applyKeys">Apply keys &amp; reload Earth</button><button class="btn sm" id="testKey" style="flex:none;width:74px" title="Ask Google whether this key can fetch Photorealistic 3D Tiles, and repeat exactly what it says">Test key</button></div>
+            <div class="mini" id="refHint"></div>
+            <div class="mini" id="keyVerdict" style="display:none"></div>
+            <label class="fld">Terrain exaggeration <span id="exagVal" style="color:var(--dim);float:right">1.0&times;</span></label>
+            <input id="exagSlider" type="range" min="1" max="5" step="0.5" value="1">
+            <div class="mini">Google&rsquo;s key list runs to hundreds of entries and only one of them works here: enable
+              <b>Map Tiles API</b> (console.cloud.google.com &rarr; APIs &amp; Services), with billing on. A key that works for
+              Maps JavaScript, Static Maps or Geocoding is still rejected by this one. No key at all is fine &mdash; you get
+              keyless ESRI satellite, which is flat 2D drape with no building geometry. Keys are remembered on this device.</div>
+          </div>
+        </details>
+
+        <details class="fold" id="kmlFold">
+          <summary><span>Places from a KML / KMZ</span><span class="fchev">&#9656;</span></summary>
+          <div class="foldbody">
+            <div class="dropzone" id="kmlZone">Load a KML or KMZ &mdash; click, or drop the file here</div>
+            <input id="kmlFile" type="file" accept=".kml,.kmz" style="display:none">
+            <div class="list" id="kmlList"></div>
+          </div>
+        </details>
+
+        <details class="fold" id="qualFold">
+          <summary><span>Preview quality <b id="qualFoldNow" style="color:var(--dim);font-weight:600"></b></span><span class="fchev">&#9656;</span></summary>
+          <div class="foldbody">
+            <div class="chips" id="quality"></div>
+            <div class="mini" id="qualityNote"></div>
+          </div>
+        </details>
       </div>
     </details>
 
@@ -844,17 +893,30 @@ window.CESIUM_VIA='';
         <div class="row" style="align-items:center;gap:10px;margin-top:6px">
           <span class="tag" style="width:54px">FOV</span><input id="fovSlider" type="range" min="8" max="120" value="54"><span id="fovVal" class="tag" style="width:46px;text-align:right">54&deg;</span>
         </div>
-        <label class="fld">Sensor / film back</label>
-        <div class="chips" id="sensor"></div>
-        <label class="fld">Exact parameters</label>
-        <div class="row"><div style="flex:1"><span class="tag">Lat</span><input id="pLat" class="num" type="number" step="0.0001"></div><div style="flex:1"><span class="tag">Lon</span><input id="pLon" class="num" type="number" step="0.0001"></div></div>
-        <div class="row"><div style="flex:1"><span class="tag">Heading&deg;</span><input id="pHead" class="num" type="number" step="1"></div><div style="flex:1"><span class="tag">Tilt&deg;</span><input id="pTilt" class="num" type="number" step="1"></div><div style="flex:1"><span class="tag">Range m</span><input id="pRange" class="num" type="number" step="10"></div></div>
-        <div class="row" style="align-items:center"><span class="tag" style="flex:none">Dutch roll&deg;</span><input id="pRoll" type="range" min="-30" max="30" step="1" value="0" style="flex:1"><b id="pRollVal" style="min-width:34px;text-align:right;font-size:11px;color:var(--faint)">0&deg;</b><button class="btn sm" id="levelRoll" style="flex:none;width:52px" title="Level the horizon (\)">Level</button></div>
-        <div class="row"><button class="btn" id="getCurrent">Get current (G)</button><button class="btn y" id="flyParams">Fly to params (F)</button></div>
         <div class="readout" id="readout">aim the globe…</div>
-        <label class="fld">Saved looks</label>
-        <div class="row"><input id="lookName" type="text" placeholder="Look name"><button class="btn sm" id="saveLook" style="flex:none;width:74px">Save look</button></div>
-        <div class="list" id="lookList"></div>
+
+        <!-- The readout above is always the truth. The numbers below are for typing one in,
+             which is a different job from blocking a shot by eye -- and G / F still reach
+             them from the keyboard with the fold shut. -->
+        <details class="fold" id="exactFold">
+          <summary><span>Type exact numbers &mdash; sensor, lat/lon, angles</span><span class="fchev">&#9656;</span></summary>
+          <div class="foldbody">
+            <label class="fld">Sensor / film back</label>
+            <div class="chips" id="sensor"></div>
+            <div class="row"><div style="flex:1"><span class="tag">Lat</span><input id="pLat" class="num" type="number" step="0.0001"></div><div style="flex:1"><span class="tag">Lon</span><input id="pLon" class="num" type="number" step="0.0001"></div></div>
+            <div class="row"><div style="flex:1"><span class="tag">Heading&deg;</span><input id="pHead" class="num" type="number" step="1"></div><div style="flex:1"><span class="tag">Tilt&deg;</span><input id="pTilt" class="num" type="number" step="1"></div><div style="flex:1"><span class="tag">Range m</span><input id="pRange" class="num" type="number" step="10"></div></div>
+            <div class="row" style="align-items:center"><span class="tag" style="flex:none">Dutch roll&deg;</span><input id="pRoll" type="range" min="-30" max="30" step="1" value="0" style="flex:1"><b id="pRollVal" style="min-width:34px;text-align:right;font-size:11px;color:var(--faint)">0&deg;</b><button class="btn sm" id="levelRoll" style="flex:none;width:52px" title="Level the horizon (\)">Level</button></div>
+            <div class="row"><button class="btn" id="getCurrent">Get current (G)</button><button class="btn y" id="flyParams">Fly to params (F)</button></div>
+          </div>
+        </details>
+
+        <details class="fold" id="looksFold">
+          <summary><span>Saved looks <b id="looksFoldNow" style="color:var(--dim);font-weight:600"></b></span><span class="fchev">&#9656;</span></summary>
+          <div class="foldbody">
+            <div class="row"><input id="lookName" type="text" placeholder="Look name"><button class="btn sm" id="saveLook" style="flex:none;width:74px">Save look</button></div>
+            <div class="list" id="lookList"></div>
+          </div>
+        </details>
       </div>
     </details>
 
@@ -908,6 +970,18 @@ window.CESIUM_VIA='';
           <div class="mini">After dropping a camera: click ground to set start, click again to add waypoints, double-click to finish. The red line is the move.</div>
         </div>
         <div id="pathSummary"><span id="pathSummaryTxt"></span><button class="btn sm" id="pathEdit" style="flex:none;width:44px">Edit</button></div>
+
+        <!-- What the dots MEAN comes before the dots. Reading a station list without knowing
+             whether a dot is a keyframe or its own shot is reading it twice. -->
+        <div id="pathKindWrap" style="display:none">
+          <label class="fld">This path is</label>
+          <div class="seg2" id="pathKind">
+            <button data-k="move" title="The dots are keyframes of one shot. The camera travels between them.">A MOVE<span>one shot, camera travels</span></button>
+            <button data-k="cov" title="The dots are separate camera setups. Each one becomes its own shot in the cut.">COVERAGE<span>one shot per dot</span></button>
+          </div>
+          <div class="mini" id="pathCanon"></div>
+        </div>
+
         <div class="list" id="pathList"></div>
         <div class="mini" id="pathCast" style="display:none"></div>
 
@@ -923,13 +997,6 @@ window.CESIUM_VIA='';
         </details>
 
         <div id="pathShoot" style="display:none">
-          <label class="fld">This path is</label>
-          <div class="seg2" id="pathKind">
-            <button data-k="move" title="The dots are keyframes of one shot. The camera travels between them.">A MOVE<span>one shot, camera travels</span></button>
-            <button data-k="cov" title="The dots are separate camera setups. Each one becomes its own shot in the cut.">COVERAGE<span>one shot per dot</span></button>
-          </div>
-          <div class="mini" id="pathCanon"></div>
-
           <div id="kindMove">
           <div id="durWrap">
             <label class="fld">Length of the move <span id="durVal" style="color:var(--dim);float:right">4.0s</span></label>
@@ -943,12 +1010,17 @@ window.CESIUM_VIA='';
             <div class="row"><button class="btn y" id="rollStationsBtn">&#9654; Roll every dot</button></div>
           </div>
 
-          <div class="subrow">
-            <button class="btn sm on" id="autoFrameBtn" title="Give a dot a sensible setup when it has none of its own. Turn it off to keep your framing everywhere.">Auto-frame: ON</button>
-          </div>
-          <label class="fld">Saved runs</label>
-          <div class="row"><input id="seqName" type="text" placeholder="Name this run &mdash; e.g. Marina drone run"><button class="btn sm" id="saveSeqBtn" style="flex:none;width:50px">Save</button></div>
-          <div class="list" id="seqList"></div>
+          <details class="fold" id="runsFold">
+            <summary><span>Auto-frame &amp; saved runs <b id="runsFoldNow" style="color:var(--dim);font-weight:600"></b></span><span class="fchev">&#9656;</span></summary>
+            <div class="foldbody">
+              <div class="subrow" style="margin-top:0">
+                <button class="btn sm on" id="autoFrameBtn" title="Give a dot a sensible setup when it has none of its own. Turn it off to keep your framing everywhere.">Auto-frame: ON</button>
+              </div>
+              <label class="fld">Saved runs</label>
+              <div class="row"><input id="seqName" type="text" placeholder="Name this run &mdash; e.g. Marina drone run"><button class="btn sm" id="saveSeqBtn" style="flex:none;width:50px">Save</button></div>
+              <div class="list" id="seqList"></div>
+            </div>
+          </details>
         </div>
       </div>
     </details>
@@ -1477,10 +1549,29 @@ const EARTH_SOURCE={photoreal:'google_photoreal_3d',terrain:'cesium_terrain_osm'
                     flat:'esri_flat_imagery',rejected:'esri_flat_imagery'};
 const earthSource=()=>EARTH_SOURCE[EARTH.mode]||'esri_flat_imagery';
 const earthIsFlat=()=>EARTH.mode==='flat'||EARTH.mode==='rejected';
+// A fold that hides a warning is worse than no fold, so this one states the earth you are
+// actually on, in the same colour language as the pill, and a rejected key nails it open.
+let _earthFoldMode=null;
+function syncEarthFold(){
+  const f=$('earthFold'), lab=$('earthFoldLabel'); if(!f||!lab)return;
+  const M={
+    photoreal:['Photoreal Earth','\u2713 real 3D geometry','var(--emerald)'],
+    terrain:  ['Photoreal Earth','\u2713 terrain + OSM buildings','var(--emerald)'],
+    flat:     ['Photoreal Earth','\u25c7 flat 2D drape \u2014 add a key','var(--amber)'],
+    rejected: ['Photoreal Earth','\u2715 KEY REJECTED \u2014 flat 2D','var(--red)']
+  }[EARTH.mode]||['Photoreal Earth \u2014 keys','',''];
+  lab.innerHTML=escapeHtml(M[0])+(M[1]?' <b style="color:'+M[2]+';font-weight:600">'+M[1]+'</b>':'');
+  if(EARTH.mode==='rejected'){ f.open=true; f.dataset.pinned='1'; }
+  else { delete f.dataset.pinned;
+    // only on the transition, so a fold you opened by hand is not shut under you
+    if(_earthFoldMode!==EARTH.mode) f.open=(EARTH.mode==='flat'); }
+  _earthFoldMode=EARTH.mode;
+}
 function setEarthMode(mode,detail){
   EARTH.mode=mode; EARTH.detail=detail||'';
   GROUND_CACHE={};                      // a different Earth has a different surface
   S._tilesNeverSettle=false;            // and a different Earth deserves a fresh verdict
+  syncEarthFold();
   if(typeof renderNextUp==='function')renderNextUp();
   const warn=$('earthWarn'), pill=$('loadstat');
   if(pill)pill.classList.toggle('bad',mode==='rejected');
@@ -1574,6 +1665,7 @@ function setQuality(k){
   applyQuality();
   paintChips('quality',Object.keys(QUALITY).map(x=>[QUALITY[x].label,x]),k,setQuality);
   const h=$('qualityNote'); if(h)h.textContent=QUALITY[k].note+' Captures are unaffected \u2014 they always render at full resolution.';
+  const qn=$('qualFoldNow'); if(qn)qn.textContent='\u00b7 '+QUALITY[k].label;
   toast('Preview quality: '+QUALITY[k].label+' \u2014 the captured frame is unchanged');
 }
 viewer.scene.globe.depthTestAgainstTerrain=true;
@@ -2011,6 +2103,7 @@ paintChips('lens',LENSES.map(l=>[l+'mm',l]),35,v=>{S.lensMm=v;S.fov=lensToFov(v)
 makeShotChipsDraggable(); // chips are drop-sources for stations from first paint, not only after a restore
 // Painted here rather than beside applyQuality(), because paintChips is defined below it.
 paintChips('quality',Object.keys(QUALITY).map(x=>[QUALITY[x].label,x]),S.quality,setQuality);
+if($('qualFoldNow'))$('qualFoldNow').textContent='\u00b7 '+QUALITY[S.quality].label;
 if($('qualityNote'))$('qualityNote').textContent=QUALITY[S.quality].note+
   ' Captures are unaffected \u2014 they always render at full resolution.';
 paintChips('styles',Object.entries(STYLES).map(([k,v])=>[v.name,k]),S.style,v=>S.style=v);
@@ -2388,7 +2481,7 @@ async function lockStation(i){
   const p=S.path.points[i], ct=pointCam(i);
   travelCast(i); applyStationCast(i); // the frame must match the station, even if Lock was clicked directly
   const wasQuiet=S._quiet; S._quiet=true;
-  const cap=capture(false);
+  const cap=capture(hqStation());
   S._quiet=wasQuiet;
   if(!cap.url)return;
   const spec=buildSpec(cap.id,'path',cap);
@@ -2410,7 +2503,8 @@ async function lockStation(i){
   const wasLocked=!!p.locked;
   p.locked=true; p.cam=captureFraming(); // this station now owns this setup
   renderShots(); renderPathList();
-  toast((at>=0?'Re-locked':'Locked')+' station '+(i+1)+' — sequence position '+(pos+1));
+  toast((at>=0?'Re-locked':'Locked')+' station '+(i+1)+' — sequence position '+(pos+1)+
+    ' \u00b7 '+cap.w+'\u00d7'+cap.h);
   // Locking a fresh station means "done, next". Re-locking one you're tuning means
   // "keep this" — being thrown to another dot mid-refine would be hostile. Roll drives
   // its own walk, so it never fires there either.
@@ -2601,6 +2695,7 @@ $('autoFrameBtn').onclick=function(){
   this.textContent='Auto-frame: '+(S.autoFrame?'ON':'OFF');
   toast(S.autoFrame?'Stations with no framing of their own get set up for the camera type'
                    :'Stations keep whatever framing you have — nothing is changed for you');
+  renderSeqPresets();   // the fold summary carries this setting, so it has to hear about it
 };
 // Setup controls are set-and-forget once a path exists — give the stations the room.
 let pathSetupOpen=false;
@@ -2617,6 +2712,7 @@ function syncPathPanelMode(){
     $('pathSummaryTxt').textContent='New dots: '+plainType(S.cameraType)+' \u00b7 '+S.pathDuration.toFixed(1)+'s move';
     $('pathEdit').textContent=pathSetupOpen?'Done':'Edit'; }
   const shoot=$('pathShoot'); if(shoot)shoot.style.display=pts.length?'':'none';
+  const kw=$('pathKindWrap'); if(kw)kw.style.display=pts.length?'':'none';
   if(typeof syncPathKind==='function')syncPathKind();
   if(typeof renderNextUp==='function')renderNextUp();
 
@@ -2736,8 +2832,9 @@ function renderPathListInner(){
       '<button class="btn sm pfly">Fly here</button>'+
       '<button class="btn sm'+(p.locked?'':' y')+' plock" title="'+
         (p.locked?'Re-shoot this station \u2014 you stay here':'Shoot this station, then walk to the next open one')+'">'+
-        (p.locked?'Re-lock':'Lock shot \u2192')+'</button>'+
-      '<button class="btn sm psave" title="Remember the framing I have right now">\u2691</button>'+
+        (p.locked?'\u21bb Re-lock this dot':'Lock shot \u2192')+'</button></div>'+
+      '<div class="psub">'+
+      '<button class="btn sm psave" title="Remember the framing I have right now">\u2691 Keep this framing</button>'+
       (p.locked?'<button class="btn sm punlock" style="flex:none;width:26px" title="Clear this dot\u2019s shot \u2014 the dot stays">\u232b</button>':'')+
       '<button class="btn sm pdel" style="flex:none;width:26px" title="Delete this dot from the path">&times;</button></div>';
     d.querySelector('.pfly').onclick=e=>{e.stopPropagation();flyToStation(i);};
@@ -2829,6 +2926,8 @@ function deleteSeqPreset(id){
 function renderSeqPresets(){
   const L=$('seqList'); if(!L)return; L.innerHTML='';
   const all=loadSeqPresets();
+  const rn=$('runsFoldNow');
+  if(rn)rn.textContent=(S.autoFrame?'\u00b7 auto-frame on':'\u00b7 auto-frame OFF')+(all.length?' \u00b7 '+all.length+' saved':'');
   // "preset" is the director's five recipes. This is your own run, and calling both by
   // the same word is half of why this corner of the app read as confusing.
   if(!all.length){ L.innerHTML='<div class="mini">Plot the dots, then save the run here. A saved run keeps the shape and every dot\u2019s shot \u2014 load it at any place and it re-lays facing your heading.</div>'; return; }
@@ -2975,12 +3074,12 @@ async function buildShot(){
   // Frame START
   S.target={lat:p0.lat,lon:p0.lon}; S.head=Math.round(headStart); S.range=Math.max(80,ct.defaultAlt*4);
   flyToParams(0); await waitForTiles(2500);
-  const capA=capture(false); if(!capA.url){S._quiet=false; return;}
+  const capA=capture(hqStation()); if(!capA.url){S._quiet=false; return;}
 
   toast('Flying to end…');
   S.target={lat:pN.lat,lon:pN.lon}; S.head=Math.round(headEnd);
   flyToParams(0); await waitForTiles(2500);
-  const capB=capture(false); if(!capB.url){S._quiet=false; return;}
+  const capB=capture(hqStation()); if(!capB.url){S._quiet=false; return;}
 
   S._quiet=false;
   const specA=buildSpec(capA.id,'path'), specB=buildSpec(capB.id,'path');
@@ -3009,6 +3108,9 @@ $('buildShotBtn').onclick=buildShot;
 const COV={plan:null,base:null,els:[]};
 function getCurrentQuiet(){const q=S._quiet;S._quiet=true;try{getCurrent();}finally{S._quiet=q;}}
 function openSectionByLabel(lbl){const i=RAIL.findIndex(o=>o.meta&&o.meta.label===lbl);if(i>=0)activateSection(i);}
+// Folds are for things you have already dealt with. A button whose whole promise is "take me
+// to that control" has to open the fold it lives in, or it lands you on a closed lid.
+function openFold(id,lbl){ if(lbl)openSectionByLabel(lbl); const f=$(id); if(f)f.open=true; return f; }
 // The director lives inside Path now, so "go to coverage" means open Path and unfold it.
 function openCoverageFold(){ openSectionByLabel('Path'); const f=$('covFold'); if(f)f.open=true; }
 function covStepSummary(st){return SHOT_SIZES[st.size].label+' · '+st.lens+'mm · '+st.angle;}
@@ -3153,6 +3255,7 @@ function loadLook(L){
 function renderLooks(){
   autosaveSoon();
   const C=$('lookList'); C.innerHTML='';
+  const ln=$('looksFoldNow'); if(ln)ln.textContent=S.looks.length?'\u00b7 '+S.looks.length:'';
   if(!S.looks.length){C.innerHTML='<div class="mini">Saved camera positions land here \u2014 frame something and hit Save look.</div>';return;}
   S.looks.forEach((L,i)=>{const d=document.createElement('div');d.className='item';
     d.innerHTML='<div class="t"><span>'+escapeHtml(L.name)+' <span class="tag">'+L.range+'m '+fovToLens(L.fov,SENSORS[L.sensor||'full'].w)+'mm'+
@@ -3252,17 +3355,26 @@ function sunPos(lat,lon,date){
   let az=Math.atan2(Math.sin(ha*rad),Math.cos(ha*rad)*Math.sin(lat*rad)-Math.tan(decl)*Math.cos(lat*rad))/rad+180;
   return {el:el, az:(az+360)%360};
 }
-function phaseOf(el){ if(el<-6)return 'night'; if(el<0)return 'blue'; if(el<8)return 'golden'; return 'day'; }
-function lonOffsetHrs(){return Math.round(S.target.lon/15);} // solar-time approximation from longitude
+// null < 8 is true in JS, so an unguarded phaseOf would answer "golden" for a sun that was
+// never computed. No aim point, no phase — say so rather than name one.
+function phaseOf(el){ if(!Number.isFinite(el))return '\u2014';
+  if(el<-6)return 'night'; if(el<0)return 'blue'; if(el<8)return 'golden'; return 'day'; }
+function lonOffsetHrs(){return aimed()?Math.round(S.target.lon/15):0;} // solar-time approximation from longitude
 function utcMinsToLocalStr(mins){const m=((mins+lonOffsetHrs()*60)%1440+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');}
 function localDateTime(){ const dv=$('lDate').value, tv=$('lTime').value; if(!dv||!tv) return new Date(); return new Date(dv+'T'+tv+':00Z'); }
 function setClockFrom(dt){ viewer.clock.currentTime=Cesium.JulianDate.fromDate(dt); }
 function syncTimeSlider(){const tv=$('lTime').value;if(!tv)return;const[h,m]=tv.split(':').map(Number);const mins=h*60+m;$('timeSlider').value=mins;$('timeLabel').textContent=tv+' UTC · ≈'+utcMinsToLocalStr(mins)+' local';}
 // The sun depends on where you are and what the clock says. Cache it, but key the
 // cache on both — an unkeyed cache is just a way to be confidently wrong somewhere else.
+function aimed(){ return Number.isFinite(S.target&&S.target.lat)&&Number.isFinite(S.target&&S.target.lon); }
 function sunKey(){ const dt=localDateTime();
+  if(!aimed())return 'unaimed@'+dt.getTime();
   return S.target.lat.toFixed(4)+','+S.target.lon.toFixed(4)+'@'+dt.getTime(); }
+// This runs inside the render loop for the slate. A half-set target used to throw here and
+// take the whole loop down with it — the globe simply stopped drawing. There is no sun for
+// a place that isn't set, so it returns none rather than inventing one or dying.
 function sunNow(){
+  if(!aimed())return {az:null,el:null};
   const k=sunKey();
   if(S._sun&&S._sunKey===k)return S._sun;
   S._sunKey=k; S._sun=sunPos(S.target.lat,S.target.lon,localDateTime());
@@ -3997,6 +4109,16 @@ function sceneUiVisible(v){ // labels, path viz and the ghost are UI, not scene 
   if(v)syncAllMarkerVisuals(); else S.markers.forEach(m=>{ // selection lift must not leak into the frame
     if(worldProp(m.type)){const e=viewer.entities.getById(m.id); if(e)e.billboard.disableDepthTestDistance=0;}
   });
+}
+// The station frame is the start frame a generator will actually run, so it is rendered at
+// capture quality rather than preview quality. Doubling is skipped when it would push the
+// canvas past what a modest GPU will allocate \u2014 a frame that fails to render is worth less
+// than one that is merely large. capture_px in the spec always says what really came out.
+function hqStation(){
+  try{
+    const dpr=window.devicePixelRatio||1, sc=Math.min(2,dpr*2), el=viewer.scene.canvas;
+    return Math.max(el.clientWidth,el.clientHeight)*sc<=4096;
+  }catch(_){ return false; }
 }
 function capture(hq){
   // The preview is a viewfinder and may be as cheap as the machine needs. The captured
@@ -4767,7 +4889,7 @@ function nextUp(){
 
   if(EARTH.mode==='rejected')
     return {t:'Your key was refused, so you are shooting <b>flat 2D imagery</b> with no building geometry. Fix it before you shoot anything you mean to keep.',
-            go:'Test the key',act:()=>{openSectionByLabel('Scout');$('testKey')&&$('testKey').click();}};
+            go:'Test the key',act:()=>{openFold('earthFold','Scout');$('testKey')&&$('testKey').click();}};
   if(soft)
     return {t:'<b>'+soft+' frame'+(soft===1?'':'s')+'</b> in the cut '+(soft===1?'was':'were')+
               ' captured before the world finished loading. Re-shoot '+(soft===1?'it':'them')+' \u2014 a soft frame is not a reference.',
@@ -4776,7 +4898,7 @@ function nextUp(){
     // Cold start. If there is also no key, that is the more useful of the two things to say.
     if(EARTH.mode==='flat'&&!S.google)
       return {t:'No key yet, so this is <b>flat satellite imagery</b> \u2014 real places, no building geometry. It works; it just is not 3D. Find a place and press <b>S</b> either way.',
-              go:'Add a Map Tiles key',act:()=>openSectionByLabel('Scout')};
+              go:'Add a Map Tiles key',act:()=>{openFold('earthFold','Scout');$('googleKey').focus();}};
     return {t:'Find a place, aim at it, then press <b>S</b> to save your first shot. Everything downstream is that, repeated.',
             go:'Search a place',act:()=>{openSectionByLabel('Scout');$('search').focus();}};
   }
@@ -6174,15 +6296,17 @@ const ICONS={
 // people in it, lay the path they're shot along and the coverage across it, then light,
 // look, cut, out. Coverage lost its own stop because it never had its own output — every
 // recipe it runs ends as dots on the path, so it lives under them.
-// Dividers only — no headings. A heading in a column of buttons reads as a dead button.
+// Eight buttons of equal weight give no answer to "which of these do I need". His own
+// wireframe names five jobs — WHERE / WHO / MOVE / LOOK / OUT — so the rail says which job
+// each button belongs to. The group name is typography, not a control (see .railhead).
 const SECTION_META=[
-  {match:'scout',         icon:svgIcon(ICONS.scout),  label:'Scout'},
-  {match:'block the shot',icon:svgIcon(ICONS.camera), label:'Camera', div:true},
-  {match:'cast &',        icon:svgIcon(ICONS.cast),   label:'Cast'},
-  {match:'path &',        icon:svgIcon(ICONS.path),   label:'Path'},
-  {match:'light',         icon:svgIcon(ICONS.light),  label:'Light', div:true},
+  {match:'scout',         icon:svgIcon(ICONS.scout),  label:'Scout',  group:'Where'},
+  {match:'block the shot',icon:svgIcon(ICONS.camera), label:'Camera'},
+  {match:'cast &',        icon:svgIcon(ICONS.cast),   label:'Cast',   group:'Who'},
+  {match:'path &',        icon:svgIcon(ICONS.path),   label:'Path',   group:'Move'},
+  {match:'light',         icon:svgIcon(ICONS.light),  label:'Light',  group:'Look'},
   {match:'style &',       icon:svgIcon(ICONS.look),   label:'Style'},
-  {match:'post',          icon:svgIcon(ICONS.shots),  label:'Post', div:true},
+  {match:'post',          icon:svgIcon(ICONS.shots),  label:'Post',   group:'Out'},
   {match:'capture &',     icon:svgIcon(ICONS.export), label:'Export'}
 ];
 const panelEl=$('panel'), bodyEl=$('panelbody'), railEl=$('railbar'), tabEl=$('panelTab');
@@ -6202,7 +6326,9 @@ function buildRail(){
   // build rail buttons
   railEl.innerHTML='';
   ordered.forEach((o,i)=>{
-    if(o.meta.div&&i){ const g=document.createElement('div'); g.className='raildiv'; railEl.appendChild(g); }
+    if(o.meta.group){ const g=document.createElement('div'); g.className='railhead';
+      g.textContent=o.meta.group; g.setAttribute('aria-hidden','true'); railEl.appendChild(g); }
+    else if(o.meta.div&&i){ const g=document.createElement('div'); g.className='raildiv'; railEl.appendChild(g); }
     const b=document.createElement('button');
     b.className='railbtn'; b.type='button'; b.title=o.meta.label;
     b.innerHTML='<span class="ri">'+o.meta.icon+'</span><span class="rl">'+o.meta.label+'</span>';
@@ -6218,6 +6344,10 @@ function activateSection(i){
   bodyEl.scrollTop=0;
   S._activeSection=i;
 }
+// The one fold that refuses to close: a rejected key is a red state and the constitution
+// says a warning never fades. Clicking the summary re-opens it.
+(function pinEarthFold(){ const f=$('earthFold'); if(!f)return;
+  f.addEventListener('toggle',()=>{ if(f.dataset.pinned&&!f.open)f.open=true; }); })();
 function togglePanel(){ panelEl.classList.toggle('closed'); if(!panelEl.classList.contains('closed')&&S._activeSection==null)activateSection(0); }
 if(tabEl)tabEl.onclick=togglePanel;
 buildRail();
@@ -6251,8 +6381,8 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming,RIG_FAMILY,
-  cesiumVia:()=>window.CESIUM_VIA,
-  QUALITY,setQuality,applyQuality,
+  cesiumVia:()=>window.CESIUM_VIA,openFold,openSectionByLabel,aimed,phaseOf,
+  QUALITY,setQuality,applyQuality,syncEarthFold,hqStation,
   servedProperly:()=>location.protocol!=='file:',
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,
