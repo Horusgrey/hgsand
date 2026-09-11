@@ -62,6 +62,14 @@ repo root. There is no build step and there never should be.
 | "which version am I testing" | send him the actual file | the filename and the URL, nothing else |
 | "new build on netlify" | prepare a folder with `index.html`, hand it over | that Netlify's servers are unreachable from the sandbox, so he drags the folder |
 
+**The wedge, when a direction question comes up.** Scout holds every camera in one
+coordinate system. That is the thing a prompt organiser cannot copy, because it never
+measured anything. Multi-shot continuity is the open problem in this space and everyone
+else is attacking it with prompt text; Scout attacks it with geometry — what is visible
+in two frames at once, which side of the action line each camera sits on, whether two
+cameras are far enough apart to read as a cut. Shipped as THE LINE at `ebe5c7e`. When
+weighing a new feature, ask whether it uses that or merely decorates it.
+
 **Two apps, and only two: Scout → VCO/Cineflow.** Scout captures and finishes its own cut
 in Frame Forge (the Export tab). Giffy is the same job built outside the house; if it stays,
 it stays as one tool, not two. GMAPz Turnover was retired at `HEAD` — I built it before I
@@ -91,11 +99,15 @@ This is his machine. Assume it every time.
   anchor matches exactly once, `sys.exit(1)` before any write, so a failed anchor writes
   nothing. Anchors must match literal bytes — the files mix `—` with `&mdash;` and `·` with
   `&middot;`; check with `grep`/`cat -A` before assuming.
-- **Headless verification every time.** Playwright at
-  `/opt/node22/lib/node_modules/playwright/index.mjs`, Chromium at
-  `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, flags
-  `--use-gl=swiftshader --enable-unsafe-swiftshader --no-sandbox --no-proxy-server`,
-  local server on port 8123 serving `scratchpad/serve/`. **Zero page errors is part of green.**
+- **Headless verification every time — and the suites live in `test/`, IN THE REPO.**
+  Run them with `./test/run.sh` (or `./test/run.sh linetest` for one). It writes the
+  served copy itself and fetches Cesium on first run. **Zero page errors is part of green.**
+  **Never put a suite in the scratchpad.** That directory is recycled without warning and
+  has now destroyed the whole suite twice — sixteen suites on 7–10 Aug, seventeen and 534
+  assertions on 11 Sep. Both times it was rebuilt straight back into the same ephemeral
+  place. A test you cannot re-run after a restart is a test you do not have. The scratchpad
+  is for screenshots, patch scripts and diagnostics — things whose value ends this session.
+  `test/README.md` carries the false-positive log; add to it every time a suite lies to you.
 - **Read the real artifact.** Walk the actual zip's central directory; read the stored bytes.
   A spy on an internal will not fire if the code calls the closure directly — that has happened.
 - **When a suite disagrees with the app, suspect the suite first.** Logged false positives:
