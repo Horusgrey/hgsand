@@ -3775,6 +3775,15 @@ function markerInFrame(m){
     return true;
   }catch(_){ return false; }
 }
+// Which way a stand-in is pointed, in compass degrees. A traveller faces along the path
+// at the dot it is riding; anyone else faces the rotation you gave them in Cast. Returns
+// null when neither is known, because "0°" would read as "due north" rather than "unset".
+function markerFacing(m){
+  if(!m)return null;
+  if(m.travels&&S.path&&S.path.points.length>1&&STN.active>=0&&S.path.points[STN.active])
+    return stationHeading(STN.active);
+  return Number.isFinite(m.rot)&&m.rot!==0?((m.rot%360)+360)%360:null;
+}
 // How tall the thing really is, in metres, after scale. The number the spec calls height_m.
 function standInSize(m){ const wp=worldProp(m.type); return wp?wp.h*(m.scale||1):0; }
 function castTally(){
@@ -4277,6 +4286,11 @@ function buildSpec(refId,move,px){
       const wp=worldProp(m.type), sc=m.scale||1;
       return {id:m.id,type:specSubjectType(m.type),label:m.shotType,name:subjectName(m),
         lng:m.lon,lat:m.lat,scale:sc,
+        // Which way they are pointed. A stand-in that rides the path faces the way the
+        // path is going at the dot it is standing on; a placed one faces however you
+        // rotated it. This is what defines the action line, and it is also the single
+        // fact an i2v engine most needs to keep a figure moving the same way shot to shot.
+        facing_deg:markerFacing(m),travels:!!m.travels,
         // How big the thing IS. This used to read m.height — the raise-above-ground
         // offset — so every subject in every export came out at height_m: 0.
         height_m:wp?+(wp.h*sc).toFixed(2):null,
@@ -4668,6 +4682,67 @@ function checkContinuity(){
     }
     lines.push('');
   }
+  // THE LINE sits above light, framing and delivery because those are notes about a cut
+  // that already reads as one place. This asks whether it does.
+  {
+    const g=cutGrammar();
+    lines.push('THE LINE \u2014 does this cut read as one place?','');
+    if(!g.pairs.length){
+      lines.push('  One shot. A single shot has no cut to read.');
+    } else {
+      lines.push('  '+g.n+' shots \u00b7 '+g.pairs.length+' cut'+(g.pairs.length===1?'':'s')+
+        ' \u00b7 action line defined at '+(g.pairs.length-g.undefinedLine)+' of them');
+      lines.push('');
+      g.pairs.forEach(pr=>{
+        const tag='  Cut '+pr.from+'\u2192'+pr.to+': ';
+        const said=[];
+        if(pr.line.crossed){
+          warn++;
+          said.push('\u26a0 crosses '+pr.line.from+' (axis '+Math.round(pr.line.axis_deg)+'\u00b0)');
+          pr.anchors.filter(a=>a.crosses_frame).forEach(a=>
+            said.push('    '+a.what+': '+a.in_a.where+' \u2192 '+a.in_b.where));
+          said.push('    Crossing can be the intent. But the audience reads');
+          said.push('    it as the subjects having swapped places. Either go');
+          said.push('    back to the first side, or cut through a neutral');
+          said.push('    shot sitting on the line.');
+        }
+        if(pr.jump){
+          warn++;
+          said.push('\u26a0 only '+Math.round(pr.subtended_deg)+'\u00b0 of separation on the same subject \u2014 reads as a jump');
+          said.push('    Move round to 30\u00b0 or more, or change the shot');
+          said.push('    size by two steps.');
+        }
+        pr.dirs.filter(d=>d.flipped).forEach(d=>{
+          warn++;
+          said.push('\u26a0 '+d.who+' reverses screen direction: '+d.in_a+' \u2192 '+d.in_b);
+        });
+        if(!pr.anchors.length){
+          warn++;
+          said.push('\u26a0 nothing in shot '+pr.from+' is visible in shot '+pr.to);
+          said.push('    No shared anchor is the hardest cut for an engine to');
+          said.push('    hold together. Put an overlapping shot between them,');
+          said.push('    or accept that it is matching on description alone.');
+        }
+        if(!said.length){
+          const a=pr.anchors[0];
+          said.push('\u2713 reads clean'+(a?(' \u2014 '+a.what+' carries across'):''));
+          if(a)said.push('    '+a.in_a.where+' \u2192 '+a.in_b.where);
+        }
+        lines.push(tag+said[0]);
+        said.slice(1).forEach(l=>lines.push('        '+l.replace(/^ +/,'')));
+      });
+      if(g.undefinedLine){
+        lines.push('');
+        lines.push('  '+g.undefinedLine+' cut'+(g.undefinedLine===1?'':'s')+' could not be checked against an action line:');
+        g.pairs.filter(p=>!p.line.defined).forEach(p=>
+          lines.push('    '+p.from+'\u2192'+p.to+' \u2014 '+p.line.why));
+        lines.push('  Scout will not invent a line in order to enforce it.');
+        lines.push('  Place a second stand-in, or rotate the one you have,');
+        lines.push('  and the check becomes real.');
+      }
+    }
+    lines.push('');
+  }
   lines.push('LIGHT CONTINUITY','');
   const iss=cutIssues();
   S.shots.forEach((sh,i)=>{const lt=sh.spec.light;lines.push('Shot '+(i+1)+' \u2014 '+sh.name+': '+lt.phase+' (el '+lt.sun_elevation_deg+'\u00b0 / az '+lt.sun_azimuth_deg+'\u00b0 @ '+lt.time+')');});
@@ -4842,6 +4917,120 @@ function cutCells(){
 // duplicate. The user's real cut had eleven shots and four distinct cameras — one of them
 // used five times — and nothing anywhere mentioned it. It simply made an animatic that
 // stuttered on the same picture.
+/* ---- THE LINE: the cut knows it is one place ------------------------------------
+   Scout holds every camera in one coordinate system. A prompt organiser can describe
+   a shot; it cannot know that shot 3 and shot 4 are looking at the same corner from
+   40 degrees apart, because it never measured either. That is arithmetic, not
+   language, and it is precisely what generators lose across a cut.
+
+   Everything below is derived from geometry that was measured at the shutter. Where
+   the geometry does not define an answer -- no subject, no facing, no shared view --
+   it returns null and says why, rather than inventing film grammar out of nothing. */
+
+const M_PER_DEG_LAT=110540;
+const mPerDegLon=lat=>111320*Math.cos(lat*Math.PI/180);
+
+// Where a world point lands in a STORED camera's frame. Normalised: x is -1 at the left
+// edge and +1 at the right, y is -1 at the bottom and +1 at the top. Analytic on purpose
+// -- it has to answer for cameras we are not currently looking through, which is the
+// whole point of asking about a cut rather than about a frame.
+function screenOf(cam,pt,aspect){
+  if(!cam||!pt||!Number.isFinite(pt.lat)||!Number.isFinite(pt.lon))return null;
+  const r=ASPECTS[aspect]||ASPECTS['16:9'];
+  const e=(pt.lon-cam.lng)*mPerDegLon(cam.lat),
+        nn=(pt.lat-cam.lat)*M_PER_DEG_LAT,
+        u=(pt.alt||0)-(cam.altitude_m||0);
+  // heading 0 = north and turns clockwise; pitch is negative looking down (Scout's own
+  // convention throughout, and the one the spec records).
+  const h=toRad(cam.heading_deg||0), p=toRad(cam.pitch_deg||0);
+  const ch=Math.cos(h), sh=Math.sin(h), cp=Math.cos(p), sp2=Math.sin(p);
+  const fwd=[sh*cp,ch*cp,sp2], right=[ch,-sh,0], up=[-sh*sp2,-ch*sp2,cp];
+  const v=[e,nn,u], dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const z=dot(v,fwd);
+  if(z<=0.01)return {x:0,y:0,z,front:false,inframe:false};
+  let x=dot(v,right), y=dot(v,up);
+  // A dutch roll rotates the frame about the lens axis, so it rotates where things sit
+  // inside it. Ignoring it would put a corner subject on the wrong side at 30 degrees.
+  const rl=toRad(cam.roll_deg||0);
+  if(rl){ const cr=Math.cos(rl), sr=Math.sin(rl), x2=x*cr+y*sr; y=-x*sr+y*cr; x=x2; }
+  // The frustum fov is horizontal in landscape and vertical in portrait -- the same rule
+  // applyFov() uses, and getting it backwards would silently halve the frame in 9:16.
+  const t=Math.tan(toRad(cam.fov_deg||54)/2);
+  const tanH=r>=1?t:t*r, tanV=r>=1?t/r:t;
+  const nx=x/(z*tanH), ny=y/(z*tanV);
+  return {x:nx,y:ny,z,front:true,inframe:Math.abs(nx)<=1&&Math.abs(ny)<=1};
+}
+// Words a director uses, not decimals. The bands are deliberately coarse: "left of centre"
+// survives a metre of drift, "x=-0.31" does not.
+const framePos=x=>x<-0.55?'frame-left':x<-0.18?'left of centre':x<=0.18?'centre'
+                 :x<=0.55?'right of centre':'frame-right';
+const frameHeight=y=>y>0.45?'high in frame':y<-0.45?'low in frame':'mid-frame';
+
+// A shot's aim point, as something projectable into any other shot.
+const aimPoint=sp=>({lon:sp.location.lng,lat:sp.location.lat,
+                     alt:sp.location.ground_elevation_m||0});
+// A subject's eyeline height, on the ground plane the shot that saw it measured. Subjects
+// do not carry their own ground sample, so this is the shot's -- stated, not hidden.
+const subjPoint=(sp,su)=>({lon:su.lng,lat:su.lat,
+  alt:(sp.location.ground_elevation_m||0)+(su.elevation_offset_m||0)+(su.height_m||0)*0.5});
+const subjLabel=su=>su.name||su.label||SPEC_NOUN[su.type]||'subject';
+
+// THE ACTION AXIS. Real film grammar: the line is established by the action, not by the
+// camera. Two people talking define it; one person walking defines it; one lamppost does
+// not define anything, and saying otherwise would be inventing a rule to then enforce.
+function axisOf(sp){
+  const subs=(sp.subjects||[]).filter(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng));
+  if(subs.length>=2){
+    let best=null;
+    for(let i=0;i<subs.length;i++)for(let j=i+1;j<subs.length;j++){
+      const d=metresBetween(subs[i],subs[j]);
+      if(!best||d>best.d)best={d,a:subs[i],b:subs[j]};
+    }
+    // Two stand-ins a metre apart are one group, not a line across a scene.
+    if(best&&best.d>=1.5)return {
+      bearing:bearingDeg({lat:best.a.lat,lon:best.a.lng},{lat:best.b.lat,lon:best.b.lng}),
+      at:{lat:(best.a.lat+best.b.lat)/2,lon:(best.a.lng+best.b.lng)/2},
+      from:'the line between '+subjLabel(best.a)+' and '+subjLabel(best.b)};
+  }
+  if(subs.length===1&&Number.isFinite(subs[0].facing_deg))return {
+    bearing:subs[0].facing_deg, at:{lat:subs[0].lat,lon:subs[0].lng},
+    from:subjLabel(subs[0])+' facing '+Math.round(subs[0].facing_deg)+'°'};
+  return {bearing:null,at:null,from:null,
+    why:!subs.length?'nothing is placed, so there is no action to have a line'
+        :subs.length===1?'one subject with no facing set — rotate it in Cast and the line is defined'
+        :'the subjects are too close together to describe a line'};
+}
+// Which side of the axis a camera stands on. +1 / -1, or 0 when it is sitting on the line.
+function lineSide(axis,cam){
+  if(!axis||axis.bearing==null||!cam)return 0;
+  const b=bearingDeg(axis.at,{lat:cam.lat,lon:cam.lng});
+  const d=((b-axis.bearing+540)%360)-180;
+  return d>1?1:d<-1?-1:0;
+}
+// Which way a subject reads across the frame. sin of the relative bearing IS the screen-x
+// component of their facing -- no approximation in it.
+function screenDir(facing,cam){
+  if(!Number.isFinite(facing)||!cam)return null;
+  const rel=toRad(((facing-(cam.heading_deg||0))+540)%360-180);
+  const sx=Math.sin(rel);
+  if(Math.abs(sx)<0.35)return Math.cos(rel)>0?'facing away from camera':'facing camera';
+  return sx>0?'facing screen-right':'facing screen-left';
+}
+const dirSign=(facing,cam)=>{
+  if(!Number.isFinite(facing)||!cam)return 0;
+  const sx=Math.sin(toRad(((facing-(cam.heading_deg||0))+540)%360-180));
+  return Math.abs(sx)<0.35?0:(sx>0?1:-1);
+};
+// The 30-degree rule is about the angle subtended AT THE SUBJECT, not the difference in
+// camera heading. Two cameras 200m apart both pointing north have subtended nothing.
+function subtendedDeg(A,B){
+  const at={lat:A.location.lat,lon:A.location.lng};
+  const b1=bearingDeg(at,{lat:A.camera.lat,lon:A.camera.lng});
+  const b2=bearingDeg(at,{lat:B.camera.lat,lon:B.camera.lng});
+  return Math.abs(((b2-b1+540)%360)-180);
+}
+const SIZE_ORDER=['ewide','wide','medium','close','detail'];
+const sizeStep=(a,b)=>Math.abs(SIZE_ORDER.indexOf(a)-SIZE_ORDER.indexOf(b));
 function sameFraming(a,b){
   if(!a||!b||!a.camera||!b.camera)return false;
   const A=a.camera, B=b.camera;
@@ -4915,10 +5104,22 @@ function nextUp(){
     return {t:'<b>'+(shots-framed)+'</b> shot'+(shots-framed===1?'':'s')+' in the cut '+
               (shots-framed===1?'has':'have')+' no picture. Fly back and lock '+(shots-framed===1?'it':'them')+'.',
             go:'Open Post',act:()=>openSectionByLabel('Post')};
-  if(shots)
+  if(shots){
+    // The cut is genuinely complete, so this stays green. But crossing a line or cutting
+    // inside 30 degrees is a thing to have decided rather than a thing to discover in the
+    // render, so when there is one the line says so and sends you to look first.
+    let g=null; try{ g=cutGrammar(); }catch(_){ }
+    const flags=g?(g.crossed+g.jumps+g.orphans):0;
+    if(flags)
+      return {done:true,
+              t:'<b>'+shots+' shot'+(shots===1?'':'s')+'</b> in the cut, all with frames \u2014 but <b>'+
+                flags+'</b> thing'+(flags===1?'':'s')+' about how it reads as one place '+
+                (flags===1?'is':'are')+' worth a decision before you finish it.',
+              go:'Check the cut',act:()=>{openSectionByLabel('Post');$('continuityBtn').click();}};
     return {done:true,
-            t:'<b>'+shots+' shot'+(shots===1?'':'s')+'</b> in the cut, all with frames. Finish it in Frame Forge \u2014 write what happens, grade it, set the holds, render the GIF or the video.',
+            t:'<b>'+shots+' shot'+(shots===1?'':'s')+'</b> in the cut, all with frames, and it reads as one place. Finish it in Frame Forge \u2014 write what happens, grade it, set the holds, render the GIF or the video.',
             go:'Open Frame Forge',act:()=>{openSectionByLabel('Export');openForge();}};
+  }
   return null;
 }
 function renderNextUp(){
@@ -4948,6 +5149,17 @@ function renderCutTally(){
     ' a framing you already have \u2014 '+iss.n+' shots, '+iss.distinct+' distinct camera'+(iss.distinct===1?'':'s'));
   if(iss.aspects.length>1)warns.push('delivery changes mid-cut ('+iss.aspects.join(' \u2192 ')+
     ') \u2014 the animatic will letterbox differently shot to shot');
+  // How the cut reads as one place. Amber, not red: crossing a line can be the intent,
+  // and an orphan cut is a difficulty rather than a defect.
+  try{
+    const g=cutGrammar();
+    if(g.crossed)warns.push('<b style="color:var(--amber)">'+g.crossed+' cut'+(g.crossed===1?'':'s')+
+      ' cross'+(g.crossed===1?'es':'')+' the action line</b> \u2014 the subjects swap sides of frame');
+    if(g.jumps)warns.push('<b style="color:var(--amber)">'+g.jumps+' jump cut'+(g.jumps===1?'':'s')+
+      '</b> \u2014 under 30\u00b0 of separation on the same subject');
+    if(g.orphans)warns.push(g.orphans+' cut'+(g.orphans===1?'':'s')+' share no visible anchor \u2014 '+
+      'nothing carries across, which is the hardest kind for an engine to hold');
+  }catch(_){ }
   el.innerHTML=bits.join(' \u00b7 ')+' \u2014 the take and the GIF render the '+
     t.frames+' filled cell'+(t.frames===1?'':'s')+', left to right.'+
     (warns.length?'<b class="cutwarn">\u26a0 '+warns.join('<br>\u26a0 ')+'</b>':'');
@@ -5739,6 +5951,115 @@ function ctxFromSpec(sp){
 function metresBetween(a,b){
   return Cesium.Cartesian3.distance(Cesium.Cartesian3.fromDegrees(a.lng,a.lat),Cesium.Cartesian3.fromDegrees(b.lng,b.lat));
 }
+// What is true about the CUT between two shots, as opposed to either shot on its own.
+// Every field is either measured or explicitly null; nothing here is a guess.
+function pairLine(A,B,i){
+  const asp=(B.delivery&&B.delivery.aspect)||S.delivery;
+  const ca=A.camera, cb=B.camera;
+
+  // 1. THE ANCHORS — what a viewer can see in both frames. A cut with no shared anchor is
+  //    the hardest kind for a generator to hold together, so its absence is a finding too.
+  const cands=[], seen=new Set();
+  const add=(key,what,pt,rank)=>{ if(!seen.has(key)){seen.add(key);cands.push({key,what,pt,rank});} };
+  // Named things first: "the pier" anchors a generator, "the spot shot 3 framed" barely does.
+  (A.subjects||[]).forEach(su=>add('s:'+(su.id||su.label),subjLabel(su),subjPoint(A,su),0));
+  (B.subjects||[]).forEach(su=>add('s:'+(su.id||su.label),subjLabel(su),subjPoint(B,su),0));
+  // Two shots of the same place were listing their aim point twice as two anchors.
+  if(metresBetween(A.location,B.location)<25){
+    add('aim','the point both shots frame',aimPoint(A),1);
+  } else {
+    add('aimA','what shot '+i+' framed',aimPoint(A),1);
+    add('aimB','what shot '+(i+1)+' frames',aimPoint(B),1);
+  }
+  const anchors=[];
+  cands.forEach(c=>{
+    const pa=screenOf(ca,c.pt,(A.delivery&&A.delivery.aspect)||asp), pb=screenOf(cb,c.pt,asp);
+    if(pa&&pb&&pa.inframe&&pb.inframe)
+      anchors.push({what:c.what,key:c.key,rank:c.rank,
+        in_a:{x:+pa.x.toFixed(3),y:+pa.y.toFixed(3),where:framePos(pa.x)},
+        in_b:{x:+pb.x.toFixed(3),y:+pb.y.toFixed(3),where:framePos(pb.x)},
+        // The audience reads a cut by what moved. If an anchor jumps across the frame,
+        // say so -- that is the edit doing work, or the edit making a mistake.
+        crosses_frame:(pa.x<0)!==(pb.x<0)&&Math.abs(pa.x-pb.x)>0.35});
+  });
+
+  // 2. THE LINE — established by the action, checked against both cameras.
+  const ax=axisOf(A), sa=lineSide(ax,ca), sb=lineSide(ax,cb);
+  const crossed=!!(ax.bearing!=null&&sa&&sb&&sa!==sb);
+  const line={defined:ax.bearing!=null, axis_deg:ax.bearing==null?null:+ax.bearing.toFixed(1),
+              from:ax.from, why:ax.why||null, side_a:sa, side_b:sb, crossed};
+
+  // 3. SCREEN DIRECTION — the visible symptom of crossing, per subject present in both.
+  const dirs=[];
+  (A.subjects||[]).forEach(su=>{
+    const inB=(B.subjects||[]).find(x=>(x.id||x.label)===(su.id||su.label));
+    if(!inB)return;
+    const f=Number.isFinite(su.facing_deg)?su.facing_deg:null;
+    const g=Number.isFinite(inB.facing_deg)?inB.facing_deg:f;
+    if(f==null&&g==null)return;
+    const da=screenDir(f,ca), db=screenDir(g,cb);
+    const ka=dirSign(f,ca), kb=dirSign(g,cb);
+    dirs.push({who:subjLabel(su),in_a:da,in_b:db,flipped:!!(ka&&kb&&ka!==kb)});
+  });
+
+  // 4. THE JUMP — 30-degree rule. Only a finding when the two shots really are of the
+  //    same thing: two different places 10 degrees apart is not a jump cut, it is a cut.
+  const sameTarget=metresBetween(A.location,B.location)<25;
+  const sub=sameTarget?subtendedDeg(A,B):null;
+  const jump=!!(sameTarget&&sub<30&&sizeStep(ca.shot_size,cb.shot_size)<=1&&!sameFraming(A,B));
+
+  return {from:i,to:i+1,anchors,line,dirs,
+          subtended_deg:sub==null?null:+sub.toFixed(1),jump,same_target:sameTarget};
+}
+// The whole cut, pair by pair, plus the counts a panel can show without re-walking it.
+function cutGrammar(){
+  const cut=S.shots.filter(x=>x.spec);
+  const pairs=[];
+  for(let i=1;i<cut.length;i++){
+    try{ pairs.push(pairLine(cut[i-1].spec,cut[i].spec,i)); }catch(_){ }
+  }
+  return {n:cut.length, pairs,
+          crossed:pairs.filter(p=>p.line.crossed).length,
+          jumps:pairs.filter(p=>p.jump).length,
+          flips:pairs.filter(p=>p.dirs.some(d=>d.flipped)).length,
+          orphans:pairs.filter(p=>!p.anchors.length).length,
+          undefinedLine:pairs.filter(p=>!p.line.defined).length};
+}
+// The sentence that goes into a prompt. This is the payload: a generator told "the pier
+// is right of centre in the shot you just made and centre-left in this one" holds a place
+// together far better than one told "a pier". No language model can write this line,
+// because writing it requires having measured both cameras.
+function lineClause(p){
+  if(!p)return '';
+  const bits=[];
+  if(p.anchors.length){
+    // Rank, then: something that swapped sides of the frame tells the generator more than
+    // something that sat still, and a named subject tells it more than a patch of ground.
+    const ord=p.anchors.slice().sort((a,b)=>
+      (a.rank-b.rank) || ((b.crosses_frame?1:0)-(a.crosses_frame?1:0)) ||
+      (Math.abs(b.in_a.x-b.in_b.x)-Math.abs(a.in_a.x-a.in_b.x)));
+    const top=ord.slice(0,3).map(a=>a.what+' ('+a.in_a.where+' → '+a.in_b.where+
+      (a.crosses_frame?', crossing the frame':'')+')');
+    bits.push('Carried over from the previous shot: '+top.join('; ')+
+      (ord.length>3?'; and '+(ord.length-3)+' more':'')+
+      '. Hold these identical — same structures, same materials, same placement.');
+    const swap=ord.filter(a=>a.crosses_frame);
+    if(swap.length>1)bits.push('Note that '+swap.length+' of them swap sides of frame across '+
+      'this cut — the screen geography genuinely reverses here.');
+  } else {
+    bits.push('Nothing visible in the previous shot is visible in this one, so there is no '+
+      'shared anchor to match — carry the world lock through by description alone.');
+  }
+  p.dirs.forEach(d=>{
+    if(d.in_b)bits.push(d.who+' is '+d.in_b+
+      (d.flipped?' — this REVERSES the screen direction of the previous shot':''));
+  });
+  if(p.line.crossed)bits.push('⚠ The camera has crossed to the other side of '+p.line.from+
+    '. Screen geography flips across this cut; that is either the intent or the error.');
+  if(p.jump)bits.push('⚠ Only '+Math.round(p.subtended_deg)+'° separates this camera from the '+
+    'previous one on the same subject — under 30° reads as a jump, not a cut.');
+  return bits.length?('SCREEN GEOMETRY — '+bits.join(' ')):'';
+}
 // What actually changed at this cut — everything unsaid is held constant.
 function continuityClause(pa,pb,i){
   const A=pa.camera,B=pb.camera, bits=[];
@@ -5768,7 +6089,11 @@ function continuityClause(pa,pb,i){
     (castSame?', same subjects':'')+(lightMoved?'':', same light')+
     (castSame?'':'; '+castBits.join(', '));
   const tail=bits.length?('; '+bits.join(', ')+'.'):'; the framing holds.';
-  return head+tail+(lightMoved?'\n\u26a0 the sun differs from the previous shot \u2014 re-time it, or state the time jump deliberately.':'');
+  // Everything above describes how the CAMERA changed. This describes how the WORLD reads
+  // across the cut, which is the part a generator has no way to work out for itself.
+  let geo=''; try{ geo=lineClause(pairLine(pa,pb,i)); }catch(_){ geo=''; }
+  return head+tail+(lightMoved?'\n\u26a0 the sun differs from the previous shot \u2014 re-time it, or state the time jump deliberately.':'')+
+    (geo?'\n'+geo:'');
 }
 // Cast can differ shot to shot, so the world lock names everyone the cut uses and
 // says so, rather than quietly reporting whoever happened to be in shot 1.
@@ -5906,7 +6231,10 @@ async function exportBundle(){
       shots:cut.map((sh,i)=>({n:i+1, name:sh.name, frame:'frames/'+frameFileName(sh,i),
         spec:'specs/'+specFileName(sh,i), beat_s:sh.beat||null,
         camera_type:sh.spec.camera.camera_type||null, lens_mm:sh.spec.camera.lens_mm,
-        shot_size:sh.spec.camera.shot_size, angle:sh.spec.camera.angle}))
+        shot_size:sh.spec.camera.shot_size, angle:sh.spec.camera.angle})),
+      // How the cut reads as one place, cut by cut, in numbers a tool can act on rather
+      // than prose it would have to parse. Every value is measured or explicitly null.
+      grammar:cutGrammar()
     },null,2))});
     if(S.handoffs){
       files.push({name:'vcs15.md', bytes:utf8(vcs15(first))});
@@ -5927,7 +6255,11 @@ async function exportBundle(){
       '           (altitude_m is real metres ASL, target_distance_m is the orbit\n'+
       '           distance); location{} is what it aims at. resolution is the target;\n'+
       '           capture_px is what the PNG actually is.\n'+
-      'cut.json   the sequence itself: order, beats, and the shared world lock.\n'+
+      'cut.json   the sequence itself: order, beats, the shared world lock, and\n'+
+      '           grammar{} \u2014 for every cut, what is visible in both frames and\n'+
+      '           where it sits, whether the camera crossed the action line, and\n'+
+      '           whether the two cameras are far enough apart to read as a cut.\n'+
+      '           Derived from the measured geometry, never from the prompt text.\n'+
       'previs.gif the cut as a looping animatic, one frame per shot, at your beats.\n'+
       '           PREVIS ONLY \u2014 blocking playback, not generated motion.\n'+
       (S.handoffs?
@@ -6378,10 +6710,13 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   sessionPayload,applySessionData,restoreUploads,seqSubjectLine,cameraSentence,stepRig,
   exportBundle,makeZip,frameFileName,specFileName,slugify,crc32,cutIssues,sameFraming,syncHandoffBtn,
   relight:relightSequence,buildReport,checkContinuity,
+  screenOf,framePos,frameHeight,aimPoint,subjPoint,subjLabel,axisOf,lineSide,screenDir,dirSign,
+  subtendedDeg,sizeStep,pairLine,cutGrammar,lineClause,markerFacing,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming,RIG_FAMILY,
   cesiumVia:()=>window.CESIUM_VIA,openFold,openSectionByLabel,aimed,phaseOf,
+  fovToLens,applyFov,nearestLens,sizeCode,stationHeading,stationLabel,
   QUALITY,setQuality,applyQuality,syncEarthFold,hqStation,
   servedProperly:()=>location.protocol!=='file:',
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
