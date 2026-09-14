@@ -474,7 +474,11 @@ window.CESIUM_VIA='';
   #filewarn:hover{border-color:var(--yellow);color:var(--yellow);}
   #filewarn u{text-underline-offset:2px;}
   /* ---- director slate + roll indicator ---- */
+  /* Lowered out of the pill's band when the two would collide. The warning keeps the top
+     line; the slate is a convenience readout and can step down. */
+  #slate.lowered{top:52px;}
   #slate{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:6;pointer-events:none;
+    transition:top .18s;
     background:rgba(10,10,13,.66);border:1px solid rgba(255,255,255,.09);border-radius:999px;padding:7px 18px;
     font-family:ui-monospace,Menlo,monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
     color:#c8c8d0;white-space:nowrap;backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
@@ -619,6 +623,10 @@ window.CESIUM_VIA='';
   .plegend{display:flex;flex-wrap:wrap;gap:4px 11px;padding:6px 10px 2px;font-size:9px;
     color:var(--faint);letter-spacing:.02em;}
   .plegend i{display:inline-flex;align-items:center;gap:4px;font-style:normal;}
+  /* This row carries four independent facts and must never drop a character of any of
+     them, so it wraps instead of truncating. */
+  .phdr .t{flex-wrap:wrap;row-gap:4px;}
+  .phdr .tag{flex:none;}
   .plegend b{width:8px;height:8px;border-radius:50%;flex:none;}
   .plegend .ring{background:transparent;box-shadow:inset 0 0 0 2px currentColor;}
   .pstn.act .pglance{color:var(--yellow);}
@@ -2161,7 +2169,14 @@ stageEl.addEventListener('drop',e=>{
   toast('Camera start set \u2014 click again for end (or waypoints, then double-click)');
 });
 
-$('durSlider').oninput=e=>{S.pathDuration=+e.target.value;$('durVal').textContent=S.pathDuration.toFixed(1)+'s';};
+$('durSlider').oninput=e=>{
+  S.pathDuration=+e.target.value;
+  $('durVal').textContent=S.pathDuration.toFixed(1)+'s';
+  // The summary and the dot-list header quote this same number. Cheap text rewrite on
+  // every tick; the full list re-render waits for the drag to finish.
+  syncPathPanelMode();
+};
+$('durSlider').onchange=()=>{ renderPathList(); };
 
 // ---- Path drawing on the globe ----
 let pathEntities={start:null,end:null,line:null,waypoints:[],pts:[]};
@@ -2766,14 +2781,14 @@ function renderPathListInner(){
   const L=$('pathList'); if(!L)return; L.innerHTML='';
   if(!S.path){return;}
   const pts=S.path.points;
-  const head=document.createElement('div'); head.className='item';
+  const head=document.createElement('div'); head.className='item phdr';
   const done=pts.filter(p=>p.locked).length;
   const tv=travellerCount();
   const rigs=[...new Set(pts.map((_,i)=>pointCamType(i)))];
   const rigLabel=rigs.length===1?CAMERA_TYPES[rigs[0]].label
     :rigs.map(t=>CAMERA_TYPES[t].glyph).join('')+' '+rigs.length+' rigs';
   head.innerHTML='<div class="t"><span>'+rigLabel+' <span class="tag">'+pts.length+' point'+(pts.length===1?'':'s')+'</span>'+
-    (tv?' <span class="tag tvon ridechip" title="Select the cast riding this path">\u2192 '+tv+' cast riding</span>':'')+'</span>'+
+    (tv?' <span class="tag tvon ridechip" title="'+tv+' stand-in'+(tv===1?'':'s')+' ride this path \u2014 click to select them">\u2192 '+tv+' riding</span>':'')+'</span>'+
     '<span class="tag">'+(done?done+'/'+pts.length+' locked':S.pathDuration.toFixed(1)+'s')+'</span></div>';
   const rc=head.querySelector('.ridechip');
   if(rc){ rc.style.cursor='pointer';
@@ -3027,7 +3042,8 @@ async function settleForShutter(){
 function forgetTileStall(){ S._tilesNeverSettle=false; }
 let _softT;
 function softToast(t){ if(!t){ clearTimeout(_softT); return; }
-  const el=$('loadstat'); if(el){ el.innerHTML=escapeHtml(t); el.style.color='var(--amber)'; } }
+  const el=$('loadstat'); if(el){ el.innerHTML=escapeHtml(t); el.style.color='var(--amber)'; }
+  setTimeout(placeStageChrome,0); }
 // What the path IS, independent of shooting it. p.alt is metres above the ground the dot
 // sits on — never an altitude, which is the confusion this whole pass exists to end.
 function buildPathSpec(headStart,headEnd,startFrame,endFrame){
@@ -3806,6 +3822,10 @@ function refreshFrameTags(){
   const now=performance.now();
   if(now-_frameTagT<180)return;                 // the camera moves every frame; this need not
   _frameTagT=now;
+  // Whether the slate is sitting on top of the status pill depends on the pill's text, the
+  // viewport, and the panel. Enumerating every trigger that changes one of those is how a
+  // warning ends up covered again six months from now, so it rides this tick instead.
+  try{ placeStageChrome(); }catch(_){ }
   const L=$('markerList'); if(!L||!S.markers.length)return;
   let changed=false;
   S.markers.forEach(m=>{
@@ -4302,7 +4322,7 @@ function buildSpec(refId,move,px){
     // A SECOND pass, recorded as one. look{} is what the plate was shot with; this is
     // what Frame Forge did to it afterwards. Conflating them would make the captured
     // frame unable to describe itself, which is the one thing it exists to do.
-    post:forgePost(),
+    post:forgePost(),   // restamped per shot at export — see exportBundle
     scene_description:$('sceneDesc').value, reference_frame:(refId||'scout')+'.png'
   };
 }
@@ -4817,7 +4837,14 @@ $('continuityBtn').onclick=checkContinuity;
 
 function contactSheet(){
   const wt=S.shots.filter(s=>s.thumb); if(!wt.length){toast('Capture or save a shot first');return;}
-  const cols=Math.min(3,wt.length), rows=Math.ceil(wt.length/cols), cw=480, chh=270, pad=12, lh=26;
+  // Every frame's real shape, from what the PNG actually is — not from the delivery target
+  // and not from a constant. The cell takes the widest one; anything narrower is centred
+  // inside it at its own aspect rather than being stretched to fill.
+  const arOf=sh=>{ const px=sh.spec&&sh.spec.delivery&&sh.spec.delivery.capture_px;
+    return (px&&px[0]&&px[1])?px[0]/px[1]:(ASPECTS[S.delivery]||16/9); };
+  const ars=wt.map(arOf), maxAR=Math.max.apply(null,ars);
+  const cols=Math.min(3,wt.length), rows=Math.ceil(wt.length/cols), cw=480,
+        chh=Math.max(120,Math.round(cw/maxAR)), pad=12, lh=26;
   const cv=document.createElement('canvas'); cv.width=cols*cw+(cols+1)*pad; cv.height=rows*(chh+lh)+(rows+1)*pad;
   const ctx=cv.getContext('2d'); ctx.fillStyle='#09090b'; ctx.fillRect(0,0,cv.width,cv.height);
   let n=0;
@@ -4825,7 +4852,9 @@ function contactSheet(){
     const img=new Image();
     img.onload=()=>{
       const col=i%cols,row=Math.floor(i/cols),x=pad+col*(cw+pad),y=pad+row*(chh+lh+pad);
-      ctx.drawImage(img,x,y,cw,chh);
+      // contained, never stretched: a squashed frame is a lie about the framing
+      const ar=arOf(s), dw=Math.min(cw,chh*ar), dh=dw/ar;
+      ctx.drawImage(img,x+(cw-dw)/2,y+(chh-dh)/2,dw,dh);
       ctx.fillStyle='#facc15'; ctx.font='600 13px monospace';
       ctx.fillText('SHOT '+(i+1)+' \u00b7 '+s.spec.camera.shot_size+' \u00b7 '+s.spec.camera.lens_mm+'mm \u00b7 '+s.spec.light.phase,x+2,y+chh+18);
       if(++n===wt.length){ downloadURI(cv.toDataURL('image/png'),'gmapz_contact_sheet.png'); toast('Contact sheet downloaded'); }
@@ -5329,7 +5358,9 @@ function setForgeHold(sh,ms){ sh.beat=Math.max(0.1,Math.min(20,(+ms||400)/1000))
 // A shot is soft if its own spec says the world had not arrived. Absent means an older
 // spec that never recorded it — unknown, not false, so it is never flagged as soft.
 const shotIsSoft=sh=>!!(sh&&sh.spec&&sh.spec.tiles_resolved===false);
-function forgePost(){
+// `sh` is optional: with it, the block also describes THAT shot's own second pass, which
+// is what a per-shot spec file should be saying. Without it, the cut-level summary alone.
+function forgePost(sh){
   const L=S.shots||[];
   const graded=L.filter(sh=>Array.isArray(sh.fx)&&sh.fx.length);
   if(!graded.length&&!L.some(sh=>sh.swapped||(sh.audio&&sh.audio.url)))return null;
@@ -5339,9 +5370,17 @@ function forgePost(){
     applied_to:'the exported frames, not the captured plate',
     graded_shots:graded.length,
     fx_used:used,
-    swapped_frames:L.filter(sh=>sh.swapped).length,
-    shots_with_audio:L.filter(sh=>sh.audio&&sh.audio.url).length,
-    note:'look{} describes the plate as shot. This block describes a second pass over it.'
+    swapped_frames:L.filter(x=>x.swapped).length,
+    shots_with_audio:L.filter(x=>x.audio&&x.audio.url).length,
+    this_shot: sh?{
+      fx:Array.isArray(sh.fx)?sh.fx.slice():[],
+      hold_ms:Math.round((sh.beat||0.8)*1000),
+      frame_replaced:!!sh.swapped,
+      has_audio:!!(sh.audio&&sh.audio.url)
+    }:null,
+    note:'look{} describes the plate as shot. This block describes a second pass over it. '+
+         'frames/ in the package are the ungraded plate; this_shot.fx is what Frame Forge '+
+         'lays over it in the GIF and the video.'
   };
 }
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -6052,13 +6091,15 @@ function lineClause(p){
   }
   p.dirs.forEach(d=>{
     if(d.in_b)bits.push(d.who+' is '+d.in_b+
-      (d.flipped?' — this REVERSES the screen direction of the previous shot':''));
+      (d.flipped?' — this REVERSES the screen direction of the previous shot':'')+'.');
   });
-  if(p.line.crossed)bits.push('⚠ The camera has crossed to the other side of '+p.line.from+
+  if(p.line.crossed)bits.push('\u26a0 The camera has crossed to the other side of '+p.line.from+
     '. Screen geography flips across this cut; that is either the intent or the error.');
-  if(p.jump)bits.push('⚠ Only '+Math.round(p.subtended_deg)+'° separates this camera from the '+
-    'previous one on the same subject — under 30° reads as a jump, not a cut.');
-  return bits.length?('SCREEN GEOMETRY — '+bits.join(' ')):'';
+  if(p.jump)bits.push('\u26a0 Only '+Math.round(p.subtended_deg)+'\u00b0 separates this camera from the '+
+    'previous one on the same subject \u2014 under 30\u00b0 reads as a jump, not a cut.');
+  // Each bit is a sentence and ends like one. Joining unterminated clauses with a space
+  // handed the engine one run-on paragraph, which is the opposite of the point.
+  return bits.length?('SCREEN GEOMETRY \u2014 '+bits.map(t=>/[.!?]$/.test(t)?t:t+'.').join(' ')):'';
 }
 // What actually changed at this cut — everything unsaid is held constant.
 function continuityClause(pa,pb,i){
@@ -6216,6 +6257,9 @@ async function exportBundle(){
     say('Packing '+cut.length+' frame'+(cut.length===1?'':'s')+'\u2026');
     const files=[];
     cut.forEach((sh,i)=>{
+      // The second pass is decided in Frame Forge, which is AFTER the shutter. Stamping it
+      // only at capture time meant a shot graded later shipped a spec saying it was not.
+      try{ sh.spec.post=forgePost(sh); }catch(_){ }
       files.push({name:'frames/'+frameFileName(sh,i), bytes:dataUrlBytes(sh.thumb)});
       files.push({name:'specs/'+specFileName(sh,i), bytes:utf8(JSON.stringify(sh.spec,null,2))});
     });
@@ -6436,9 +6480,32 @@ $('sessionNew').onclick=()=>{
   }
 };
 
+// The status pill and the slate are both anchored to the top of the stage, one from the
+// left and one from the centre, so whether they collide depends on how long the pill's
+// text is and how wide the window is. Measured rather than guessed, because the pill is
+// longest in exactly the state that matters most: the one that says you have no geometry.
+function placeStageChrome(){
+  const pill=$('loadstat'), slate=$('slate');
+  if(!pill||!slate)return;
+  try{
+    // Measure the slate where it WOULD be if it were not lowered, without actually moving
+    // it -- removing the class and reading the rect back reads a CSS transition mid-flight,
+    // which is a logged false positive in this project and would have been a live bug here.
+    const a=pill.getBoundingClientRect(), b=slate.getBoundingClientRect();
+    const stageTop=(viewer&&viewer.scene&&viewer.scene.canvas)
+      ? viewer.scene.canvas.getBoundingClientRect().top : 0;
+    const restTop=stageTop+14, restBottom=restTop+b.height;
+    const hit=!(a.right+10<b.left||b.right+10<a.left||a.bottom<restTop||restBottom<a.top);
+    if(slate.classList.contains('lowered')!==hit)slate.classList.toggle('lowered',hit);
+  }catch(_){ }
+}
+window.addEventListener('resize',()=>{try{placeStageChrome();}catch(_){}});
 function setStat(h,c){const l=$('loadstat');l.innerHTML=h;if(c)l.style.color=c;
   clearTimeout(setStat._t); l.classList.remove('settle');
   if(c==='#34d399'||c==='#fbbf24'){setStat._t=setTimeout(()=>l.classList.add('settle'),4000);} // errors stay loud
+  // Every text change can change the pill's width, and its width is what decides whether
+  // the slate is sitting on top of it. Re-measure after layout, not before.
+  requestAnimationFrame(placeStageChrome);
 }
 let toastT;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);const dur=Math.min(7000,Math.max(2200,m.length*55));toastT=setTimeout(()=>t.classList.remove('show'),dur);}
 // One-time discovery nudge: reveal a buried power feature the moment it becomes useful.
@@ -6717,7 +6784,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   setStationOpt,saveStationFraming,captureFraming,RIG_FAMILY,
   cesiumVia:()=>window.CESIUM_VIA,openFold,openSectionByLabel,aimed,phaseOf,
   fovToLens,applyFov,nearestLens,sizeCode,stationHeading,stationLabel,
-  QUALITY,setQuality,applyQuality,syncEarthFold,hqStation,
+  QUALITY,setQuality,applyQuality,syncEarthFold,hqStation,placeStageChrome,
   servedProperly:()=>location.protocol!=='file:',
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,
