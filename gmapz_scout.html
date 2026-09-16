@@ -240,7 +240,8 @@ window.CESIUM_VIA='';
     cursor:pointer;font-size:13px;line-height:1;transition:.1s;font-family:inherit;}
   .mb:hover{border-color:var(--yellow);color:var(--yellow);}
   .mb:active{transform:scale(.92);}
-  .readout{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--dim);line-height:1.65;white-space:pre;
+  .readout{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--dim);line-height:1.65;
+    white-space:pre-wrap;overflow-wrap:anywhere;
     background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-top:8px;}
   .mini{font-size:10.5px;color:var(--faint);line-height:1.5;margin-top:6px;}
   .list{margin-top:8px;display:flex;flex-direction:column;gap:6px;}
@@ -509,6 +510,14 @@ window.CESIUM_VIA='';
   .thumb .ta:hover{border-color:var(--yellow);color:var(--yellow);}
   /* ---- coverage shot plan ---- */
   /* A fold inside a panel. It reads as part of what is above it, not as another way in. */
+  /* A fold is a LID, not a container.
+     CLOSED it is one tappable line in a box — that is the whole point, and it reads well.
+     OPEN it has to get out of the way completely: no border, no inset background, no inner
+     padding, and its summary demotes to exactly the section label it replaced. Boxing the
+     open state narrowed the content enough to wrap "Apply keys & reload Earth" onto two
+     lines and put a frame around the busiest panel in the app — and since the key fold
+     auto-opens when you have no key, that is the state most people open the file in.
+     Hiding nothing while adding a border is strictly worse than having no fold at all. */
   .fold{border:1px solid var(--line);border-radius:10px;background:var(--panel2);margin:10px 0 2px;}
   .fold>summary{list-style:none;cursor:pointer;padding:8px 11px;font-size:9.5px;letter-spacing:.08em;
     text-transform:uppercase;color:var(--dim);display:flex;justify-content:space-between;
@@ -516,9 +525,13 @@ window.CESIUM_VIA='';
   .fold>summary::-webkit-details-marker{display:none;}
   .fold>summary:hover{color:var(--yellow);}
   .fold>summary .fchev{flex:none;font-size:8px;transition:.15s;}
-  .fold[open]>summary{border-bottom:1px solid var(--line);color:var(--txt);}
+  .fold[open]{border-color:transparent;background:none;margin:12px 0 2px;}
+  .fold[open]>summary{padding:0 0 5px;color:#6a6a74;font-size:9.5px;letter-spacing:.13em;
+    font-weight:600;}
+  .fold[open]>summary:hover{color:var(--yellow);}
   .fold[open]>summary .fchev{transform:rotate(90deg);}
   .foldbody{padding:10px 11px 11px;}
+  .fold[open]>.foldbody{padding:0;}
   .foldbody .covplan{margin-top:8px;}
   /* Google's own words about the key, good or bad. Same colour language as everywhere
      else: green only when it actually works. */
@@ -872,7 +885,7 @@ window.CESIUM_VIA='';
         </details>
 
         <details class="fold" id="kmlFold">
-          <summary><span>Places from a KML / KMZ</span><span class="fchev">&#9656;</span></summary>
+          <summary><span>Load a KML / KMZ</span><span class="fchev">&#9656;</span></summary>
           <div class="foldbody">
             <div class="dropzone" id="kmlZone">Load a KML or KMZ &mdash; click, or drop the file here</div>
             <input id="kmlFile" type="file" accept=".kml,.kmz" style="display:none">
@@ -907,7 +920,7 @@ window.CESIUM_VIA='';
              which is a different job from blocking a shot by eye -- and G / F still reach
              them from the keyboard with the fold shut. -->
         <details class="fold" id="exactFold">
-          <summary><span>Type exact numbers &mdash; sensor, lat/lon, angles</span><span class="fchev">&#9656;</span></summary>
+          <summary><span>Exact numbers &amp; sensor</span><span class="fchev">&#9656;</span></summary>
           <div class="foldbody">
             <label class="fld">Sensor / film back</label>
             <div class="chips" id="sensor"></div>
@@ -1019,7 +1032,7 @@ window.CESIUM_VIA='';
           </div>
 
           <details class="fold" id="runsFold">
-            <summary><span>Auto-frame &amp; saved runs <b id="runsFoldNow" style="color:var(--dim);font-weight:600"></b></span><span class="fchev">&#9656;</span></summary>
+            <summary><span>Saved runs <b id="runsFoldNow" style="color:var(--dim);font-weight:600"></b></span><span class="fchev">&#9656;</span></summary>
             <div class="foldbody">
               <div class="subrow" style="margin-top:0">
                 <button class="btn sm on" id="autoFrameBtn" title="Give a dot a sensible setup when it has none of its own. Turn it off to keep your framing everywhere.">Auto-frame: ON</button>
@@ -1565,8 +1578,8 @@ function syncEarthFold(){
   const M={
     photoreal:['Photoreal Earth','\u2713 real 3D geometry','var(--emerald)'],
     terrain:  ['Photoreal Earth','\u2713 terrain + OSM buildings','var(--emerald)'],
-    flat:     ['Photoreal Earth','\u25c7 flat 2D drape \u2014 add a key','var(--amber)'],
-    rejected: ['Photoreal Earth','\u2715 KEY REJECTED \u2014 flat 2D','var(--red)']
+    flat:     ['Photoreal Earth','\u25c7 no key \u2014 flat 2D','var(--amber)'],
+    rejected: ['Photoreal Earth','\u2715 KEY REJECTED','var(--red)']
   }[EARTH.mode]||['Photoreal Earth \u2014 keys','',''];
   lab.innerHTML=escapeHtml(M[0])+(M[1]?' <b style="color:'+M[2]+';font-weight:600">'+M[1]+'</b>':'');
   if(EARTH.mode==='rejected'){ f.open=true; f.dataset.pinned='1'; }
@@ -2743,9 +2756,9 @@ function syncPathPanelMode(){
   const fl=$('covFoldLabel');
   if(fl){
     const open=pts.filter(p=>!p.locked&&!p.cam).length;
-    fl.textContent=!pts.length ? 'Or let the director plot the dots for you'
-      : open ? ('Let the director set up '+open+' open dot'+(open===1?'':'s'))
-             : 'Every dot has a shot \u2014 the director has nothing left to fill';
+    fl.textContent=!pts.length ? 'Let the director plot the dots'
+      : open ? ('Director: fill '+open+' open dot'+(open===1?'':'s'))
+             : 'Every dot has a shot';
   }
 
   // The gesture the user reached for by clicking a stand-in four times along a road.
