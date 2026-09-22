@@ -1764,7 +1764,7 @@ function setOrbit(on){
 $('orbitTog').onclick=()=>setOrbit(!S.orbit);
 function orbitBy(dx,dy){
   S.head=((S.head+dx*0.30)%360+360)%360;
-  S.tilt=Math.max(-89,Math.min(-2,S.tilt-dy*0.30));
+  S.tilt=Math.max(-90,Math.min(-2,S.tilt-dy*0.30));   // -90 is a real shot: straight down
   flyToParams(0);
 }
 viewer.canvas.addEventListener('pointerdown',e=>{
@@ -5043,11 +5043,19 @@ function axisOf(sp){
         :'the subjects are too close together to describe a line'};
 }
 // Which side of the axis a camera stands on. +1 / -1, or 0 when it is sitting on the line.
+// How far off the axis a camera has to stand before it is on a side at all. A camera
+// within this of the action axis is shooting down the line, which establishes no screen
+// direction to reverse.
+const ON_AXIS_DEG=10;
+// Which side of the axis a camera stands on. +1 / -1, or 0 when it is on the line —
+// at EITHER end. Neutralising only the front end left the rear chase at exactly 180
+// degrees, where the sign is floating-point noise; see the note above the constant.
 function lineSide(axis,cam){
   if(!axis||axis.bearing==null||!cam)return 0;
   const b=bearingDeg(axis.at,{lat:cam.lat,lon:cam.lng});
-  const d=((b-axis.bearing+540)%360)-180;
-  return d>1?1:d<-1?-1:0;
+  const off=Math.abs(((b-axis.bearing+540)%360)-180);
+  if(off<=ON_AXIS_DEG||off>=180-ON_AXIS_DEG)return 0;   // on the line, either end
+  return (((b-axis.bearing+540)%360)-180)>0?1:-1;
 }
 // Which way a subject reads across the frame. sin of the relative bearing IS the screen-x
 // component of their facing -- no approximation in it.
@@ -6791,13 +6799,13 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   exportBundle,makeZip,frameFileName,specFileName,slugify,crc32,cutIssues,sameFraming,syncHandoffBtn,
   relight:relightSequence,buildReport,checkContinuity,
   screenOf,framePos,frameHeight,aimPoint,subjPoint,subjLabel,axisOf,lineSide,screenDir,dirSign,
-  subtendedDeg,sizeStep,pairLine,cutGrammar,lineClause,markerFacing,
+  subtendedDeg,sizeStep,pairLine,cutGrammar,lineClause,markerFacing,ON_AXIS_DEG,
   stationCast,markerInStation,toggleStationCast,applyStationCast,showAllCast,
   relightSequence,renderStickerChips,removeUpload,standInName,standInNote,UPLOADS,STAND_INS,holdMs,BEATS,soundscape,audioLine,vcs15,vco,renderKmlTargets,askUploadKind,flippedImage,UPLOAD_KINDS,WORLD_PROPS,AVATARS,
   setStationOpt,saveStationFraming,captureFraming,RIG_FAMILY,
   cesiumVia:()=>window.CESIUM_VIA,openFold,openSectionByLabel,aimed,phaseOf,
   fovToLens,applyFov,nearestLens,sizeCode,stationHeading,stationLabel,
-  QUALITY,setQuality,applyQuality,syncEarthFold,hqStation,placeStageChrome,
+  QUALITY,setQuality,applyQuality,syncEarthFold,hqStation,placeStageChrome,orbitBy,
   servedProperly:()=>location.protocol!=='file:',
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,

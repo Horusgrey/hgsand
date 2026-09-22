@@ -228,4 +228,63 @@ t.head('9. the room reads — the report fits its box, the next-move line is hon
   t.ok(r.nuGo==='Check the cut','and it sends you to look, not straight to the render');
 }
 
+t.head('10. a camera ON the axis has no side — at EITHER end');
+{
+  // Found by a real shot sheet: a rear chase sits at exactly 180° from the action axis,
+  // where ((b-axis+540)%360)-180 lands on ±180 and the sign is floating-point noise. The
+  // identical camera move — rear chase → behind-left lateral — reported "crossed the
+  // action line" on 4 of 9 compass headings and stayed silent on the other 5.
+  const r=await page.evaluate(()=>{
+    const at={lat:45.7976,lon:-95.5583};
+    const mk=(cl,cn,head,run)=>({location:{lat:at.lat,lng:at.lon,ground_elevation_m:0},
+      camera:{lat:cl,lng:cn,altitude_m:2,heading_deg:head,pitch_deg:-5,fov_deg:54,
+              shot_size:'wide',target_distance_m:14,roll_deg:0},
+      subjects:[{id:'r',name:'runner',lat:at.lat,lng:at.lon,facing_deg:run,height_m:1.8,elevation_offset_m:0}],
+      delivery:{aspect:'2.39:1'}});
+    const heads=[0,45,70,90,135,180,225,250,315];
+    const rear=[], ahead=[], verdict=[], real=[];
+    for(const h of heads){
+      const ax={bearing:h,at,from:'runner'};
+      const bk=gmapz.offsetLatLon(at.lat,at.lon,(h+180)%360,14);
+      const fw=gmapz.offsetLatLon(at.lat,at.lon,h,14);
+      const bl=gmapz.offsetLatLon(at.lat,at.lon,(h+225)%360,14);
+      const br=gmapz.offsetLatLon(at.lat,at.lon,(h+135)%360,14);
+      rear.push(gmapz.lineSide(ax,{lat:bk.lat,lng:bk.lon}));
+      ahead.push(gmapz.lineSide(ax,{lat:fw.lat,lng:fw.lon}));
+      // the same rear → behind-left cut, at every heading
+      verdict.push(gmapz.pairLine(mk(bk.lat,bk.lon,h,h),mk(bl.lat,bl.lon,(h+45)%360,h),1).line.crossed);
+      // and a genuine left → right cross, which MUST still fire
+      real.push(gmapz.pairLine(mk(bl.lat,bl.lon,(h+45)%360,h),mk(br.lat,br.lon,(h-45+360)%360,h),1).line.crossed);
+    }
+    return {rear, ahead, verdict, real, tol:gmapz.ON_AXIS_DEG};
+  });
+  t.ok(r.rear.every(x=>x===0),'a rear chase is on the line, not on a side: '+r.rear.join(','));
+  t.ok(r.ahead.every(x=>x===0),'and so is a frontal lead: '+r.ahead.join(','));
+  t.ok(new Set(r.verdict).size===1&&r.verdict[0]===false,
+    'the same camera move gets the same verdict on every compass heading (was 4 of 9)');
+  t.ok(r.real.every(x=>x===true),
+    'and a genuine left→right cross still fires at every heading — the fix did not switch it off');
+  t.ok(r.tol>0&&r.tol<45,'the on-axis tolerance is a sane angle: '+r.tol+'°');
+}
+
+t.head('11. a true 90° top-down is reachable, by mouse and by number');
+{
+  // A sequence that uses an overhead as its visual peak needs a real 90°, not 89°. Both
+  // the typed field and flyToParams already went there; only the drag-orbit clamped.
+  const r=await page.evaluate(async()=>{
+    const out={};
+    Object.assign(gmapz.S,{target:{lat:45.7976,lon:-95.5583,h:0},head:70,tilt:-90,range:200,fov:54});
+    gmapz.flyToParams(0); await new Promise(r=>setTimeout(r,420));
+    out.typed=+(gmapz.viewer.camera.pitch*180/Math.PI).toFixed(2);
+    out.headingHeld=+(gmapz.viewer.camera.heading*180/Math.PI).toFixed(1);
+    gmapz.S.tilt=-30;
+    for(let i=0;i<400;i++)gmapz.orbitBy(0,12);        // drag hard toward straight down
+    out.dragged=gmapz.S.tilt;
+    return out;
+  });
+  t.ok(Math.abs(r.typed+90)<0.1,'typing -90 gives a true straight-down camera ('+r.typed+'°)');
+  t.ok(r.dragged===-90,'and dragging reaches it too, instead of stopping at -89 ('+r.dragged+'°)');
+  t.ok(Number.isFinite(r.headingHeld),'heading stays defined at the pole ('+r.headingHeld+'°)');
+}
+
 await t.done();
