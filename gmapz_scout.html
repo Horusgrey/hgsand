@@ -112,6 +112,7 @@ window.CESIUM_VIA='';
   #panelbody::-webkit-scrollbar-track{background:transparent;}
   #panelbody::-webkit-scrollbar-thumb{background:#26262c;border-radius:99px;border:2px solid transparent;background-clip:padding-box;}
   #panelbody::-webkit-scrollbar-thumb:hover{background:#3a3a42;background-clip:padding-box;}
+  #panelScrollHint{display:none;}
   .list::-webkit-scrollbar,#timeline::-webkit-scrollbar,.out::-webkit-scrollbar{width:8px;height:8px;}
   .list::-webkit-scrollbar-thumb,#timeline::-webkit-scrollbar-thumb,.out::-webkit-scrollbar-thumb{background:#26262c;border-radius:99px;}
   .panel.closed #panelbody{width:0;border-right:none;overflow:hidden;}
@@ -835,6 +836,14 @@ window.CESIUM_VIA='';
     #panelbody{width:100% !important;border-right:none;}
     .panel.closed #panelbody{display:none;}
     #panelTab{display:none;}
+    .panel{position:relative;}
+    #panelScrollHint{display:flex;position:absolute;left:0;right:0;bottom:0;height:34px;
+      align-items:flex-end;justify-content:center;padding-bottom:5px;pointer-events:none;
+      opacity:0;transition:opacity .15s;
+      background:linear-gradient(180deg,rgba(11,11,13,0),rgba(11,11,13,.95) 60%);}
+    #panelScrollHint.show{opacity:1;}
+    #panelScrollHint span{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;
+      color:var(--yellow);text-transform:uppercase;text-shadow:0 1px 3px rgba(0,0,0,.6);}
     .stage{order:1;}
     .kbd{display:none;}
     .thumbs{bottom:6px;right:14px;}
@@ -1100,6 +1109,12 @@ window.CESIUM_VIA='';
       </div>
     </details>
     </div>
+    <!-- Hidden on desktop, where the panel has room and a visible scrollbar already
+         shows there is more. On a phone the panel is capped to 48vh (see the mobile
+         media query) and the platform hides that scrollbar entirely, so the only sign
+         that Camera, Cast, Path etc. exist below the fold was an undiscoverable scroll
+         gesture inside a small box. This says so, and only while it is still true. -->
+    <div id="panelScrollHint" aria-hidden="true"><span>&#9662; more below</span></div>
   </aside>
 
   <main class="stage">
@@ -6754,6 +6769,23 @@ function activateSection(i){
   RAIL.forEach((o,j)=>{ if(j===i){o.sec.setAttribute('open','');} else {o.sec.removeAttribute('open');} o.btn.classList.toggle('on',j===i); });
   bodyEl.scrollTop=0;
   S._activeSection=i;
+  syncPanelScrollHint();
+}
+// On a phone the panel is a small scrollable window (48vh) onto content that keeps
+// growing, and the platform hides its scrollbar — so nothing on screen said "there is
+// more here" until you stumbled on the gesture. This shows a fade + label at the
+// bottom edge exactly while bodyEl has unscrolled content, and hides itself the moment
+// you reach the end. Re-checked on scroll, on a resize of the content itself (a fold
+// opening, a section swap re-rendering), and once at boot.
+const scrollHintEl=$('panelScrollHint');
+function syncPanelScrollHint(){
+  if(!scrollHintEl||!bodyEl)return;
+  const hidden=bodyEl.scrollHeight-bodyEl.scrollTop-bodyEl.clientHeight<=4;
+  scrollHintEl.classList.toggle('show',!hidden);
+}
+if(bodyEl){
+  bodyEl.addEventListener('scroll',syncPanelScrollHint,{passive:true});
+  try{ new ResizeObserver(syncPanelScrollHint).observe(bodyEl); }catch(_){ }
 }
 // The one fold that refuses to close: a rejected key is a red state and the constitution
 // says a warning never fades. Clicking the summary re-opens it.
@@ -6762,6 +6794,7 @@ function activateSection(i){
 function togglePanel(){ panelEl.classList.toggle('closed'); if(!panelEl.classList.contains('closed')&&S._activeSection==null)activateSection(0); }
 if(tabEl)tabEl.onclick=togglePanel;
 buildRail();
+setTimeout(syncPanelScrollHint,0);
 
 window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,plotRecipe,rebuildPathEntities,offsetLatLon,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,clearPath,STN,
@@ -6797,6 +6830,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   cesiumVia:()=>window.CESIUM_VIA,openFold,openSectionByLabel,aimed,phaseOf,
   fovToLens,applyFov,nearestLens,sizeCode,stationHeading,stationLabel,
   QUALITY,setQuality,applyQuality,syncEarthFold,hqStation,placeStageChrome,orbitBy,
+  syncPanelScrollHint,
   servedProperly:()=>location.protocol!=='file:',
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,
