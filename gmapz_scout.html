@@ -123,11 +123,10 @@ window.CESIUM_VIA='';
     background:linear-gradient(180deg,#101013,#0a0a0c);}
   .brand h1{margin:0;font-size:15px;font-weight:700;letter-spacing:.02em;}
   .brand h1 span{color:var(--yellow);}
-  /* The shutter is the product. It stays reachable from every section of the panel. */
-  #capbar{flex:none;display:flex;gap:6px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);
-    background:linear-gradient(180deg,#101013,#0b0b0e);position:sticky;top:0;z-index:4;}
-  #capCount{flex:none;font:600 9px/1 ui-monospace,monospace;color:var(--faint);letter-spacing:.1em;
-    min-width:30px;text-align:right;white-space:nowrap;}
+  /* The shutter already lives on the stage (#shutter, bottom-right) and answers to the
+     same C / Shift-C shortcut from every section, since it sits over the globe rather than
+     in the scrollable panel. A second, sticky copy here duplicated it and cost every
+     section 50px of permanent chrome on top of whatever you scrolled down to see. */
   .brand p{margin:2px 0 0;font-size:10px;color:var(--faint);letter-spacing:.14em;text-transform:uppercase;}
   #panelbody details.sec{border-bottom:1px solid var(--line);}
   #panelbody details.sec>summary{display:none;}
@@ -852,11 +851,6 @@ window.CESIUM_VIA='';
     <div id="panelbody">
     <div class="brand"><h1>GMAPz <span>Scout</span></h1><p>Mobile Hollywood · block it · shoot it · finish it</p></div>
     <div id="nextUp" title="The next move, from where you actually are"></div>
-    <div id="capbar">
-      <button class="btn y" id="capBarBtn" title="Capture the exact on-screen frame (C)">&#9673;&nbsp; Capture frame</button>
-      <button class="btn sm" id="capBarHQ" title="Capture at double resolution" style="flex:none;width:42px">HQ</button>
-      <span id="capCount" title="Frames shot this session"></span>
-    </div>
 
     <details class="sec" open><summary>Scout <span class="ico">&#9656;</span></summary>
       <div class="body">
@@ -4230,7 +4224,6 @@ function renderThumbs(){
     wrap.appendChild(t);
   });
   wrap.scrollLeft=wrap.scrollWidth;
-  const cc=$('capCount'); if(cc)cc.textContent=S.captures.length?S.captures.length+' FR':'';
   renderFrameBin();
 }
 // A frame is either in the cut or it isn't. One click moves it either way — that is
@@ -4262,8 +4255,6 @@ function renderFrameBin(){
     B.appendChild(d);
   });
 }
-$('capBarBtn').onclick=()=>capture(false);
-$('capBarHQ').onclick=()=>capture(true);
 $('shutter').onclick=e=>capture(e.shiftKey);
 
 // Prefer what the capture measured; fall back to asking now. Never guess true.
