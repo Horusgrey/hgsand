@@ -181,4 +181,46 @@ t.head('9. the export is a real zip with the files it promises');
   t.ok(r.count===1,'which counts the one entry we put in');
 }
 
+t.head('10. cast rides the move\'s clock, not just the path\'s dots');
+{
+  const r=await page.evaluate(async()=>{
+    gmapz.S.markers.length=0;
+    gmapz.startPath(-95.5583,45.7976);
+    gmapz.addPathPoint(-95.5543,45.7996);          // one leg, two dots
+    const onDot=gmapz.addMarker(-95.5583,45.7976,0,'person','subject');   // zero offset
+    const offset=gmapz.addMarker(-95.5593,45.7971,0,'person','subject'); // placed off the line
+    gmapz.toggleTravel(onDot); gmapz.toggleTravel(offset);
+    const mOn=gmapz.S.markers.find(m=>m.id===onDot);
+    const mOff=gmapz.S.markers.find(m=>m.id===offset);
+    const dLon0=mOff.lon-(-95.5583), dLat0=mOff.lat-45.7976;
+    const sm=gmapz.moveSamples(5);
+    gmapz.travelCastAt(sm[2]);                      // a mid-move frame, not a station
+    const midOn={lon:mOn.lon,lat:mOn.lat};
+    const midOff={lon:mOff.lon,lat:mOff.lat};
+    gmapz.travelCastAt(sm[4]);                       // the last frame
+    const endOn={lon:mOn.lon,lat:mOn.lat};
+    // Full render pass: confirm it restores positions afterward, same as the camera.
+    const beforeRenderOn={lon:mOn.lon,lat:mOn.lat};
+    const res=await gmapz.renderMove({fps:2,seconds:1,height:240,waitMs:150},()=>{});
+    const afterRenderOn={lon:mOn.lon,lat:mOn.lat};
+    const spec=gmapz.moveSpec(res);
+    return {
+      midMatchesSample: Math.abs(midOn.lon-sm[2].lon)<1e-9 && Math.abs(midOn.lat-sm[2].lat)<1e-9,
+      midNotAnEndpoint: Math.abs(midOn.lon-(-95.5583))>1e-6 && Math.abs(midOn.lon-(-95.5543))>1e-6,
+      offsetHeldAtMid: Math.abs((midOff.lon-sm[2].lon)-dLon0)<1e-9 && Math.abs((midOff.lat-sm[2].lat)-dLat0)<1e-9,
+      movedBetweenFrames: Math.abs(endOn.lon-midOn.lon)>1e-9,
+      restoredAfterRender: Math.abs(afterRenderOn.lon-beforeRenderOn.lon)<1e-9 && Math.abs(afterRenderOn.lat-beforeRenderOn.lat)<1e-9,
+      interpolated: spec.interpolated, notInterpolated: spec.not_interpolated,
+    };
+  });
+  t.ok(r.midMatchesSample,'a travelling stand-in sits exactly on the move\'s interpolated point, not a dot');
+  t.ok(r.midNotAnEndpoint,'and that point is genuinely between the two dots, not snapped to either');
+  t.ok(r.offsetHeldAtMid,'a stand-in placed off the line keeps its real-world offset while it travels');
+  t.ok(r.movedBetweenFrames,'position actually changes frame to frame — this is motion, not a single jump');
+  t.ok(r.restoredAfterRender,'cast is put back where it really stood once the render ends, same as the camera');
+  t.ok(r.interpolated.includes('cast'),'moveSpec now claims cast as interpolated');
+  t.ok(!r.notInterpolated.includes('cast positions')&&!r.notInterpolated.includes('cast'),
+    'and no longer admits the gap it just closed');
+}
+
 await t.done();

@@ -2383,6 +2383,18 @@ function travelCast(i){
   if(moved)renderMarkerList();
   return moved;
 }
+// Continuous counterpart to travelCast, for Shoot the move: the same learned offset,
+// evaluated at a fractional point along the leg instead of only at a station, so a
+// traveller moves smoothly on the move's own clock rather than jumping dot to dot.
+// sm is a moveSamples() sample — its lon/lat is the path point that frame looks at.
+function travelCastAt(sm){
+  if(!S.path||!S.path.points.length)return;
+  const p0=S.path.points[0];
+  S.markers.forEach(m=>{ if(!m.travels)return;
+    if(!m._ride)m._ride={dLon:m.lon-p0.lon, dLat:m.lat-p0.lat};
+    m.lon=sm.lon+m._ride.dLon; m.lat=sm.lat+m._ride.dLat;
+    syncMarkerVisual(m); });
+}
 // Moving a stand-in by hand re-teaches the offset; otherwise the next station would drag
 // them straight back to where the old offset said they were.
 function forgetRide(m){ if(m)delete m._ride; }
@@ -5485,11 +5497,15 @@ async function renderMove(opts,say){
   // answer moves and the camera bobs vertically through the shot.
   const pts=S.path.points, legG=pts.map(p=>groundAt(p.lon,p.lat));
   const groundFor=x=>lerp(legG[x.leg],legG[x.leg+1],x.u);
+  // Travellers ride the move's own clock now, not just the path's dots — restored to
+  // wherever they actually stood once the move is over, same as the camera is.
+  const travellers=S.markers.filter(m=>m.travels).map(m=>({m,lon:m.lon,lat:m.lat}));
   const out=[]; let soft=0;
   try{
     for(let f=0;f<sm.length;f++){
       if(MOVE.cancel)break;
       placeCameraAt(sm[f],groundFor(sm[f]));
+      if(travellers.length)travelCastAt(sm[f]);
       viewer.render();
       // The same gate every shutter uses. A move is 150 shutters in a row.
       const settled=await waitForTiles(opts.waitMs||2600);
@@ -5506,6 +5522,7 @@ async function renderMove(opts,say){
     sceneUiVisible(true);
     viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
     viewer.resolutionScale=prevScale; viewer.camera.frustum.fov=prevFov;
+    travellers.forEach(r=>{ r.m.lon=r.lon; r.m.lat=r.lat; syncMarkerVisual(r.m); });
     viewer.resize(); flyToParams(0); viewer.render();
   }
   return {frames:out, W, H, fps, seconds, soft, sampled:sm.length};
@@ -5526,8 +5543,8 @@ function moveSpec(r){
     path:buildPathSpec(),
     light:{date:$('lDate').value,time:$('lTime').value,tz:'UTC'},
     look:{style:S.style,grade:S.grade,atmosphere:S.atmos},
-    interpolated:['position','heading','tilt','distance','lens'],
-    not_interpolated:['roll','cast positions'],
+    interpolated:['position','heading','tilt','distance','lens','cast'],
+    not_interpolated:['roll'],
     note:'Camera stepped frame by frame over real geometry. This is rendered motion, not '+
          'generated motion \u2014 nothing here was invented by a model.'
   };
@@ -6804,7 +6821,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   tilesSettled,waitForTiles,settleForShutter,shotIsSoft,tileTruth,TILE_WAIT_MS,
   openForge,closeForge,renderForge,forgePreview,drawPlate,forgeFilter,forgePost,forgeMeasured,
   FORGE_FX,FORGE_KEYS,forgeHoldMs,setForgeHold,FORGE,
-  saveShot,forgetTileStall,TILE_STALL_MS,syncPathKind,travelCast,forgetRide,
+  saveShot,forgetTileStall,TILE_STALL_MS,syncPathKind,travelCast,travelCastAt,forgetRide,
   nextUp,renderNextUp,
   markerInFrame,standInSize,castTally,renderCastTally,
   MOVE,moveSamples,renderMove,moveSpec,moveToWebM,openMoveStudio,lerpAngle,placeCameraAt,ASPECTS,TILE_HOLD_MS,

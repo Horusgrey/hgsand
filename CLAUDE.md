@@ -320,15 +320,25 @@ injecting radians into a degrees field, racing an 800ms autosave debounce, readi
 transition mid-flight, and forgetting that `vco()` and `worldBuilderProject()` are async.
 
 ## Anti-scope-creep guardrail
-The frames and the animatic come first, and everything else waits its turn. Currently parked by
-the user's explicit decision, in this order:
+The frames and the animatic come first, and everything else waits its turn.
 
-1. **Avatar / cast overhaul** — placement, posing, and making a stand-in read as a person.
-2. **Frame-by-frame motion capture** — capturing *during* the fly rather than only at locked
-   dots, so the GIF is the shot moving rather than a slideshow of its beats. This is a real build,
-   not a toggle: deterministic camera stepping instead of animated flight, waiting for tiles per
-   frame, cast interpolating on the same clock, and a size story (GIF caps out fast — offer the
-   PNG sequence, and look at WebCodecs for MP4).
-3. **Unparking the studio handoffs.**
+**Shoot the move shipped** (`bafb125`). `renderMove()` steps the camera frame by frame
+(`placeCameraAt`) instead of flying it, gates every frame on `waitForTiles()`, and counts soft
+frames by name in `gmapz.move.v1` instead of hiding them. The size story is real too — WebM,
+GIF, and a PNG-sequence zip all come off the one render (`mvWebm` / `mvGif` / `mvZip`). Roll is
+deliberately never interpolated between stations — blending two cants makes a third nobody
+chose — and `moveSpec()` says so in `not_interpolated`. Cast is in that same array, and
+shouldn't be.
+
+Still parked by the user's explicit decision, in this order:
+
+1. **Cast rides the move's clock.** The one real gap left in Shoot the move: a stand-in should
+   move smoothly across a rendered move the way the camera already does, not jump station to
+   station. `moveSpec()` names this itself — read it before re-deriving it.
+2. **Avatar / cast overhaul** — placement, posing, and making a stand-in read as a person. Still
+   a flat, camera-facing Cesium billboard today — no pose, no volume.
+3. **Unparking the studio handoffs.** Not a build — VCS-15, Director's Chair and World Builder
+   exports are already shipped and verified against the real loaders, folded away with
+   `In the zip: OFF`. This is a decision, not code.
 
 Resist adding settings, abstractions, or "engines" the loop doesn't need.
