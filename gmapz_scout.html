@@ -113,6 +113,7 @@ window.CESIUM_VIA='';
   #panelbody::-webkit-scrollbar-thumb{background:#26262c;border-radius:99px;border:2px solid transparent;background-clip:padding-box;}
   #panelbody::-webkit-scrollbar-thumb:hover{background:#3a3a42;background-clip:padding-box;}
   #panelScrollHint{display:none;}
+  #railScrollHint,#railScrollHintL{display:none;}
   .list::-webkit-scrollbar,#timeline::-webkit-scrollbar,.out::-webkit-scrollbar{width:8px;height:8px;}
   .list::-webkit-scrollbar-thumb,#timeline::-webkit-scrollbar-thumb,.out::-webkit-scrollbar-thumb{background:#26262c;border-radius:99px;}
   .panel.closed #panelbody{width:0;border-right:none;overflow:hidden;}
@@ -828,7 +829,24 @@ window.CESIUM_VIA='';
     /* a flex item won't shrink below its content unless told to — without this the
        nine rail buttons forced a 528px page on a 420px phone */
     #railbar{flex-direction:row;width:100%;min-width:0;height:auto;overflow-x:auto;overflow-y:hidden;
-      border-right:none;border-bottom:1px solid var(--line);padding:6px 4px;}
+      border-right:none;border-bottom:1px solid var(--line);padding:6px 4px;position:relative;}
+    /* Eight sections in a 70px-tall strip only a phone's width can show six of at once —
+       the native scrollbar is hidden (see base rule above) so nothing said the rest was
+       there. Same fix as panelScrollHint, rotated 90°: a fade + chevron on whichever edge
+       still has unscrolled buttons past it, gone the moment that edge is reached. Two
+       separate elements, not one toggling both sides — an absolutely positioned box with
+       left, right AND an explicit width is over-constrained and silently drops one side. */
+    #railScrollHint,#railScrollHintL{display:block;position:absolute;top:0;bottom:0;width:26px;
+      pointer-events:none;opacity:0;transition:opacity .15s;}
+    #railScrollHint::after,#railScrollHintL::after{content:'';position:absolute;top:50%;
+      transform:translateY(-50%);font-size:13px;color:var(--yellow);
+      text-shadow:0 1px 3px rgba(0,0,0,.6);}
+    #railScrollHint{right:0;background:linear-gradient(90deg,rgba(7,7,8,0),rgba(7,7,8,.92) 65%);}
+    #railScrollHint::after{content:'\203a';right:4px;}
+    #railScrollHint.show{opacity:1;}
+    #railScrollHintL{left:0;background:linear-gradient(270deg,rgba(7,7,8,0),rgba(7,7,8,.92) 65%);}
+    #railScrollHintL::after{content:'\2039';left:4px;}
+    #railScrollHintL.show{opacity:1;}
     .raildiv{width:1px;height:26px;margin:0 5px;align-self:center;}
     .railhead{width:1px;height:26px;padding:0;margin:0 5px;align-self:center;background:#191920;
       overflow:hidden;text-indent:-99px;}
@@ -856,6 +874,8 @@ window.CESIUM_VIA='';
 <div id="app">
   <aside class="panel" id="panel">
     <nav id="railbar"></nav>
+    <div id="railScrollHintL" aria-hidden="true"></div>
+    <div id="railScrollHint" aria-hidden="true"></div>
     <div id="panelTab" title="Show / hide panel"><span>Panel</span></div>
     <div id="panelbody">
     <div class="brand"><h1>GMAPz <span>Scout</span></h1><p>Mobile Hollywood · block it · shoot it · finish it</p></div>
@@ -6786,7 +6806,12 @@ function activateSection(i){
   RAIL.forEach((o,j)=>{ if(j===i){o.sec.setAttribute('open','');} else {o.sec.removeAttribute('open');} o.btn.classList.toggle('on',j===i); });
   bodyEl.scrollTop=0;
   S._activeSection=i;
+  // On the mobile rail the active button can be scrolled out of sight — whatever got you
+  // here (a keyboard shortcut, a tap that was already mid-scroll), the highlighted one
+  // should end up on screen, not just marked .on somewhere off to the side.
+  const btn=RAIL[i]&&RAIL[i].btn; if(btn&&btn.scrollIntoView)btn.scrollIntoView({block:'nearest',inline:'nearest'});
   syncPanelScrollHint();
+  syncRailScrollHint();
 }
 // On a phone the panel is a small scrollable window (48vh) onto content that keeps
 // growing, and the platform hides its scrollbar — so nothing on screen said "there is
@@ -6804,6 +6829,30 @@ if(bodyEl){
   bodyEl.addEventListener('scroll',syncPanelScrollHint,{passive:true});
   try{ new ResizeObserver(syncPanelScrollHint).observe(bodyEl); }catch(_){ }
 }
+// Same problem, rotated 90°: on a phone #railbar becomes a horizontal strip that only
+// fits six of the eight section buttons (Post and Export are the two that fall off —
+// the two you need to actually finish and ship a cut), its native scrollbar hidden the
+// same way panelbody's is. railScrollHint/railScrollHintL are plain siblings of #railbar
+// rather than children of it, because buildRail() does railEl.innerHTML='' and would
+// delete anything nested inside on the very first boot. Being siblings means they can't
+// lean on #railbar as a CSS containing block, so their vertical box is set here from
+// #railbar's own measured rect instead of trusted to CSS alone.
+const railHintR=$('railScrollHint'), railHintL=$('railScrollHintL');
+function syncRailScrollHint(){
+  if(!railHintR||!railHintL||!railEl||!panelEl)return;
+  const r=railEl.getBoundingClientRect(), p=panelEl.getBoundingClientRect();
+  const top=(r.top-p.top)+'px', h=r.height+'px';
+  railHintR.style.top=top; railHintR.style.height=h;
+  railHintL.style.top=top; railHintL.style.height=h;
+  const atStart=railEl.scrollLeft<=4;
+  const atEnd=railEl.scrollWidth-railEl.scrollLeft-railEl.clientWidth<=4;
+  railHintR.classList.toggle('show',!atEnd);
+  railHintL.classList.toggle('show',!atStart);
+}
+if(railEl){
+  railEl.addEventListener('scroll',syncRailScrollHint,{passive:true});
+  try{ new ResizeObserver(syncRailScrollHint).observe(railEl); }catch(_){ }
+}
 // The one fold that refuses to close: a rejected key is a red state and the constitution
 // says a warning never fades. Clicking the summary re-opens it.
 (function pinEarthFold(){ const f=$('earthFold'); if(!f)return;
@@ -6812,6 +6861,7 @@ function togglePanel(){ panelEl.classList.toggle('closed'); if(!panelEl.classLis
 if(tabEl)tabEl.onclick=togglePanel;
 buildRail();
 setTimeout(syncPanelScrollHint,0);
+setTimeout(syncRailScrollHint,0);
 
 window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,promptStudio:openPromptStudio,plotRecipe,rebuildPathEntities,offsetLatLon,COV,reorderShots,suggestNext,openTake,closeTake,exportTake,
   flyToStation,lockStation,unlockStation,rollStations,startPath,addPathPoint,clearPath,STN,
@@ -6847,7 +6897,7 @@ window.gmapz={S,viewer,Cesium,capture,buildSpec,undo:doUndo,activateSection,prom
   cesiumVia:()=>window.CESIUM_VIA,openFold,openSectionByLabel,aimed,phaseOf,
   fovToLens,applyFov,nearestLens,sizeCode,stationHeading,stationLabel,
   QUALITY,setQuality,applyQuality,syncEarthFold,hqStation,placeStageChrome,orbitBy,
-  syncPanelScrollHint,
+  syncPanelScrollHint,syncRailScrollHint,
   servedProperly:()=>location.protocol!=='file:',
   groundAt,targetGround,plausibleGround,cameraTruth,enforceEyeFloor,recallCamera,camDistance,setEarthMode,EARTH,earthSource,
   buildPathSpec,flyToParams,syncCamUI,getCurrent,openCoverageFold,syncPathPanelMode,

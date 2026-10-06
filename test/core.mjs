@@ -223,4 +223,34 @@ t.head('10. cast rides the move\'s clock, not just the path\'s dots');
     'and no longer admits the gap it just closed');
 }
 
+t.head('11. the mobile rail says when there are more sections to scroll to');
+{
+  // Same page, resized — the breakpoint is a CSS media query, not a different boot, and
+  // the ResizeObserver on #railbar should pick the resize up on its own, same as a user
+  // actually narrowing the window would trigger it.
+  await page.setViewportSize({width:390,height:844});
+  await page.waitForTimeout(300);
+  const rest=await page.evaluate(()=>({
+    overflowing:document.getElementById('railbar').scrollWidth>document.getElementById('railbar').clientWidth,
+    showR:document.getElementById('railScrollHint').classList.contains('show'),
+    showL:document.getElementById('railScrollHintL').classList.contains('show')}));
+  await page.evaluate(()=>{ const r=document.getElementById('railbar');
+    r.scrollLeft=r.scrollWidth; r.dispatchEvent(new Event('scroll')); });
+  await page.waitForTimeout(200);
+  const end=await page.evaluate(()=>({
+    showR:document.getElementById('railScrollHint').classList.contains('show'),
+    showL:document.getElementById('railScrollHintL').classList.contains('show')}));
+  // Export must actually be reachable by scrolling, not just theoretically present —
+  // this is the control that ships the cut, so "off the edge of the phone" is the worst
+  // possible place for it to go missing.
+  const exportReachable=await page.evaluate(()=>
+    [...document.querySelectorAll('.railbtn')].some(b=>b.title==='Export'&&b.getBoundingClientRect().width>0));
+  await page.setViewportSize({width:1280,height:860});   // leave the shared page as found
+  await page.waitForTimeout(200);
+  t.ok(rest.overflowing,'eight sections do not fit a phone-width rail — this is a real overflow, not a hypothetical');
+  t.ok(rest.showR&&!rest.showL,'at rest: a hint points further in, no hint claims there is anything behind you');
+  t.ok(!end.showR&&end.showL,'scrolled to the end: the forward hint clears, the back hint appears');
+  t.ok(exportReachable,'Export — the button that ships the cut — is reachable by scrolling the rail');
+}
+
 await t.done();
