@@ -253,4 +253,33 @@ t.head('11. the mobile rail says when there are more sections to scroll to');
   t.ok(exportReachable,'Export — the button that ships the cut — is reachable by scrolling the rail');
 }
 
+t.head('12. rail groups earn their place, and the ambiguous icons say their own name');
+{
+  const r=await page.evaluate(()=>{
+    const kids=[...document.querySelectorAll('#railbar > *')];
+    // Walk the rail: every .railhead must be followed by at least two .railbtn before
+    // the next .railhead (or the end) — a header over exactly one button groups nothing.
+    let ok=true, headerCount=0, soloHeader=null;
+    for(let i=0;i<kids.length;i++){
+      if(!kids[i].classList.contains('railhead'))continue;
+      headerCount++;
+      let n=0, j=i+1;
+      while(j<kids.length&&!kids[j].classList.contains('railhead')){
+        if(kids[j].classList.contains('railbtn'))n++;
+        j++;
+      }
+      if(n<2){ ok=false; soloHeader=kids[i].textContent.trim(); }
+    }
+    const navLbl=id=>getComputedStyle(document.getElementById(id),'::after').content;
+    return {ok, headerCount, soloHeader,
+      orbit:navLbl('orbitTog'), guides:navLbl('guidesTog'), lut:navLbl('lutTog'),
+      zoomHasNoAfter:getComputedStyle(document.getElementById('zoomInBtn'),'::after').content==='none'};
+  });
+  t.ok(r.ok,'no rail group header sits over fewer than two sections'+(r.soloHeader?' (found: "'+r.soloHeader+'")':''));
+  t.ok(r.headerCount===3,'exactly three group headers remain — Where, Look, Out (got '+r.headerCount+')');
+  t.ok(r.orbit.includes('ORBIT')&&r.guides.includes('GUIDES')&&r.lut.includes('LUT'),
+    'the three glyph-only nav buttons that title= cannot reach on touch now label themselves persistently');
+  t.ok(r.zoomHasNoAfter,'zoom +/−, already self-explanatory, was not given a label it does not need');
+}
+
 await t.done();

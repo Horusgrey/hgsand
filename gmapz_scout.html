@@ -580,11 +580,20 @@ window.CESIUM_VIA='';
     font-family:ui-monospace,monospace;}
   /* ---- Google-Earth navigation cluster ---- */
   #navCluster{position:absolute;right:14px;bottom:126px;z-index:7;display:flex;flex-direction:column;gap:7px;align-items:center;}
-  .navbtn{width:40px;height:40px;border-radius:50%;background:rgba(10,10,13,.72);border:1px solid rgba(255,255,255,.1);
+  .navbtn{position:relative;width:40px;height:40px;border-radius:50%;background:rgba(10,10,13,.72);border:1px solid rgba(255,255,255,.1);
     backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 3px 14px rgba(0,0,0,.5);
     color:var(--txt);font-size:18px;font-weight:600;cursor:pointer;transition:.12s;font-family:inherit;
     display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}
   .navbtn:hover{border-color:var(--yellow);color:var(--yellow);}
+  /* +, − and 2D are already self-explanatory glyphs/text; the compass needle is a near-
+     universal "north" symbol. Orbit/guides/LUT are abstract marks nobody decodes on sight
+     and title= never fires on a touch screen — a phone or a touch Chromebook gets no hint
+     at all. A persistent label fixes that without waiting on a hover that may never come. */
+  .navbtn[id=orbitTog]::after,.navbtn[id=guidesTog]::after,.navbtn[id=lutTog]::after{
+    content:attr(data-lbl);position:absolute;right:calc(100% + 8px);top:50%;transform:translateY(-50%);
+    font:700 7px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--faint);white-space:nowrap;
+    pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.7);}
+  .navbtn[id=orbitTog].on::after,.navbtn[id=guidesTog].on::after,.navbtn[id=lutTog].on::after{color:var(--yellow);}
   .navbtn:active{transform:scale(.92);}
   #tiltTog{font-size:11px;letter-spacing:.04em;}
   #compass{width:44px;height:44px;border-radius:50%;background:rgba(10,10,13,.72);border:1px solid rgba(255,255,255,.1);
@@ -1207,9 +1216,9 @@ window.CESIUM_VIA='';
       <button class="navbtn" id="zoomInBtn" title="Zoom in (+)">+</button>
       <button class="navbtn" id="zoomOutBtn" title="Zoom out (&minus;)">&minus;</button>
       <button class="navbtn" id="tiltTog" title="Toggle top-down / oblique (T)">2D</button>
-      <button class="navbtn" id="orbitTog" title="Orbit the framed subject — drag to circle, scroll to dolly (O)">&#8635;</button>
-      <button class="navbtn" id="guidesTog" title="Framing guides — thirds, horizon level, sun-in-frame (V)">&#8862;</button>
-      <button class="navbtn on" id="lutTog" title="View LUT &mdash; show the grade and atmosphere on the monitor, exactly as the capture will bake them (L)">&#9681;</button>
+      <button class="navbtn" id="orbitTog" data-lbl="ORBIT" title="Orbit the framed subject — drag to circle, scroll to dolly (O)">&#8635;</button>
+      <button class="navbtn" id="guidesTog" data-lbl="GUIDES" title="Framing guides — thirds, horizon level, sun-in-frame (V)">&#8862;</button>
+      <button class="navbtn on" id="lutTog" data-lbl="LUT" title="View LUT &mdash; show the grade and atmosphere on the monitor, exactly as the capture will bake them (L)">&#9681;</button>
     </div>
     <div class="thumbs" id="thumbs"></div>
     <div class="kbd">G get · F fly · C capture · S save · 1-7 lens · O orbit · [ ] roll · V guides · L LUT · K KML · Enter lock · N next · ? help</div>
@@ -6762,11 +6771,15 @@ const ICONS={
 // Eight buttons of equal weight give no answer to "which of these do I need". His own
 // wireframe names five jobs — WHERE / WHO / MOVE / LOOK / OUT — so the rail says which job
 // each button belongs to. The group name is typography, not a control (see .railhead).
+// A group header earns its place only over two or more buttons — one above a single
+// button groups nothing, it just repeats what the button already says underneath it.
+// Cast and Path each stood alone under "Who" / "Move": dropped. Where (Scout+Camera),
+// Look (Light+Style) and Out (Post+Export) each span a real pair and stay.
 const SECTION_META=[
   {match:'scout',         icon:svgIcon(ICONS.scout),  label:'Scout',  group:'Where'},
   {match:'block the shot',icon:svgIcon(ICONS.camera), label:'Camera'},
-  {match:'cast &',        icon:svgIcon(ICONS.cast),   label:'Cast',   group:'Who'},
-  {match:'path &',        icon:svgIcon(ICONS.path),   label:'Path',   group:'Move'},
+  {match:'cast &',        icon:svgIcon(ICONS.cast),   label:'Cast'},
+  {match:'path &',        icon:svgIcon(ICONS.path),   label:'Path'},
   {match:'light',         icon:svgIcon(ICONS.light),  label:'Light',  group:'Look'},
   {match:'style &',       icon:svgIcon(ICONS.look),   label:'Style'},
   {match:'post',          icon:svgIcon(ICONS.shots),  label:'Post',   group:'Out'},
